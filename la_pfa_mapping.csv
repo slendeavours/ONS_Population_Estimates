@@ -1,0 +1,297 @@
+lad24cd,la_name,pfa_name,pfa_name_safelives,population_weight,source
+E06000001,Hartlepool UA,Cleveland,Cleveland,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000002,Middlesbrough UA,Cleveland,Cleveland,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000003,Redcar & Cleveland UA,Cleveland,Cleveland,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000004,Stockton-on-Tees UA,Cleveland,Cleveland,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000005,Darlington UA,Durham,Durham,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000006,Halton UA,Cheshire,Cheshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000007,Warrington UA,Cheshire,Cheshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000008,Blackburn with Darwen UA,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000009,Blackpool UA,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000010,Kingston-upon-Hull UA,Humberside,Humberside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000011,East Riding of Yorkshire UA,Humberside,Humberside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000012,North East Lincolnshire UA,Humberside,Humberside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000013,North Lincolnshire UA,Humberside,Humberside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000014,York UA,North Yorkshire,North Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000015,Derby City UA,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000016,Leicester City UA,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000017,Rutland UA,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000018,Nottingham City UA,Nottinghamshire,Nottinghamshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000019,Herefordshire UA,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000020,Telford & the Wrekin UA,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000021,Stoke-on-Trent UA,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000022,Bath & North East Somerset UA,Avon and Somerset,Avon and Somerset,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000023,Bristol UA,Avon and Somerset,Avon and Somerset,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000024,North Somerset UA,Avon and Somerset,Avon and Somerset,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000025,South Gloucestershire UA,Avon and Somerset,Avon and Somerset,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000026,Plymouth UA,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000027,Torbay UA,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000030,Swindon UA,Wiltshire,Wiltshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000031,Peterborough UA,Cambridgeshire,Cambridgeshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000032,Luton UA,Bedfordshire,Bedfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000033,Southend-on-Sea UA,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000034,Thurrock UA,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000035,Medway Towns UA,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000036,Bracknell Forest UA,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000037,West Berkshire UA,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000038,Reading UA,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000039,Slough UA,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000040,Windsor & Maidenhead UA,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000041,Wokingham UA,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000042,Milton Keynes UA,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000043,Brighton & Hove UA,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000044,Portsmouth UA,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000045,Southampton UA,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000046,Isle of Wight UA,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000047,County Durham UA,Durham,Durham,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000049,Cheshire East UA,Cheshire,Cheshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000050,Cheshire West and Chester UA,Cheshire,Cheshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000051,Shropshire UA,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000052,Cornwall UA,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000053,Isles of Scilly,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000054,Wiltshire UA,Wiltshire,Wiltshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000055,Bedford UA,Bedfordshire,Bedfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000056,Central Bedfordshire UA,Bedfordshire,Bedfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000057,Northumberland UA,Northumbria,Northumbria,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000058,"Bournemouth, Christchurch and Poole UA",Dorset,Dorset,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000059,Dorset UA,Dorset,Dorset,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000060,Buckinghamshire UA,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000061,North Northamptonshire,Northamptonshire,Northamptonshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000062,West Northamptonshire,Northamptonshire,Northamptonshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000063,Cumberland,Cumbria,Cumbria,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000064,Westmorland and Furness,Cumbria,Cumbria,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000065,North Yorkshire,North Yorkshire,North Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E06000066,Somerset,Avon and Somerset,Avon and Somerset,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000008,Cambridge,Cambridgeshire,Cambridgeshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000009,East Cambridgeshire,Cambridgeshire,Cambridgeshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000010,Fenland,Cambridgeshire,Cambridgeshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000011,Huntingdonshire,Cambridgeshire,Cambridgeshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000012,South Cambridgeshire,Cambridgeshire,Cambridgeshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000032,Amber Valley,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000033,Bolsover,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000034,Chesterfield,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000035,Derbyshire Dales,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000036,Erewash,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000037,High Peak,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000038,North East Derbyshire,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000039,South Derbyshire,Derbyshire,Derbyshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000040,East Devon,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000041,Exeter,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000042,Mid Devon,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000043,North Devon,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000044,South Hams,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000045,Teignbridge,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000046,Torridge,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000047,West Devon,Devon & Cornwall,Devon & Cornwall,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000061,Eastbourne,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000062,Hastings,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000063,Lewes,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000064,Rother,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000065,Wealden,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000066,Basildon,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000067,Braintree,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000068,Brentwood,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000069,Castle Point,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000070,Chelmsford,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000071,Colchester,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000072,Epping Forest,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000073,Harlow,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000074,Maldon DC,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000075,Rochford,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000076,Tendring DC,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000077,Uttlesford,Essex,Essex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000078,Cheltenham,Gloucestershire,Gloucestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000079,Cotswold,Gloucestershire,Gloucestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000080,Forest of Dean,Gloucestershire,Gloucestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000081,Gloucester,Gloucestershire,Gloucestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000082,Stroud,Gloucestershire,Gloucestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000083,Tewkesbury,Gloucestershire,Gloucestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000084,Basingstoke & Deane,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000085,East Hampshire,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000086,Eastleigh,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000087,Fareham,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000088,Gosport,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000089,Hart DC,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000090,Havant,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000091,New Forest,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000092,Rushmoor,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000093,Test Valley,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000094,Winchester,Hampshire,Hampshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000095,Broxbourne,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000096,Dacorum,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000098,Hertsmere,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000099,North Hertfordshire,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000102,Three Rivers,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000103,Watford,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000105,Ashford,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000106,Canterbury,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000107,Dartford,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000108,Dover,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000109,Gravesham,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000110,Maidstone,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000111,Sevenoaks,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000112,Folkestone & Hythe,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000113,Swale,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000114,Thanet,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000115,Tonbridge & Malling,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000116,Tunbridge Wells,Kent,Kent,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000117,Burnley,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000118,Chorley,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000119,Fylde,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000120,Hyndburn BC,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000121,Lancaster,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000122,Pendle,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000123,Preston,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000124,Ribble Valley,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000125,Rossendale,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000126,South Ribble,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000127,West Lancashire,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000128,Wyre,Lancashire,Lancashire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000129,Blaby,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000130,Charnwood BC,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000131,Harborough,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000132,Hinckley & Bosworth,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000133,Melton,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000134,North West Leicestershire,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000135,Oadby & Wigston,Leicestershire,Leicestershire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000136,Boston BC,Lincolnshire,Lincolnshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000137,East Lindsey,Lincolnshire,Lincolnshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000138,Lincoln City,Lincolnshire,Lincolnshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000139,North Kesteven,Lincolnshire,Lincolnshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000140,South Holland,Lincolnshire,Lincolnshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000141,South Kesteven,Lincolnshire,Lincolnshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000142,West Lindsey,Lincolnshire,Lincolnshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000143,Breckland,Norfolk,Norfolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000144,Broadland,Norfolk,Norfolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000145,Great Yarmouth,Norfolk,Norfolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000146,King's Lynn & West Norfolk,Norfolk,Norfolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000147,North Norfolk,Norfolk,Norfolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000148,Norwich City,Norfolk,Norfolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000149,South Norfolk,Norfolk,Norfolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000170,Ashfield,Nottinghamshire,Nottinghamshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000171,Bassetlaw,Nottinghamshire,Nottinghamshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000172,Broxtowe,Nottinghamshire,Nottinghamshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000173,Gedling,Nottinghamshire,Nottinghamshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000174,Mansfield,Nottinghamshire,Nottinghamshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000175,Newark & Sherwood ,Nottinghamshire,Nottinghamshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000176,Rushcliffe,Nottinghamshire,Nottinghamshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000177,Cherwell,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000178,Oxford,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000179,South Oxfordshire,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000180,Vale of White Horse DC,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000181,West Oxfordshire,Thames Valley,Thames Valley,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000192,Cannock Chase,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000193,East Staffordshire,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000194,Lichfield,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000195,Newcastle-under-Lyme,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000196,South Staffordshire,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000197,Stafford BC,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000198,Staffordshire Moorlands,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000199,Tamworth,Staffordshire,Staffordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000200,Babergh,Suffolk,Suffolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000202,Ipswich,Suffolk,Suffolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000203,Mid Suffolk,Suffolk,Suffolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000207,Elmbridge,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000208,Epsom & Ewell,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000209,Guildford,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000210,Mole Valley,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000211,Reigate and Banstead,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000212,Runnymede,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000213,Spelthorne,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000214,Surrey Heath,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000215,Tandridge,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000216,Waverley,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000217,Woking BC,Surrey,Surrey,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000218,North Warwickshire,Warwickshire,Warwickshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000219,Nuneaton & Bedworth,Warwickshire,Warwickshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000220,Rugby,Warwickshire,Warwickshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000221,Stratford-on-Avon,Warwickshire,Warwickshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000222,Warwick,Warwickshire,Warwickshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000223,Adur,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000224,Arun,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000225,Chichester,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000226,Crawley,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000227,Horsham,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000228,Mid Sussex,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000229,Worthing,Sussex,Sussex,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000234,Bromsgrove,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000235,Malvern Hills,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000236,Redditch BC,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000237,Worcester,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000238,Wychavon,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000239,Wyre Forest,West Mercia,West Mercia,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000240,St Albans,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000241,Welwyn Hatfield,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000242,East Hertfordshire,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000243,Stevenage,Hertfordshire,Hertfordshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000244,East Suffolk,Suffolk,Suffolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E07000245,West Suffolk,Suffolk,Suffolk,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000001,Bolton,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000002,Bury MBC,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000003,Manchester,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000004,Oldham,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000005,Rochdale,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000006,Salford,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000007,Stockport MBC,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000008,Tameside,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000009,Trafford,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000010,Wigan MBC,Greater Manchester,Greater Manchester,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000011,Knowsley,Merseyside,Merseyside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000012,Liverpool,Merseyside,Merseyside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000013,St Helens MBC,Merseyside,Merseyside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000014,Sefton,Merseyside,Merseyside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000015,Wirral,Merseyside,Merseyside,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000016,Barnsley,South Yorkshire,South Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000017,Doncaster,South Yorkshire,South Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000018,Rotherham,South Yorkshire,South Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000019,Sheffield,South Yorkshire,South Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000021,Newcastle upon Tyne,Northumbria,Northumbria,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000022,North Tyneside,Northumbria,Northumbria,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000023,South Tyneside,Northumbria,Northumbria,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000024,Sunderland,Northumbria,Northumbria,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000025,Birmingham,West Midlands,West Midlands,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000026,Coventry,West Midlands,West Midlands,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000027,Dudley,West Midlands,West Midlands,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000028,Sandwell,West Midlands,West Midlands,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000029,Solihull,West Midlands,West Midlands,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000030,Walsall,West Midlands,West Midlands,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000031,Wolverhampton,West Midlands,West Midlands,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000032,Bradford,West Yorkshire,West Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000033,Calderdale,West Yorkshire,West Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000034,Kirklees,West Yorkshire,West Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000035,Leeds,West Yorkshire,West Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000036,Wakefield,West Yorkshire,West Yorkshire,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E08000037,Gateshead,Northumbria,Northumbria,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000001,City of London,City of London,City of London,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000002,Barking & Dagenham,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000003,Barnet,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000004,Bexley,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000005,Brent,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000006,Bromley,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000007,Camden,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000008,Croydon,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000009,Ealing,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000010,Enfield,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000011,Greenwich,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000012,Hackney,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000013,Hammersmith & Fulham,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000014,Haringey,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000015,Harrow,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000016,Havering,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000017,Hillingdon,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000018,Hounslow,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000019,Islington,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000020,Kensington & Chelsea,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000021,Kingston Upon Thames,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000022,Lambeth,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000023,Lewisham,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000024,Merton,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000025,Newham,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000026,Redbridge,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000027,Richmond upon Thames,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000028,Southwark,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000029,Sutton,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000030,Tower Hamlets,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000031,Waltham Forest,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000032,Wandsworth,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
+E09000033,Westminster,Metropolitan Police,Metropolitan Police,1.0,ONS PFA boundaries 2024 - LAD24CD basis
