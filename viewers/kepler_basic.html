@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>UCWS DV — LA Demand Signals</title>
+<link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet"/>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #1a1a2e; color: #e0e0e0; }
+  #map { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #loading {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    background: rgba(0,0,0,0.8); color: #fff; padding: 20px 32px; border-radius: 8px;
+    font-size: 16px; z-index: 10;
+  }
+  #title-bar {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    background: rgba(15,20,40,0.92); padding: 8px 20px; border-radius: 6px;
+    font-size: 15px; font-weight: 600; color: #c8d0d8; z-index: 5;
+    white-space: nowrap; border: 1px solid rgba(100,116,139,0.4);
+  }
+  #legend {
+    position: absolute; bottom: 40px; left: 16px; background: rgba(15,20,40,0.92);
+    padding: 12px 16px; border-radius: 8px; z-index: 5; min-width: 180px;
+    border: 1px solid rgba(100,116,139,0.4);
+  }
+  #legend h4 { font-size: 12px; color: #94a3b8; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend-row { display: flex; align-items: center; margin: 4px 0; font-size: 12px; color: #cbd5e1; }
+  .legend-swatch { width: 14px; height: 14px; border-radius: 2px; margin-right: 8px; flex-shrink: 0; }
+  #info-box {
+    position: absolute; top: 56px; right: 10px; background: rgba(15,20,40,0.95);
+    padding: 14px 16px; border-radius: 8px; z-index: 5; width: 280px; display: none;
+    border: 1px solid rgba(100,116,139,0.4); font-size: 12px; line-height: 1.6; color: #e2e8f0;
+    max-height: 80vh; overflow-y: auto;
+  }
+  #info-box h3 { font-size: 14px; font-weight: 700; color: #f1f5f9; margin-bottom: 8px; border-bottom: 1px solid rgba(100,116,139,0.3); padding-bottom: 6px; }
+  .info-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .info-label { color: #94a3b8; }
+  .info-value { color: #f1f5f9; font-weight: 500; }
+  .info-section { margin-top: 8px; padding-top: 6px; border-top: 1px solid rgba(100,116,139,0.2); }
+  .info-section-title { font-size: 10px; text-transform: uppercase; color: #64748b; letter-spacing: 0.05em; margin-bottom: 4px; }
+  #close-info { float: right; cursor: pointer; color: #64748b; font-size: 16px; line-height: 1; }
+  #close-info:hover { color: #e2e8f0; }
+  .flag-badge { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; }
+  .flag-yes { background: #7f1d1d; color: #fca5a5; }
+  .flag-no { background: #14532d; color: #86efac; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="loading">Loading 296 Local Authorities...</div>
+<div id="title-bar">UCWS DV — LA Demand Signals (run #<span id="run-id">—</span>, updated <span id="run-date">—</span>)</div>
+
+<div id="legend">
+  <h4>TA Households</h4>
+  <div class="legend-row"><div class="legend-swatch" style="background:#fef3c7"></div>&lt; 100</div>
+  <div class="legend-row"><div class="legend-swatch" style="background:#fbbf24"></div>100 – 500</div>
+  <div class="legend-row"><div class="legend-swatch" style="background:#f97316"></div>500 – 1,500</div>
+  <div class="legend-row"><div class="legend-swatch" style="background:#dc2626"></div>1,500 – 5,000</div>
+  <div class="legend-row"><div class="legend-swatch" style="background:#7c2d12"></div>&gt; 5,000</div>
+  <div style="margin-top:10px; border-top:1px solid rgba(100,116,139,0.3); padding-top:8px;">
+    <h4>Rough Sleeping (circle)</h4>
+    <div class="legend-row"><div class="legend-swatch" style="background:#38bdf8; border-radius:50%"></div>Proportional to count</div>
+  </div>
+</div>
+
+<div id="info-box">
+  <span id="close-info">✕</span>
+  <h3 id="la-name">—</h3>
+  <div class="info-row"><span class="info-label">LAD Code</span><span class="info-value" id="lad24cd">—</span></div>
+  <div class="info-row"><span class="info-label">Population</span><span class="info-value" id="pop">—</span></div>
+  <div class="info-section">
+    <div class="info-section-title">Temporary Accommodation</div>
+    <div class="info-row"><span class="info-label">Households (current)</span><span class="info-value" id="ta-cur">—</span></div>
+    <div class="info-row"><span class="info-label">Households (prev year)</span><span class="info-value" id="ta-prev">—</span></div>
+    <div class="info-row"><span class="info-label">YoY Change</span><span class="info-value" id="ta-yoy">—</span></div>
+    <div class="info-row"><span class="info-label">Trend</span><span class="info-value" id="ta-trend">—</span></div>
+  </div>
+  <div class="info-section">
+    <div class="info-section-title">Rough Sleeping</div>
+    <div class="info-row"><span class="info-label">Current count</span><span class="info-value" id="rs-cur">—</span></div>
+    <div class="info-row"><span class="info-label">Previous year</span><span class="info-value" id="rs-prev">—</span></div>
+  </div>
+  <div class="info-section">
+    <div class="info-section-title">Other Demand Signals</div>
+    <div class="info-row"><span class="info-label">Care leavers (semi-indep)</span><span class="info-value" id="cl">—</span></div>
+    <div class="info-row"><span class="info-label">MARAC cases</span><span class="info-value" id="marac">—</span></div>
+    <div class="info-row"><span class="info-label">HB asylum seekers</span><span class="info-value" id="hb">—</span></div>
+    <div class="info-row"><span class="info-label">Housing register</span><span class="info-value" id="hr">—</span></div>
+    <div class="info-row"><span class="info-label">IMD rank</span><span class="info-value" id="imd">—</span></div>
+  </div>
+  <div class="info-section">
+    <div class="info-section-title">Expenditure (£000)</div>
+    <div class="info-row"><span class="info-label">B&amp;B spend</span><span class="info-value" id="ro4-bb">—</span></div>
+    <div class="info-row"><span class="info-label">Nightly paid spend</span><span class="info-value" id="ro4-np">—</span></div>
+    <div class="info-row"><span class="info-label">Total homelessness</span><span class="info-value" id="ro4-tot">—</span></div>
+  </div>
+  <div class="info-section">
+    <div class="info-section-title">Risk Flags</div>
+    <div class="info-row"><span class="info-label">EFS support</span><span class="info-value" id="efs">—</span></div>
+    <div class="info-row"><span class="info-label">S.114 notice</span><span class="info-value" id="s114">—</span></div>
+  </div>
+</div>
+
+<script>
+const GEOJSON_URL = "https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/data/boundaries/la_boundaries.geojson";
+const METADATA_URL = "https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/data/signals/latest.json";
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  center: [-1.8, 52.5],
+  zoom: 5.8,
+  attributionControl: true
+});
+
+map.addControl(new maplibregl.NavigationControl(), 'top-left');
+map.addControl(new maplibregl.FullscreenControl());
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric' }), 'bottom-right');
+
+function fmt(v) { return v == null ? '—' : v.toLocaleString(); }
+function fmtPct(v) { return v == null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1) + '%'; }
+function fmtFlag(v) { return `<span class="flag-badge ${v ? 'flag-yes' : 'flag-no'}">${v ? 'YES' : 'No'}</span>`; }
+
+document.getElementById('close-info').onclick = () => {
+  document.getElementById('info-box').style.display = 'none';
+};
+
+fetch(METADATA_URL).then(r => r.json()).then(m => {
+  document.getElementById('run-id').textContent = m.run_id || '—';
+  document.getElementById('run-date').textContent = m.generated_at
+    ? new Date(m.generated_at).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'})
+    : '—';
+}).catch(() => {});
+
+map.on('load', async () => {
+  document.getElementById('loading').textContent = 'Loading GeoJSON data...';
+  try {
+    const res = await fetch(GEOJSON_URL);
+    if (!res.ok) throw new Error('Failed to fetch GeoJSON: ' + res.status);
+    const geojson = await res.json();
+    document.getElementById('loading').style.display = 'none';
+
+    map.addSource('la-data', { type: 'geojson', data: geojson });
+
+    map.addLayer({
+      id: 'la-fill',
+      type: 'fill',
+      source: 'la-data',
+      paint: {
+        'fill-color': [
+          'step', ['coalesce', ['get', 'ta_households_current'], 0],
+          '#fef3c7',
+          100,  '#fbbf24',
+          500,  '#f97316',
+          1500, '#dc2626',
+          5000, '#7c2d12'
+        ],
+        'fill-opacity': 0.75
+      }
+    });
+
+    map.addLayer({
+      id: 'la-stroke',
+      type: 'line',
+      source: 'la-data',
+      paint: {
+        'line-color': '#475569',
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.3, 9, 1.2]
+      }
+    });
+
+    map.addLayer({
+      id: 'la-stroke-hover',
+      type: 'line',
+      source: 'la-data',
+      paint: {
+        'line-color': '#f8fafc',
+        'line-width': 2.5
+      },
+      filter: ['==', 'lad24cd', '']
+    });
+
+    map.on('click', 'la-fill', (e) => {
+      const p = e.features[0].properties;
+      document.getElementById('la-name').textContent = p.la_name || p.lad24cd;
+      document.getElementById('lad24cd').textContent  = p.lad24cd || '—';
+      document.getElementById('pop').textContent       = fmt(p.population);
+      document.getElementById('ta-cur').textContent    = fmt(p.ta_households_current);
+      document.getElementById('ta-prev').textContent   = fmt(p.ta_households_prev_year);
+      document.getElementById('ta-yoy').textContent    = fmtPct(p.ta_yoy_pct);
+      document.getElementById('ta-trend').textContent  = p.ta_trend_label || '—';
+      document.getElementById('rs-cur').textContent    = fmt(p.rough_sleeping_current);
+      document.getElementById('rs-prev').textContent   = fmt(p.rough_sleeping_prev_year);
+      document.getElementById('cl').textContent        = fmt(p.care_leavers_semi_indep);
+      document.getElementById('marac').textContent     = p.marac_cases != null ? parseFloat(p.marac_cases).toLocaleString() : '—';
+      document.getElementById('hb').textContent        = fmt(p.hb_sa_caseload);
+      document.getElementById('hr').textContent        = fmt(p.housing_register);
+      document.getElementById('imd').textContent       = fmt(p.imd_rank_of_average_rank);
+      document.getElementById('ro4-bb').textContent    = p.ro4_bb_spend_000 != null ? '£' + parseFloat(p.ro4_bb_spend_000).toLocaleString() + 'k' : '—';
+      document.getElementById('ro4-np').textContent    = p.ro4_nightly_spend_000 != null ? '£' + parseFloat(p.ro4_nightly_spend_000).toLocaleString() + 'k' : '—';
+      document.getElementById('ro4-tot').textContent   = p.ro4_total_homelessness_000 != null ? '£' + parseFloat(p.ro4_total_homelessness_000).toLocaleString() + 'k' : '—';
+      document.getElementById('efs').innerHTML         = fmtFlag(p.efs_flag);
+      document.getElementById('s114').innerHTML        = fmtFlag(p.s114_flag);
+      document.getElementById('info-box').style.display = 'block';
+      map.setFilter('la-stroke-hover', ['==', 'lad24cd', p.lad24cd]);
+    });
+
+    map.on('mouseenter', 'la-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', 'la-fill', () => { map.getCanvas().style.cursor = ''; });
+
+  } catch(err) {
+    document.getElementById('loading').textContent = 'Error: ' + err.message;
+    document.getElementById('loading').style.background = 'rgba(127,0,0,0.9)';
+  }
+});
+</script>
+</body>
+</html>
