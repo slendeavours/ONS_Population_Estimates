@@ -235,10 +235,10 @@
         <div class="sb-row"><span class="sb-label">Deprivation Index (avg rank)</span><span class="sb-value" id="sb-imd">—</span></div>
       </div>
       <div class="sb-section">
-        <div class="sb-section-title">Expenditure (£000s)</div>
-        <div class="sb-row"><span class="sb-label">B&amp;B Spend (£000s)</span><span class="sb-value" id="sb-ro4-bb">—</span></div>
-        <div class="sb-row"><span class="sb-label">Nightly Paid Spend (£000s)</span><span class="sb-value" id="sb-ro4-np">—</span></div>
-        <div class="sb-row"><span class="sb-label">Total Homelessness Spend (£000s)</span><span class="sb-value" id="sb-ro4-tot">—</span></div>
+        <div class="sb-section-title">Expenditure</div>
+        <div class="sb-row"><span class="sb-label">B&amp;B Spend</span><span class="sb-value" id="sb-ro4-bb">—</span></div>
+        <div class="sb-row"><span class="sb-label">Nightly Paid Spend</span><span class="sb-value" id="sb-ro4-np">—</span></div>
+        <div class="sb-row"><span class="sb-label">Total Homelessness Spend</span><span class="sb-value" id="sb-ro4-tot">—</span></div>
       </div>
       <div class="sb-section">
         <div class="sb-section-title">Risk Flags</div>
@@ -449,9 +449,9 @@ map.on('load', async () => {
       document.getElementById('sb-hb').textContent         = fmt(p.hb_sa_caseload);
       document.getElementById('sb-hr').textContent         = fmt(p.housing_register);
       document.getElementById('sb-imd').textContent        = fmt(p.imd_rank_of_average_rank);
-      document.getElementById('sb-ro4-bb').textContent     = p.ro4_bb_spend_000 != null ? '£' + parseFloat(p.ro4_bb_spend_000).toLocaleString() + 'k' : '—';
-      document.getElementById('sb-ro4-np').textContent     = p.ro4_nightly_spend_000 != null ? '£' + parseFloat(p.ro4_nightly_spend_000).toLocaleString() + 'k' : '—';
-      document.getElementById('sb-ro4-tot').textContent    = p.ro4_total_homelessness_000 != null ? '£' + parseFloat(p.ro4_total_homelessness_000).toLocaleString() + 'k' : '—';
+      document.getElementById('sb-ro4-bb').textContent     = p.ro4_bb_spend_000 != null ? '£' + (parseFloat(p.ro4_bb_spend_000) / 1000).toFixed(1) + 'm' : '—';
+      document.getElementById('sb-ro4-np').textContent     = p.ro4_nightly_spend_000 != null ? '£' + (parseFloat(p.ro4_nightly_spend_000) / 1000).toFixed(1) + 'm' : '—';
+      document.getElementById('sb-ro4-tot').textContent    = p.ro4_total_homelessness_000 != null ? '£' + (parseFloat(p.ro4_total_homelessness_000) / 1000).toFixed(1) + 'm' : '—';
       document.getElementById('sb-efs').innerHTML          = fmtFlag(p.efs_flag);
       document.getElementById('sb-s114').innerHTML         = fmtFlag(p.s114_flag);
       document.getElementById('sidebar').style.display     = 'block';
