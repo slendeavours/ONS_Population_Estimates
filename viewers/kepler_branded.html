@@ -108,9 +108,45 @@
     header img { height: 30px; }
     .header-title h1 { font-size: 13px; }
     #sidebar { width: calc(100vw - 20px); }
-    #legend { display: none; }
-    #legend-toggle { display: block; }
+    #legend-body { display: none; }  /* auto-collapsed on mobile */
+    #legend-collapse-btn { display: inline; }
   }
+
+  /* METRIC SELECTOR */
+  #metric-selector {
+    position: absolute; top: 110px; left: 10px; z-index: 15;
+    background: rgba(15,30,54,0.94); border: 1px solid rgba(61,80,104,0.6);
+    border-radius: 6px; padding: 4px 8px; display: flex; flex-direction: column; gap: 3px;
+  }
+  #metric-selector label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--silver); margin-bottom: 1px;
+  }
+  #metric-select {
+    background: rgba(22,36,68,0.95); color: var(--light); border: 1px solid rgba(61,80,104,0.7);
+    border-radius: 4px; padding: 5px 24px 5px 8px; font-size: 12px; cursor: pointer;
+    outline: none; appearance: none; -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238fa0b2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+  }
+  #metric-select:hover { border-color: var(--accent); }
+
+  /* LEGEND COLLAPSE */
+  #legend-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 6px;
+  }
+  #legend-title { font-size: 11px; color: var(--silver); text-transform: uppercase; letter-spacing: 0.06em; }
+  #legend-collapse-btn {
+    background: none; border: none; cursor: pointer; color: var(--silver);
+    font-size: 14px; line-height: 1; padding: 0 0 0 8px;
+  }
+  #legend-collapse-btn:hover { color: var(--light); }
+  #legend-body.collapsed { display: none; }
+
+  /* STRESS BORDER LEGEND SWATCHES */
+  .leg-s114 { width: 14px; height: 3px; background: #d32f2f; margin-right: 8px; flex-shrink: 0; }
+  .leg-efs  { width: 14px; height: 3px; background: #f57c00; margin-right: 8px; flex-shrink: 0; }
 </style>
 </head>
 <body>
@@ -131,25 +167,43 @@
 
 <div id="map-wrapper">
   <div id="map"></div>
+  <div id="metric-selector">
+    <label for="metric-select">View metric</label>
+    <select id="metric-select">
+      <option value="ta_households_current">TA Households</option>
+      <option value="ro4_total_homelessness_000">Total Homelessness Spend</option>
+      <option value="housing_register">Housing Register</option>
+      <option value="care_leavers_semi_indep">Care Leavers (Semi-Independent)</option>
+      <option value="marac_cases">Domestic Violence Cases</option>
+      <option value="rough_sleeping_current">Rough Sleeping</option>
+      <option value="imd_rank_of_average_rank">Deprivation Index</option>
+    </select>
+  </div>
+
   <div id="loading">Loading 296 Local Authorities&hellip;</div>
 
   <div id="legend">
-    <span id="legend-close">✕</span>
-    <h4>TA Households (current)</h4>
-    <div class="leg-row"><div class="leg-swatch" style="background:#fef3c7"></div>&lt; 100 households</div>
-    <div class="leg-row"><div class="leg-swatch" style="background:#fbbf24"></div>100 – 500</div>
-    <div class="leg-row"><div class="leg-swatch" style="background:#f97316"></div>500 – 1,500</div>
-    <div class="leg-row"><div class="leg-swatch" style="background:#dc2626"></div>1,500 – 5,000</div>
-    <div class="leg-row"><div class="leg-swatch" style="background:#7c2d12"></div>&gt; 5,000 households</div>
-    <div class="leg-sep">
-      <h4>Rough Sleeping</h4>
-      <div class="leg-row"><div class="leg-swatch" style="background:#94a3b8; border-radius: 50%;"></div>Highlighted on hover</div>
+    <div id="legend-header">
+      <span id="legend-title">TA Households</span>
+      <button id="legend-collapse-btn" title="Collapse legend" onclick="toggleLegend()">&#9650;</button>
     </div>
-    <div class="leg-sep">
-      <div class="leg-row" style="font-size:11px; color: var(--silver);">Click any LA for details</div>
+    <div id="legend-body">
+      <div id="legend-scale">
+        <div class="leg-row"><div class="leg-swatch" style="background:#f7f4ef"></div><span id="leg-min-label">Min</span></div>
+        <div class="leg-row" style="margin:0">
+          <div style="width:14px; height:40px; background:linear-gradient(to bottom,#f7f4ef,#c46060,#8b0000); margin-right:8px; flex-shrink:0; border-radius:2px;"></div>
+          <span style="font-size:11px; color:var(--silver); line-height:40px;">↑ higher</span>
+        </div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#8b0000"></div><span id="leg-max-label">Max</span></div>
+        <div class="leg-row" style="margin-top:4px"><div class="leg-swatch" style="background:#cccccc"></div>No data</div>
+      </div>
+      <div class="leg-sep" style="margin-top:10px">
+        <div class="leg-row"><div class="leg-s114"></div>S.114 notice</div>
+        <div class="leg-row"><div class="leg-efs"></div>EFS support</div>
+      </div>
+      <div class="leg-sep" style="font-size:11px; color:var(--silver);">Click any LA for details</div>
     </div>
   </div>
-  <button id="legend-toggle" onclick="document.getElementById('legend').style.display='block';this.style.display='none'">&#9660; Legend</button>
 
   <div id="sidebar">
     <div class="sb-header">
@@ -175,22 +229,22 @@
       </div>
       <div class="sb-section">
         <div class="sb-section-title">Other Demand Signals</div>
-        <div class="sb-row"><span class="sb-label">Care leavers (semi-indep)</span><span class="sb-value" id="sb-cl">—</span></div>
-        <div class="sb-row"><span class="sb-label">MARAC cases</span><span class="sb-value" id="sb-marac">—</span></div>
-        <div class="sb-row"><span class="sb-label">HB asylum seekers</span><span class="sb-value" id="sb-hb">—</span></div>
+        <div class="sb-row"><span class="sb-label">Care Leavers (Semi-Independent)</span><span class="sb-value" id="sb-cl">—</span></div>
+        <div class="sb-row"><span class="sb-label">Domestic Violence Cases</span><span class="sb-value" id="sb-marac">—</span></div>
+        <div class="sb-row"><span class="sb-label">Asylum Seeker Housing Benefit</span><span class="sb-value" id="sb-hb">—</span></div>
         <div class="sb-row"><span class="sb-label">Housing register</span><span class="sb-value" id="sb-hr">—</span></div>
-        <div class="sb-row"><span class="sb-label">IMD rank (of avg rank)</span><span class="sb-value" id="sb-imd">—</span></div>
+        <div class="sb-row"><span class="sb-label">Deprivation Index (avg rank)</span><span class="sb-value" id="sb-imd">—</span></div>
       </div>
       <div class="sb-section">
         <div class="sb-section-title">Expenditure (£000s)</div>
-        <div class="sb-row"><span class="sb-label">B&amp;B spend</span><span class="sb-value" id="sb-ro4-bb">—</span></div>
-        <div class="sb-row"><span class="sb-label">Nightly paid spend</span><span class="sb-value" id="sb-ro4-np">—</span></div>
-        <div class="sb-row"><span class="sb-label">Total homelessness</span><span class="sb-value" id="sb-ro4-tot">—</span></div>
+        <div class="sb-row"><span class="sb-label">B&amp;B Spend (£000s)</span><span class="sb-value" id="sb-ro4-bb">—</span></div>
+        <div class="sb-row"><span class="sb-label">Nightly Paid Spend (£000s)</span><span class="sb-value" id="sb-ro4-np">—</span></div>
+        <div class="sb-row"><span class="sb-label">Total Homelessness Spend (£000s)</span><span class="sb-value" id="sb-ro4-tot">—</span></div>
       </div>
       <div class="sb-section">
         <div class="sb-section-title">Risk Flags</div>
-        <div class="sb-row"><span class="sb-label">EFS support</span><span class="sb-value" id="sb-efs">—</span></div>
-        <div class="sb-row"><span class="sb-label">S.114 notice</span><span class="sb-value" id="sb-s114">—</span></div>
+        <div class="sb-row"><span class="sb-label">Emergency Financial Support</span><span class="sb-value" id="sb-efs">—</span></div>
+        <div class="sb-row"><span class="sb-label">Section 114 Notice</span><span class="sb-value" id="sb-s114">—</span></div>
       </div>
     </div>
   </div>
@@ -226,14 +280,26 @@ function fmtTrend(v) {
   return `<span class="badge ${cls}">${v.replace(/_/g,' ')}</span>`;
 }
 
-document.getElementById('legend-close').onclick = () => {
-  document.getElementById('legend').style.display = 'none';
-  document.getElementById('legend-toggle').style.display = 'block';
-};
+
+function toggleLegend() {
+  const body = document.getElementById('legend-body');
+  const btn  = document.getElementById('legend-collapse-btn');
+  const collapsed = body.classList.toggle('collapsed');
+  btn.innerHTML = collapsed ? '&#9660;' : '&#9650;';
+}
+
+// legend-close removed — collapse handled by legend-collapse-btn
 document.getElementById('sb-close').onclick = () => {
   document.getElementById('sidebar').style.display = 'none';
   if (map.getLayer('la-hover')) map.setFilter('la-hover', ['==', 'lad24cd', '']);
 };
+
+// On mobile, start with legend body collapsed
+if (window.innerWidth <= 640) {
+  document.getElementById('legend-body').classList.add('collapsed');
+  const btn = document.getElementById('legend-collapse-btn');
+  if (btn) btn.innerHTML = '&#9660;';
+}
 
 fetch(METADATA_URL).then(r => r.json()).then(m => {
   const d = m.generated_at ? new Date(m.generated_at).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : '—';
@@ -241,6 +307,44 @@ fetch(METADATA_URL).then(r => r.json()).then(m => {
   document.getElementById('run-date').textContent = d;
   document.getElementById('ft-run-id').textContent = m.run_id || '—';
 }).catch(() => {});
+
+// ── Metrics configuration ────────────────────────────────────────────────────
+const METRICS = {
+  ta_households_current:      { label: 'TA Households',               min: 0, max: 1 },
+  ro4_total_homelessness_000: { label: 'Total Homelessness Spend',    min: 0, max: 1 },
+  housing_register:           { label: 'Housing Register',            min: 0, max: 1 },
+  care_leavers_semi_indep:    { label: 'Care Leavers (Semi-Indep)',   min: 0, max: 1 },
+  marac_cases:                { label: 'Domestic Violence Cases',     min: 0, max: 1 },
+  rough_sleeping_current:     { label: 'Rough Sleeping',              min: 0, max: 1 },
+  imd_rank_of_average_rank:   { label: 'Deprivation Index',          min: 0, max: 1 },
+};
+
+let currentMetric = 'ta_households_current';
+
+function getColorExpr(prop) {
+  const { min, max } = METRICS[prop];
+  const range = max - min || 1;
+  return [
+    'case',
+    ['==', ['get', prop], null], '#cccccc',
+    ['!', ['has', prop]],        '#cccccc',
+    ['interpolate', ['linear'],
+      ['to-number', ['coalesce', ['get', prop], min]],
+      min,        '#f7f4ef',
+      min + range * 0.25, '#e8b89b',
+      min + range * 0.5,  '#c45a3a',
+      min + range * 0.75, '#a82020',
+      max,        '#8b0000'
+    ]
+  ];
+}
+
+function updateLegendLabels(prop) {
+  const { label, min, max } = METRICS[prop];
+  document.getElementById('legend-title').textContent = label;
+  document.getElementById('leg-min-label').textContent = min.toLocaleString();
+  document.getElementById('leg-max-label').textContent = max.toLocaleString();
+}
 
 map.on('load', async () => {
   document.getElementById('loading').textContent = 'Loading GeoJSON data…';
@@ -250,6 +354,19 @@ map.on('load', async () => {
     const geojson = await res.json();
     document.getElementById('loading').style.display = 'none';
 
+    // Compute min/max for each metric from actual data
+    for (const [prop, info] of Object.entries(METRICS)) {
+      const vals = geojson.features
+        .map(f => f.properties[prop])
+        .filter(v => v != null && !isNaN(Number(v)))
+        .map(Number);
+      if (vals.length) {
+        info.min = Math.min(...vals);
+        info.max = Math.max(...vals);
+      }
+    }
+    updateLegendLabels(currentMetric);
+
     map.addSource('la-data', { type: 'geojson', data: geojson });
 
     map.addLayer({
@@ -257,10 +374,7 @@ map.on('load', async () => {
       type: 'fill',
       source: 'la-data',
       paint: {
-        'fill-color': [
-          'step', ['coalesce', ['get', 'ta_households_current'], 0],
-          '#fef3c7', 100, '#fbbf24', 500, '#f97316', 1500, '#dc2626', 5000, '#7c2d12'
-        ],
+        'fill-color': getColorExpr(currentMetric),
         'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.95, 0.72]
       }
     });
@@ -281,6 +395,31 @@ map.on('load', async () => {
       source: 'la-data',
       paint: { 'line-color': '#e2e8f0', 'line-width': 2.5 },
       filter: ['==', 'lad24cd', '']
+    });
+
+    // EFS border (orange) — only where efs_flag but not s114_flag
+    map.addLayer({
+      id: 'la-efs-border',
+      type: 'line',
+      source: 'la-data',
+      filter: ['all', ['==', ['get', 'efs_flag'], true], ['!=', ['get', 's114_flag'], true]],
+      paint: { 'line-color': '#f57c00', 'line-width': 3, 'line-opacity': 0.9 }
+    });
+
+    // S.114 border (red) — takes priority over EFS
+    map.addLayer({
+      id: 'la-s114-border',
+      type: 'line',
+      source: 'la-data',
+      filter: ['==', ['get', 's114_flag'], true],
+      paint: { 'line-color': '#d32f2f', 'line-width': 3, 'line-opacity': 0.9 }
+    });
+
+    // Metric selector change handler
+    document.getElementById('metric-select').addEventListener('change', (e) => {
+      currentMetric = e.target.value;
+      map.setPaintProperty('la-fill', 'fill-color', getColorExpr(currentMetric));
+      updateLegendLabels(currentMetric);
     });
 
     let hoveredId = null;
