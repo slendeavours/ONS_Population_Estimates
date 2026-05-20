@@ -189,12 +189,12 @@
     </div>
     <div id="legend-body">
       <div id="legend-scale">
-        <div class="leg-row"><div class="leg-swatch" style="background:#f7f4ef"></div><span id="leg-min-label">Min</span></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#fef3c7"></div><span id="leg-min-label">Min</span></div>
         <div class="leg-row" style="margin:0">
-          <div style="width:14px; height:40px; background:linear-gradient(to bottom,#f7f4ef,#c46060,#8b0000); margin-right:8px; flex-shrink:0; border-radius:2px;"></div>
+          <div style="width:14px; height:40px; background:linear-gradient(to bottom,#fef3c7,#fbbf24,#f97316,#dc2626,#7c2d12); margin-right:8px; flex-shrink:0; border-radius:2px;"></div>
           <span style="font-size:11px; color:var(--silver); line-height:40px;">↑ higher</span>
         </div>
-        <div class="leg-row"><div class="leg-swatch" style="background:#8b0000"></div><span id="leg-max-label">Max</span></div>
+        <div class="leg-row"><div class="leg-swatch" style="background:#7c2d12"></div><span id="leg-max-label">Max</span></div>
         <div class="leg-row" style="margin-top:4px"><div class="leg-swatch" style="background:#cccccc"></div>No data</div>
       </div>
       <div class="leg-sep" style="margin-top:10px">
@@ -212,7 +212,6 @@
     </div>
     <div class="sb-body">
       <div class="sb-section">
-        <div class="sb-row"><span class="sb-label">LAD Code</span><span class="sb-value" id="sb-lad24cd">—</span></div>
         <div class="sb-row"><span class="sb-label">Population</span><span class="sb-value" id="sb-pop">—</span></div>
       </div>
       <div class="sb-section">
@@ -330,11 +329,11 @@ function getColorExpr(prop) {
     ['!', ['has', prop]],        '#cccccc',
     ['interpolate', ['linear'],
       ['to-number', ['coalesce', ['get', prop], min]],
-      min,        '#f7f4ef',
-      min + range * 0.25, '#e8b89b',
-      min + range * 0.5,  '#c45a3a',
-      min + range * 0.75, '#a82020',
-      max,        '#8b0000'
+      min,        '#fef3c7',
+      min + range * 0.25, '#fbbf24',
+      min + range * 0.5,  '#f97316',
+      min + range * 0.75, '#dc2626',
+      max,        '#7c2d12'
     ]
   ];
 }
@@ -438,7 +437,6 @@ map.on('load', async () => {
     map.on('click', 'la-fill', (e) => {
       const p = e.features[0].properties;
       document.getElementById('sb-name').textContent       = p.la_name || p.lad24cd;
-      document.getElementById('sb-lad24cd').textContent    = p.lad24cd || '—';
       document.getElementById('sb-pop').textContent        = fmt(p.population);
       document.getElementById('sb-ta-cur').textContent     = fmt(p.ta_households_current);
       document.getElementById('sb-ta-prev').textContent    = fmt(p.ta_households_prev_year);
