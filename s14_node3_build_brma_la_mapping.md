@@ -24,11 +24,19 @@ Map each of the 296 English local authorities to the Broad Rental Market Area (B
    - If any check fails, HALT and report; do not proceed to load
 6. Output: DataFrame (lad24cd, la_name, brma_name, mapping_method)
 
-## Verification Results (2026-07-10)
+## BRMA Name Reconciliation (critical)
+The VOA shapefile/GML writes several BRMA names with an ampersand where the DWP CSV
+spells out "and" (e.g. "Hull & East Riding" vs "Hull and East Riding"). 17 names were
+remapped `' & '` -> `' and '` so the mapping joins cleanly to the rates table. Each
+reconciled row has the original shapefile name appended to its `source` column for audit.
+
+## Verification Results (2026-07-11)
 - **Coverage**: 296/296 LAs mapped (100%)
+- **Full join test**: 296/296 LAs resolve to an LHA rate after name reconciliation
 - **London Rule**: 33 London boroughs all map to London BRMAs (PASS)
 - **Geographic Coherence**: No groupings exceed 100km spread
-- **Rate Sanity**: All 151 BRMAs within GBP50-250 SAR weekly (PASS)
+- **Rate Sanity**: All 152 BRMAs within GBP50-250 SAR weekly (PASS)
+- **Name reconciliation**: 17 shapefile names remapped (ampersand -> "and")
 - **Overall**: VERIFIED - safe to load
 
 ## Behaviour
@@ -48,6 +56,7 @@ E06000043  Brighton and Hove  Brighton and Hove     centroid_spatial_join
 ```
 
 ## Verified Output
-- 296 LAs mapped to 142 distinct BRMAs (2026-07-10)
+- 296 LAs mapped to 142 distinct BRMAs (2026-07-11)
+- All 296 LAs join to a 2026-27 LHA rate (verified post-reconciliation)
 - Target markets verified: Birmingham->Birmingham, Liverpool->Greater Liverpool, etc.
 - No NULL brma_name values

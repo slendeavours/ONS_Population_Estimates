@@ -4,7 +4,7 @@
 Postgres UPSERT
 
 ## Purpose
-Load 151 BRMA LHA rates (weekly and monthly) into brma_lha_rates table. Safe to re-run.
+Load 152 BRMA LHA rates (weekly and monthly) into brma_lha_rates table. Safe to re-run.
 
 ## Query
 
@@ -21,7 +21,7 @@ VALUES
    303.33, 398.33, 514.33, 693.33, 743.33,
    'DWP UC LHA rates 2026-27, ...'),
   ...
-  (151 rows total)
+  (152 rows total)
 ON CONFLICT (brma_name, financial_year) DO UPDATE SET
     sar_weekly = EXCLUDED.sar_weekly,
     one_bed_weekly = EXCLUDED.one_bed_weekly,
@@ -37,7 +37,7 @@ ON CONFLICT (brma_name, financial_year) DO UPDATE SET
 ```
 
 ## Logic
-- INSERT 151 rows (one per England BRMA)
+- INSERT 152 rows (one per England BRMA)
 - Week conversion: `weekly = monthly * 12 / 52`, rounded to 2 decimals
 - Stores both monthly (original DWP values) and weekly (pipeline values)
 - financial_year = '2026-27' (frozen at April 2024 levels)
@@ -46,7 +46,7 @@ ON CONFLICT (brma_name, financial_year) DO UPDATE SET
 ## Behaviour
 - **Idempotent**: safe to re-run, no duplicate errors
 - **Auditable**: both monthly and weekly values preserved
-- **Atomic**: all 151 rows upserted together
+- **Atomic**: all 152 rows upserted together
 - Conversion formula documented for reproducibility
 
 ## Rate Examples
@@ -57,6 +57,6 @@ ON CONFLICT (brma_name, financial_year) DO UPDATE SET
 | Greater Liverpool | 79.47 | 200.00 | 288.85 | DWP 2026-27 |
 
 ## Connection
-- Input: Output of Node 1 (parsed DWP CSV, 151 BRMAs)
-- Output: brma_lha_rates table populated (151 rows)
+- Input: Output of Node 1 (parsed DWP CSV, 152 BRMAs)
+- Output: brma_lha_rates table populated (152 rows)
 - Prerequisite: Node 4 (table must exist)

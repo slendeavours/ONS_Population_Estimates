@@ -13,11 +13,11 @@ INSERT INTO pipeline_run_log (agent_name, source_number, rows_written, started_a
 VALUES (
     'Source 14 - LHA Rates',
     14,
-    447,
+    448,
     NOW(),
     NOW(),
     'success',
-    'DWP UC LHA rates 2026-27 (frozen at 2024-25 levels). BRMA-to-LA mapping built via centroid spatial join against VOA BRMA boundaries May 2020. 296 LA mappings + 151 BRMA rates loaded.'
+    'DWP UC LHA rates 2026-27 (frozen at 2024-25 levels). BRMA-to-LA mapping built via centroid spatial join against VOA BRMA boundaries May 2020. 296 LA mappings + 152 BRMA rates loaded.'
 );
 ```
 
@@ -26,7 +26,7 @@ VALUES (
 |-------|-------|
 | agent_name | 'Source 14 - LHA Rates' |
 | source_number | 14 |
-| rows_written | 447 (296 LA mappings + 151 BRMA rates) |
+| rows_written | 448 (296 LA mappings + 152 BRMA rates) |
 | started_at | NOW() (query start) |
 | completed_at | NOW() (query completion) |
 | status | 'success' (only if all prior nodes succeeded) |
@@ -44,5 +44,5 @@ VALUES (
 
 ## Verified Output
 - Pipeline run logged successfully (2026-07-10)
-- Row count: 296 LA mappings + 151 BRMA rates = 447 total rows
+- Row count: 296 LA mappings + 152 BRMA rates = 448 total rows
 - Status: success
