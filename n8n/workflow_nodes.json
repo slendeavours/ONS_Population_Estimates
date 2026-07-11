@@ -6,10 +6,13 @@
       "id": "node_9_export_query",
       "name": "Node 9: Export GeoJSON Query",
       "type": "n8n-nodes-base.postgres",
-      "position": [1500, 300],
+      "position": [
+        1500,
+        300
+      ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT jsonb_build_object('type', 'FeatureCollection', 'metadata', jsonb_build_object('generated_at', NOW()::text, 'run_id', (SELECT MAX(run_id) FROM staging_la_signals)::text, 'feature_count', COUNT(*)::text, 'source', 'exempt_pipeline', 'projection', 'WGS84'), 'features', jsonb_agg(jsonb_build_object('type', 'Feature', 'geometry', b.geojson, 'properties', jsonb_build_object('lad24cd', b.lad24cd, 'la_name', COALESCE(sig.la_name, b.lad24nm), 'population', sig.population, 'ta_households_current', sig.ta_households_current, 'ta_households_prev_year', sig.ta_households_prev_year, 'ta_yoy_pct', sig.ta_yoy_pct, 'ta_trend_label', sig.ta_trend_label, 'rough_sleeping_current', sig.rough_sleeping_current, 'rough_sleeping_prev_year', sig.rough_sleeping_prev_year, 'care_leavers_semi_indep', sig.care_leavers_semi_indep, 'marac_cases', sig.marac_cases, 'marac_rate_per_10k', sig.marac_rate_per_10k, 'hb_sa_caseload', sig.hb_sa_caseload, 'housing_register', sig.housing_register, 'ro4_bb_spend_000', sig.ro4_bb_spend_000, 'ro4_nightly_spend_000', sig.ro4_nightly_spend_000, 'ro4_total_homelessness_000', sig.ro4_total_homelessness_000, 'efs_flag', COALESCE(sig.efs_flag, false), 's114_flag', COALESCE(sig.s114_flag, false), 'imd_rank_of_average_rank', sig.imd_rank_of_average_rank, 'data_quality', sig.data_quality)))) AS geojson_output FROM la_boundaries b LEFT JOIN staging_la_signals sig ON sig.lad24cd = b.lad24cd AND sig.run_id = (SELECT MAX(run_id) FROM staging_la_signals) WHERE b.geojson IS NOT NULL;",
+        "query": "SELECT jsonb_build_object('type', 'FeatureCollection', 'metadata', jsonb_build_object('generated_at', NOW()::text, 'run_id', (SELECT MAX(run_id) FROM staging_la_signals)::text, 'feature_count', COUNT(*)::text, 'source', 'exempt_pipeline', 'projection', 'WGS84'), 'features', jsonb_agg(jsonb_build_object('type', 'Feature', 'geometry', b.geojson, 'properties', jsonb_build_object('lad24cd', b.lad24cd, 'la_name', COALESCE(sig.la_name, b.lad24nm), 'population', sig.population, 'ta_households_current', sig.ta_households_current, 'ta_households_prev_year', sig.ta_households_prev_year, 'ta_yoy_pct', sig.ta_yoy_pct, 'ta_trend_label', sig.ta_trend_label, 'rough_sleeping_current', sig.rough_sleeping_current, 'rough_sleeping_prev_year', sig.rough_sleeping_prev_year, 'care_leavers_semi_indep', sig.care_leavers_semi_indep, 'marac_cases', sig.marac_cases, 'marac_rate_per_10k', sig.marac_rate_per_10k, 'hb_sa_caseload', sig.hb_sa_caseload, 'housing_register', sig.housing_register, 'ro4_bb_spend_000', sig.ro4_bb_spend_000, 'ro4_nightly_spend_000', sig.ro4_nightly_spend_000, 'ro4_total_homelessness_000', sig.ro4_total_homelessness_000, 'efs_flag', COALESCE(sig.efs_flag, false), 's114_flag', COALESCE(sig.s114_flag, false), 'imd_rank_of_average_rank', sig.imd_rank_of_average_rank, 'lha_brma_name', sig.lha_brma_name, 'lha_sar_weekly', sig.lha_sar_weekly, 'lha_1bed_weekly', sig.lha_1bed_weekly, 'lha_2bed_weekly', sig.lha_2bed_weekly, 'lha_3bed_weekly', sig.lha_3bed_weekly, 'lha_4bed_weekly', sig.lha_4bed_weekly, 'data_quality', sig.data_quality)))) AS geojson_output FROM la_boundaries b LEFT JOIN staging_la_signals sig ON sig.lad24cd = b.lad24cd AND sig.run_id = (SELECT MAX(run_id) FROM staging_la_signals) WHERE b.geojson IS NOT NULL;",
         "credential": "exempt_pipeline_db"
       },
       "_note": "Uses exempt_pipeline_db credential. Returns single row with geojson_output column."
@@ -18,7 +21,10 @@
       "id": "node_10_validate",
       "name": "Node 10: Validate GeoJSON",
       "type": "n8n-nodes-base.code",
-      "position": [1700, 300],
+      "position": [
+        1700,
+        300
+      ],
       "parameters": {
         "language": "javaScript",
         "jsCode": "// Validate GeoJSON from Node 9\nconst result = $input.first().json;\nconst geojson = result.geojson_output;\n\nif (!geojson) throw new Error('[VALIDATION] geojson_output is null — query returned no data');\nif (geojson.type !== 'FeatureCollection') throw new Error('[VALIDATION] Root type is not FeatureCollection');\nif (!Array.isArray(geojson.features)) throw new Error('[VALIDATION] features is not an array');\n\nconst featureCount = geojson.features.length;\nif (featureCount === 0) throw new Error('[VALIDATION] GeoJSON has 0 features');\nif (featureCount !== 296) console.warn(`[VALIDATION] WARNING: expected 296 features, got ${featureCount}`);\n\nconst nullGeoms = geojson.features.filter(f => !f.geometry).length;\nif (nullGeoms > 0) throw new Error(`[VALIDATION] ${nullGeoms} features have NULL geometries`);\n\nconst runId = geojson.metadata?.run_id || 'unknown';\nconst sizeKB = (JSON.stringify(geojson).length / 1024).toFixed(1);\n\nconsole.log(`[VALIDATION] ✓ features=${featureCount} | run_id=${runId} | size=${sizeKB}KB | null_geoms=0`);\n\nreturn [{\n  json: {\n    geojson: geojson,\n    run_id: runId,\n    feature_count: featureCount,\n    size_kb: parseFloat(sizeKB),\n    validated_at: new Date().toISOString()\n  }\n}];"
@@ -28,7 +34,10 @@
       "id": "node_11_publish_github",
       "name": "Node 11: Publish to GitHub",
       "type": "n8n-nodes-base.code",
-      "position": [1900, 300],
+      "position": [
+        1900,
+        300
+      ],
       "parameters": {
         "language": "javaScript",
         "jsCode": "// Publish GeoJSON and signals JSON to GitHub\nconst input = $input.first().json;\nconst geojson = input.geojson;\nconst runId = input.run_id;\nconst GITHUB_TOKEN = $env.GITHUB_TOKEN;\nconst GITHUB_REPO = $env.GITHUB_REPO || 'slendeavours/ONS_Population_Estimates';\nconst GITHUB_BRANCH = $env.GITHUB_BRANCH || 'main';\n\nif (!GITHUB_TOKEN) throw new Error('[GITHUB_PUBLISH] GITHUB_TOKEN env var not set');\n\nasync function upsertFile(path, content, message) {\n  const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`;\n  const encoded = Buffer.from(content).toString('base64');\n  let sha = null;\n  try {\n    const getRes = await fetch(apiUrl, {\n      headers: { 'Authorization': `token ${GITHUB_TOKEN}`, 'Accept': 'application/vnd.github.v3+json' }\n    });\n    if (getRes.ok) { const d = await getRes.json(); sha = d.sha; }\n  } catch (e) { /* file does not exist */ }\n  \n  const body = { message, content: encoded, branch: GITHUB_BRANCH };\n  if (sha) body.sha = sha;\n  \n  const putRes = await fetch(apiUrl, {\n    method: 'PUT',\n    headers: {\n      'Authorization': `token ${GITHUB_TOKEN}`,\n      'Accept': 'application/vnd.github.v3+json',\n      'Content-Type': 'application/json'\n    },\n    body: JSON.stringify(body)\n  });\n  \n  if (!putRes.ok) {\n    const err = await putRes.json();\n    throw new Error(`GitHub API ${putRes.status}: ${JSON.stringify(err)}`);\n  }\n  return await putRes.json();\n}\n\n// Note: For files > 1MB, use git push (Git Data API required)\n// The signals JSON (~172KB) can use the Contents API directly\n// The GeoJSON (~9.5MB) MUST be pushed via git (see Methodology)\n\n// Publish signals-only JSON (lightweight, works via Contents API)\nconst signals = geojson.features.map(f => f.properties);\nconst signalsPayload = {\n  metadata: {\n    generated_at: new Date().toISOString(),\n    run_id: runId,\n    feature_count: signals.length.toString(),\n    source: 'exempt_pipeline'\n  },\n  signals: signals\n};\n\nconst signalsResult = await upsertFile(\n  'data/signals/staging_la_signals_latest.json',\n  JSON.stringify(signalsPayload),\n  `Update signals — run ${runId} — ${new Date().toISOString()}`\n);\nconsole.log(`[GITHUB_PUBLISH] ✓ signals published: ${signalsResult.content?.html_url}`);\n\n// Publish metadata\nconst metadata = {\n  generated_at: new Date().toISOString(),\n  run_id: runId,\n  feature_count: geojson.features.length\n};\nconst metaResult = await upsertFile(\n  'data/signals/latest.json',\n  JSON.stringify(metadata, null, 2),\n  `Update metadata — run ${runId}`\n);\nconsole.log(`[GITHUB_PUBLISH] ✓ metadata published: ${metaResult.content?.html_url}`);\n\n// For the large GeoJSON, this node writes it to the shared volume\n// The git push for the GeoJSON must be handled by a separate shell script or Docker exec\n// See METHODOLOGY.md for the full automation approach\n\nconsole.log(`[GITHUB_PUBLISH] ✓ run_id=${runId} | signals and metadata published to GitHub`);\nconsole.log(`[GITHUB_PUBLISH] NOTE: GeoJSON (9.5MB) requires git push — use scripts/export.js + git commit/push`);\n\nconst rawBase = `https://raw.githubusercontent.com/${GITHUB_REPO}/${GITHUB_BRANCH}`;\nreturn [{\n  json: {\n    published: true,\n    run_id: runId,\n    signals_url: `${rawBase}/data/signals/staging_la_signals_latest.json`,\n    metadata_url: `${rawBase}/data/signals/latest.json`,\n    geojson_url: `${rawBase}/data/boundaries/la_boundaries.geojson`,\n    published_at: new Date().toISOString()\n  }\n}];"
@@ -39,7 +48,10 @@
       "id": "node_12_slack_optional",
       "name": "Node 12 (Optional): Slack Notification",
       "type": "n8n-nodes-base.slack",
-      "position": [2100, 300],
+      "position": [
+        2100,
+        300
+      ],
       "parameters": {
         "operation": "postMessage",
         "channel": "#ucws-pipeline",
