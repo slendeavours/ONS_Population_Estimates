@@ -123,6 +123,21 @@ Source: MHCLG English Indices of Deprivation 2019 (updated from 2025 supplementa
 
 ---
 
+## LHA Rates
+
+Source: DWP Universal Credit Local Housing Allowance rates (FY 2026-27, frozen at April 2024 levels), published monthly per Broad Rental Market Area (BRMA). Weekly conversion: `weekly = monthly × 12 ÷ 52`, rounded to 2 dp. BRMA-to-LA mapping built via centroid spatial join against the VOA BRMA boundary layer (May 2020) — each LA is assigned the BRMA containing its centroid.
+
+| Column | Type | Range | Description |
+|---|---|---|---|
+| `lha_brma_name` | text | — | Broad Rental Market Area the LA maps to (DWP CSV spelling) |
+| `lha_sar_weekly` | numeric(8,2) | ~55 – 200 | Shared Accommodation Rate, £/week |
+| `lha_1bed_weekly` | numeric(8,2) | ~90 – 340 | 1-bedroom LHA rate, £/week |
+| `lha_2bed_weekly` | numeric(8,2) | ~110 – 440 | 2-bedroom LHA rate, £/week |
+| `lha_3bed_weekly` | numeric(8,2) | ~130 – 520 | 3-bedroom LHA rate, £/week |
+| `lha_4bed_weekly` | numeric(8,2) | ~170 – 720 | 4-bedroom LHA rate, £/week |
+
+---
+
 ## Data Quality
 
 | Column | Type | Description |
