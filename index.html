@@ -319,7 +319,9 @@ var LAYER_COLOR_SCALES = {
   marac_cases: ['#fdf4ff', '#f0abfc', '#e879f9', '#d946ef', '#c026d3', '#a21caf', '#701a75'],
   rough_sleeping_current: ['#ecfeff', '#a5f3fc', '#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#164e63'],
   imd_rank_of_average_rank: ['#166534', '#15803d', '#16a34a', '#4ade80', '#bbf7d0', '#dcfce7', '#f0fdf4'],
-  hb_sa_caseload: ['#eef2ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#312e81']
+  hb_sa_caseload: ['#eef2ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#312e81'],
+  lha_sar_weekly: ['#f7fee7', '#d9f99d', '#bef264', '#a3e635', '#84cc16', '#65a30d', '#3f6212'],
+  lha_1bed_weekly: ['#fefce8', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04', '#854d0e']
 };
 var NO_DATA_COLOR = '#333333';
 
@@ -331,7 +333,9 @@ var LAYERS = [
   { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing cases',              field: 'marac_cases',                 reversed: false },
   { key: 'rs',    dot: '#06b6d4', name: 'Rough Sleeping',             desc: 'Single-night snapshot',               field: 'rough_sleeping_current',      reversed: false },
   { key: 'imd',   dot: '#a3e635', name: 'Deprivation (IMD)',          desc: 'Index of Multiple Deprivation 2025', field: 'imd_rank_of_average_rank',    reversed: true },
-  { key: 'hb',    dot: '#818cf8', name: 'HB Asylum Seekers',          desc: 'Supported accommodation caseload',    field: 'hb_sa_caseload',              reversed: false }
+  { key: 'hb',    dot: '#818cf8', name: 'HB Asylum Seekers',          desc: 'Supported accommodation caseload',    field: 'hb_sa_caseload',              reversed: false },
+  { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate (£/week)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true },
+  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate (£/week)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true }
 ];
 
 var map, geojson, laIndex = {}, activeLayer = LAYERS[0];
@@ -345,6 +349,10 @@ function fmtNum(v) {
 function fmtMoney000(v) {
   if (v === null || v === undefined || typeof v !== 'number') return '—';
   return '£' + (v / 1000).toFixed(1) + 'm';
+}
+function fmtMoneyWeek(v) {
+  if (v === null || v === undefined || typeof v !== 'number') return '—';
+  return '£' + v.toFixed(2) + '/wk';
 }
 function fmtPct(v) {
   if (v === null || v === undefined || typeof v !== 'number') return '—';
@@ -537,7 +545,9 @@ function wireMapEvents() {
     var v = f.properties[activeLayer.field];
     var val = (v === null || v === undefined || v === 'null')
       ? 'No data'
-      : (activeLayer.money ? fmtMoney000(Number(v)) : fmtNum(Number(v)));
+      : (activeLayer.moneyWeek ? fmtMoneyWeek(Number(v))
+         : activeLayer.money ? fmtMoney000(Number(v))
+         : fmtNum(Number(v)));
     tooltip.innerHTML = '<div>' + esc(f.properties.la_name) + '</div><div class="tt-val">' + esc(activeLayer.name) + ': ' + esc(val) + '</div>';
     tooltip.style.display = 'block';
     tooltip.style.left = (e.point.x + map.getContainer().offsetLeft + 14) + 'px';
@@ -612,6 +622,11 @@ function openPanel(p) {
     row('B&B Spend', esc(fmtMoney000(p.ro4_bb_spend_000))) +
     row('Nightly Paid Spend', esc(fmtMoney000(p.ro4_nightly_spend_000))) +
     row('Total Homelessness', esc(fmtMoney000(p.ro4_total_homelessness_000))) +
+
+    '<div class="pn-section">LHA Rates (2026-27)</div>' +
+    row('BRMA', esc(p.lha_brma_name || '—')) +
+    row('Shared Rate', esc(fmtMoneyWeek(p.lha_sar_weekly))) +
+    row('1-Bed Rate', esc(fmtMoneyWeek(p.lha_1bed_weekly))) +
 
     '<div class="pn-section">Context</div>' +
     row('Population', esc(fmtNum(p.population))) +
