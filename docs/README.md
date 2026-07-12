@@ -2,7 +2,7 @@
 
 <!-- repo-meta
 status: active
-last-reviewed: 2026-07-11
+last-reviewed: 2026-07-12
 type: tool
 consumed-by: map.slendeavours.org, n8n exempt_pipeline workflows
 -->
@@ -68,12 +68,13 @@ CNAME                                       Custom domain config for GitHub Page
   s18_pipr_workbook_structure.md            PIPR workbook spec (n8n S18 build reference)
   geography_dimension.md                    la_geography / la_succession dimension tables
   /nodes/                                   Pipeline node documentation
-/scripts/                                   S18 PIPR backfill ETL (fetch, inspect, transform, load, verify)
+  /decisions/                               Decision records (dated, one per non-obvious decision)
+/scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC fetch, process, map, load, verify)
 /viewers/                                   Legacy Kepler.gl viewers (retained, unmaintained)
 /n8n/                                       n8n workflow exports
 ```
 
-Raw source downloads (`data/raw/`) are kept local and gitignored — they are re-fetchable from ONS via `scripts/s18_pipr_fetch.py`.
+Raw source downloads (`data/raw/`) are kept local and gitignored — they are re-fetchable via `scripts/s18_pipr_fetch.py` (ONS PIPR) and `scripts/s11_cqc_fetch.py` (CQC directory).
 
 ## Technology Stack
 

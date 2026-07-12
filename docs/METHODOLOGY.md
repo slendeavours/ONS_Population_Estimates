@@ -4,22 +4,27 @@
 
 ## Data Sources
 
-| # | Source | Metric(s) | Publisher | Frequency |
+Source numbers follow `pipeline_run_log.source_number`, the pipeline's authoritative numbering (gaps intentional). An earlier version of this table used its own row numbers, which had drifted from the pipeline's.
+
+| S# | Source | Metric(s) | Publisher | Frequency |
 |---|---|---|---|---|
 | 1 | DLUHC H-CLIC | TA households (current + prev year), trend label | DLUHC | Quarterly |
-| 2 | DLUHC Rough Sleeping Snapshot | Rough sleeping counts | DLUHC | Annual (autumn) |
-| 3 | DfE SEN2 / Children in Need | Care leavers in semi-independent housing | DfE | Annual |
-| 4 | SafeLives MARAC data | MARAC cases, rate per 10k | SafeLives | Annual |
-| 5 | DWP STAT-Xplore | Housing Benefit asylum seeker caseload | DWP | Monthly/quarterly |
-| 6 | DLUHC CORE/CoRE | Social housing waiting list (register) | DLUHC | Annual |
-| 7 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | MHCLG | Annual |
-| 8 | MHCLG EFS | Exceptional Financial Support recipients | MHCLG | Published as issued |
-| 9 | Published S.114 notices | Section 114 / budget insolvency notices | LAs / MHCLG | Published as issued |
-| 10 | MHCLG IMD 2019 | Index of Multiple Deprivation | MHCLG | Every ~5 years |
-| 11 | ONS Mid-Year Estimates | Population by LA | ONS | Annual |
-| 12 | ONS Open Geography Portal | LA boundary polygons (LAD Dec 2024) | ONS | On boundary changes |
+| 2 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | MHCLG | Annual |
+| 3 | ONS Mid-Year Estimates | Population by LA | ONS | Annual |
+| 3b | Census 2021 TS054 | Tenure | ONS | Decennial |
+| 4 | DfE SEN2 / Children in Need | Care leavers in semi-independent housing | DfE | Annual |
+| 5 | MHCLG IMD | Index of Multiple Deprivation | MHCLG | Every ~5 years |
+| 7 | ONS Open Geography Portal | LA boundary polygons (LAD Dec 2024) | ONS | On boundary changes |
+| 8 | DWP STAT-Xplore | Housing Benefit asylum seeker caseload | DWP | Monthly/quarterly |
+| 10 | DLUHC Rough Sleeping Snapshot | Rough sleeping counts | DLUHC | Annual (autumn) |
+| 11 | CQC Care directory with filters | Registered care locations with supported living, personal care and care home flags (supply side) | CQC | Monthly |
+| 12 | MHCLG EFS / published S.114 notices | EFS support flag, S.114 notice flag | MHCLG / LAs | Published as issued |
+| 13 | DLUHC LAHS | Social housing waiting list (register) | DLUHC | Annual |
 | 14 | VOA/DWP LHA rates | LHA weekly rates (SAR, 1–4 bed) by BRMA, mapped to LAs | VOA/DWP | Annual (late January) |
+| 17 | SafeLives MARAC data | MARAC cases, rate per 10k | SafeLives | Annual |
 | 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | ONS | Monthly |
+
+S11 is the pipeline's only supply-side source: every other source measures need, S11 records existing CQC-registered provision. It is stored agnostically like everything else; the pipeline does not score or rank markets.
 
 ---
 
@@ -42,6 +47,7 @@ Raw Sources (CSV / API)
   │ brma_lha_rates          │ (S14: LHA rates by BRMA)
   │ la_brma_mapping         │ (S14: LA → BRMA crosswalk)
   │ la_private_rents        │ (S18: PIPR rents by LA/period/category)
+  │ cqc_locations           │ (S11: CQC-registered care locations)
   │ la_geography            │ (geography dimension, code validity)
   │ la_succession           │ (predecessor → successor mappings)
   └─────────────────────────┘

@@ -5,6 +5,21 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [Unreleased]
 
+## [2026-07-12]
+### Added
+- Source 11 (CQC registered care providers), the pipeline's only supply-side source: ETL scripts under `scripts/` (fetch with streaming ODS conversion, process, spatial LA mapping, load, verify) loading `cqc_locations` in the pipeline database - 30,492 Adult social care locations from the 1 July 2026 Care directory with filters, with supported living, personal care, care home and service-user-band flags for the dual UCWS/HSS lens.
+- Refresh model: upsert on location ID with a deactivation sweep, so locations dropping off the monthly register keep a `deregistered_seen_date` instead of being deleted (supply-contraction signal).
+- Node documentation `docs/nodes/s11_node1..7*.md` and decision record `docs/decisions/2026-07-12-s11-cqc-la-mapping-method.md` (the file's LA column is upper-tier only; mapping is spatial).
+- Processed dataset `data/processed/cqc_locations_mapped.csv` (30,492 rows).
+
+### Changed
+- `docs/METHODOLOGY.md`: source register renumbered to match `pipeline_run_log.source_number`, the authoritative numbering (the table's own row numbers had drifted); S11 and Census tenure (3b) rows added; EFS and S.114 rows merged into source 12 (LA financial stress); `cqc_locations` added to the architecture table list.
+- `docs/README.md`: repository structure updated for the S11 scripts and `docs/decisions/`; review stamp updated.
+
+### Notes
+- CQC is migrating its directory to a new digital system (their file README, July 2026): deregistrations can appear late and multi-service locations show as Not Rated. The monthly refresh should re-verify page and file layout each run.
+- Five locations (0.016%) were excluded from the July 2026 load because their postcodes are unknown to ONSPD; they are listed in the Node 3 doc and will resolve on a later run.
+
 ## [2026-07-11]
 ### Added
 - Source 18 (ONS Price Index of Private Rents): backfill ETL scripts under `scripts/` (fetch, inspect, transform, load, verify) loading `la_private_rents` in the pipeline database, periods 2024-03 onward, England LAs, bedroom and property-type breakdowns.
