@@ -1,0 +1,18 @@
+# Secrets and local config — never committed
+.env
+.env.*
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Raw source downloads (re-fetchable from ONS; see scripts/s18_pipr_fetch.py)
+data/raw/
+
+# Local tooling
+.claude/
+.vscode/
+SKILLS/
