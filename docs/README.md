@@ -1,5 +1,12 @@
 # Exempt Accommodation Intelligence Platform
 
+<!-- repo-meta
+status: active
+last-reviewed: 2026-07-11
+type: tool
+consumed-by: map.slendeavours.org, n8n exempt_pipeline workflows
+-->
+
 **SL Endeavours Ltd** | [slendeavours.org](https://slendeavours.org)
 
 ---
@@ -51,15 +58,22 @@ CNAME                                       Custom domain config for GitHub Page
   /boundaries/la_boundaries.geojson         LA boundary polygons + signals
   /signals/staging_la_signals_latest.json   Signal data, no geometries
   /signals/latest.json                      Run metadata
+  /processed/                               Load-ready datasets from backfill runs (S18 PIPR)
 /docs/
   README.md                                 This file
   DATA_DICTIONARY.md                        Column definitions
   USAGE_GUIDE.md                            Map usage
   METHODOLOGY.md                            Sources and calculations
+  s18_pipr_source.md                        Source 18 (ONS PIPR private rents) register entry
+  s18_pipr_workbook_structure.md            PIPR workbook spec (n8n S18 build reference)
+  geography_dimension.md                    la_geography / la_succession dimension tables
   /nodes/                                   Pipeline node documentation
+/scripts/                                   S18 PIPR backfill ETL (fetch, inspect, transform, load, verify)
 /viewers/                                   Legacy Kepler.gl viewers (retained, unmaintained)
 /n8n/                                       n8n workflow exports
 ```
+
+Raw source downloads (`data/raw/`) are kept local and gitignored — they are re-fetchable from ONS via `scripts/s18_pipr_fetch.py`.
 
 ## Technology Stack
 

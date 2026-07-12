@@ -18,6 +18,8 @@
 | 10 | MHCLG IMD 2019 | Index of Multiple Deprivation | MHCLG | Every ~5 years |
 | 11 | ONS Mid-Year Estimates | Population by LA | ONS | Annual |
 | 12 | ONS Open Geography Portal | LA boundary polygons (LAD Dec 2024) | ONS | On boundary changes |
+| 14 | VOA/DWP LHA rates | LHA weekly rates (SAR, 1–4 bed) by BRMA, mapped to LAs | VOA/DWP | Annual (late January) |
+| 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | ONS | Monthly |
 
 ---
 
@@ -37,6 +39,11 @@ Raw Sources (CSV / API)
   │ la_boundaries           │ (296 rows, GeoJSON polygons)
   │ staging_la_signals      │ (296 rows per run_id)
   │ staging_runs            │ (1 row per pipeline run)
+  │ brma_lha_rates          │ (S14: LHA rates by BRMA)
+  │ la_brma_mapping         │ (S14: LA → BRMA crosswalk)
+  │ la_private_rents        │ (S18: PIPR rents by LA/period/category)
+  │ la_geography            │ (geography dimension, code validity)
+  │ la_succession           │ (predecessor → successor mappings)
   └─────────────────────────┘
         │
         ▼
