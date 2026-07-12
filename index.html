@@ -321,7 +321,8 @@ var LAYER_COLOR_SCALES = {
   imd_rank_of_average_rank: ['#166534', '#15803d', '#16a34a', '#4ade80', '#bbf7d0', '#dcfce7', '#f0fdf4'],
   hb_sa_caseload: ['#eef2ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#312e81'],
   lha_sar_weekly: ['#f7fee7', '#d9f99d', '#bef264', '#a3e635', '#84cc16', '#65a30d', '#3f6212'],
-  lha_1bed_weekly: ['#fefce8', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04', '#854d0e']
+  lha_1bed_weekly: ['#fefce8', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04', '#854d0e'],
+  supported_living_locations: ['#f0ece4', '#e8d9bb', '#dcc79a', '#d4b87a', '#c9a96e', '#b08040', '#a07840']
 };
 var NO_DATA_COLOR = '#333333';
 
@@ -335,7 +336,9 @@ var LAYERS = [
   { key: 'imd',   dot: '#a3e635', name: 'Deprivation (IMD)',          desc: 'Index of Multiple Deprivation 2025', field: 'imd_rank_of_average_rank',    reversed: true },
   { key: 'hb',    dot: '#818cf8', name: 'HB Asylum Seekers',          desc: 'Supported accommodation caseload',    field: 'hb_sa_caseload',              reversed: false },
   { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate (£/week)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true },
-  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate (£/week)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true }
+  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate (£/week)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true },
+  // S11 — the pipeline's only supply-side layer, visually separated in the sidebar
+  { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, ends: ['None', 'High'] }
 ];
 
 var map, geojson, laIndex = {}, activeLayer = LAYERS[0];
@@ -628,6 +631,9 @@ function openPanel(p) {
     row('Shared Rate', esc(fmtMoneyWeek(p.lha_sar_weekly))) +
     row('1-Bed Rate', esc(fmtMoneyWeek(p.lha_1bed_weekly))) +
 
+    '<div class="pn-section">Care Supply (CQC)</div>' +
+    row('Supported Living Locations', esc(fmtNum(p.supported_living_locations))) +
+
     '<div class="pn-section">Context</div>' +
     row('Population', esc(fmtNum(p.population))) +
     row('Deprivation Rank', esc(typeof p.imd_rank_of_average_rank === 'number' ? fmtNum(p.imd_rank_of_average_rank) + ' / 296' : '—'));
@@ -656,6 +662,11 @@ function buildLayerList() {
     var el = document.createElement('div');
     el.className = 'layer-row' + (layer === activeLayer ? ' active' : '');
     el.setAttribute('data-key', layer.key);
+    if (layer.divider) {
+      el.style.marginTop = '8px';
+      el.style.borderTop = '1px solid rgba(201,169,110,0.15)';
+      el.style.paddingTop = '8px';
+    }
     el.innerHTML =
       '<span class="layer-dot" style="background:' + layer.dot + ';"></span>' +
       '<span class="layer-main"><span class="layer-name">' + esc(layer.name) + '</span>' +
@@ -687,11 +698,16 @@ function updateLegend() {
     s.style.background = c;
     bar.appendChild(s);
   });
-  // For IMD the scale runs Critical (rank 1, most deprived) -> Low
+  // For IMD the scale runs Critical (rank 1, most deprived) -> Low.
+  // Supply-side layers carry their own end labels (e.g. None -> High).
   var ends = document.querySelector('.lg-ends');
-  ends.innerHTML = activeLayer.reversed
-    ? '<span>Critical</span><span>Low</span>'
-    : '<span>Low</span><span>Critical</span>';
+  if (activeLayer.ends) {
+    ends.innerHTML = '<span>' + esc(activeLayer.ends[0]) + '</span><span>' + esc(activeLayer.ends[1]) + '</span>';
+  } else {
+    ends.innerHTML = activeLayer.reversed
+      ? '<span>Critical</span><span>Low</span>'
+      : '<span>Low</span><span>Critical</span>';
+  }
 }
 
 /* ---------- Postcode lookup ---------- */

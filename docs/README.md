@@ -36,6 +36,7 @@ Legacy Kepler.gl viewers are retained in `/viewers/` for reference but are no lo
 | Fiscal Risk | EFS support flag, S.114 notice flag |
 | Deprivation | IMD rank of average rank |
 | LHA Rates | Shared accommodation and 1–4 bed weekly rates by BRMA, mapped to each LA |
+| Care Providers (SL) | Active, non-dormant CQC supported living locations per LA (supply side) |
 
 ## How Often Is It Updated?
 
