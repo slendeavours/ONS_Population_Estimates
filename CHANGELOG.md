@@ -7,6 +7,7 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [2026-07-12]
 ### Added
+- W1 pre-computation now carries S11 counts: `staging_la_signals` gains `supported_living_locations` (active, non-dormant CQC supported-living locations per LA), W1 Node 5 joins `cqc_locations`, and the Node 9 export SQL in `n8n/workflow_nodes.json` includes the new column. W1 re-run completed (run 9); map data files (`data/boundaries/la_boundaries.geojson`, `data/signals/*.json`) re-exported from it.
 - Source 11 (CQC registered care providers), the pipeline's only supply-side source: ETL scripts under `scripts/` (fetch with streaming ODS conversion, process, spatial LA mapping, load, verify) loading `cqc_locations` in the pipeline database - 30,492 Adult social care locations from the 1 July 2026 Care directory with filters, with supported living, personal care, care home and service-user-band flags for the dual UCWS/HSS lens.
 - Refresh model: upsert on location ID with a deactivation sweep, so locations dropping off the monthly register keep a `deregistered_seen_date` instead of being deleted (supply-contraction signal).
 - Node documentation `docs/nodes/s11_node1..7*.md` and decision record `docs/decisions/2026-07-12-s11-cqc-la-mapping-method.md` (the file's LA column is upper-tier only; mapping is spatial).
