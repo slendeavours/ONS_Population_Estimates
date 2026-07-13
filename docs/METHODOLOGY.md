@@ -23,6 +23,8 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 | 14 | VOA/DWP LHA rates | LHA weekly rates (SAR, 1–4 bed) by BRMA, mapped to LAs | VOA/DWP | Annual (late January) |
 | 17 | SafeLives MARAC data | MARAC cases, rate per 10k | SafeLives | Annual |
 | 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | ONS | Monthly |
+| 9a | NHS DRD monthly | Bed days lost to delayed discharge, % delayed 1+ days (UTLA→LAD apportioned) | NHSE | Monthly |
+| 9b | MHSDS MHS26 | CRFD delayed discharge days — combined MH+LD/autism (direct LA level) | NHS Digital | Monthly |
 
 S11 is the pipeline's only supply-side source: every other source measures need, S11 records existing CQC-registered provision. It is stored agnostically like everything else; the pipeline does not score or rank markets.
 
@@ -48,6 +50,9 @@ Raw Sources (CSV / API)
   │ la_brma_mapping         │ (S14: LA → BRMA crosswalk)
   │ la_private_rents        │ (S18: PIPR rents by LA/period/category)
   │ cqc_locations           │ (S11: CQC-registered care locations)
+  │ nhs_drd_discharge_delays│ (S9a: DRD discharge delays at UTLA level)
+  │ nhs_mh_crfd             │ (S9b: MHSDS MHS26 CRFD at LA level)
+  │ utla_lad_mapping        │ (S9: UTLA→LAD pop-weighted crosswalk)
   │ la_geography            │ (geography dimension, code validity)
   │ la_succession           │ (predecessor → successor mappings)
   └─────────────────────────┘
@@ -148,7 +153,9 @@ Always uses `MAX(run_id)` to ensure the latest data is exported. Never hardcodes
 
 | Issue | Detail |
 |---|---|
-| NHS integration pending | NHS data (A&E, mental health) not yet integrated. Future pipeline version. |
+| CRFD cohort disaggregation | MHS26 covers MH+LD/autism combined. No disaggregated source available. Both `mental_health` and `learning_disability` tenant types share the same signal. |
+| DRD apportionment resolution | DRD % and average columns are UTLA-level pass-through for county districts. All E07 districts under an E10 county inherit the same value. |
+| CRFD suppression rate | 28–46% of LAs have suppressed MHS26 values per month. These LAs are excluded from tenant-type rankings. |
 | MARAC temporal lag | SafeLives publishes MARAC data 6–9 months after reference period. Current run may show prior year figures. |
 | Care leaver data granularity | DfE data is at upper-tier LA level; district-level LAs may show NULL or estimated values. |
 | IMD version | IMD 2019 is used (supplemented by 2025 LA summary). No full LSOA-level 2025 IMD released yet. |

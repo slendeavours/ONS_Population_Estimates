@@ -138,6 +138,37 @@ Source: DWP Universal Credit Local Housing Allowance rates (FY 2026-27, frozen a
 
 ---
 
+## Care Providers (Supply Side)
+
+Source: CQC Care directory with filters (monthly). Only supply-side column in the pipeline — every other signal measures demand.
+
+| Column | Type | Range | Description |
+|---|---|---|---|
+| `supported_living_locations` | integer | 0 – 800+ | Active, non-dormant CQC-registered supported living locations per LA. Dual-registered locations count twice (both registrations are regulated entities). |
+
+---
+
+## Discharge Delays
+
+### S9a — DRD (Acute Discharge Ready Date)
+
+Source: NHS England DRD monthly data (Official Statistics, SUS extract). Native geography is UTLA; apportioned to LAD via population-weighted `utla_lad_mapping`.
+
+| Column | Type | Range | Description |
+|---|---|---|---|
+| `drd_bed_days_lost` | integer | 0 – 15,000+ | Total bed days lost to delayed discharge in the latest reporting month. Population-weighted for county→district apportionment. |
+| `drd_pct_delayed_1plus_days` | numeric | 0 – 100 | Percentage of discharges delayed 1+ days. **UTLA-level pass-through:** districts under a county share the same value (no district-level breakdown published). |
+
+### S9b — MHSDS CRFD (MHS26)
+
+Source: NHS Digital Mental Health Services Monthly Statistics. MHS26 — Clinically Ready for Discharge delayed bed days (combined MH + LD/autism). Published at LAD level directly; no apportionment required.
+
+| Column | Type | Range | Description |
+|---|---|---|---|
+| `crfd_days` | integer | 0 – 2,500+ | MHS26 CRFD delayed discharge days in the latest reporting month. NULL where suppressed at source (28–46% of LAs per month). |
+
+---
+
 ## Data Quality
 
 | Column | Type | Description |

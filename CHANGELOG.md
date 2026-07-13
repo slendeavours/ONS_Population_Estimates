@@ -5,6 +5,26 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [Unreleased]
 
+## [2026-07-13]
+### Added
+- Source 9a (NHS DRD monthly discharge delays): 26 months (Apr 2024 – May 2026) loaded into `nhs_drd_discharge_delays` (3,978 rows, 153 UTLAs). UTLA→LAD apportionment via population-weighted `utla_lad_mapping` (296 rows) and `vw_drd_discharge_delays_lad` view.
+- Source 9b (MHSDS MHS26 CRFD): 38 months (Apr 2023 – May 2026) loaded into `nhs_mh_crfd` (11,248 rows, 296 LAs). Barnsley/Sheffield code transition (E08000016→E08000038, E08000019→E08000039 from June 2025) handled via `la_code_lookup` and `vw_mh_crfd_lad` view.
+- `staging_la_signals` gains three columns: `drd_bed_days_lost` (296/296), `drd_pct_delayed_1plus_days` (296/296), `crfd_days` (205/296 — 91 suppressed at source).
+- Two new tenant types in `staging_tenant_type_rankings`: `mental_health` and `learning_disability`, both ranked by MHS26 CRFD days (205 LAs each). Both share the same signal — MHSDS does not disaggregate by cohort at sub-national level.
+- W1 re-run as run 10 with all S9 columns populated. Seven tenant types now active.
+- Node documentation: `docs/nodes/s9a_node1..3*.md`, `docs/nodes/s9b_node1..3*.md`, `docs/nodes/s9_utla_lad_mapping.md`, `docs/nodes/s9_w1_node5_patch.md`, `docs/nodes/s9_w1_node6_tenant_types.md`.
+- Build summary: `docs/S9_BUILD_SUMMARY.md`.
+
+### Changed
+- `docs/DATA_DICTIONARY.md`: added Care Providers (Supply Side) section (`supported_living_locations`) and Discharge Delays section (`drd_bed_days_lost`, `drd_pct_delayed_1plus_days`, `crfd_days`).
+- `docs/METHODOLOGY.md`: S9a and S9b added to source register; `nhs_drd_discharge_delays`, `nhs_mh_crfd`, `utla_lad_mapping` added to architecture table list; stale "NHS integration pending" gap replaced with three specific S9 limitations (CRFD disaggregation, DRD apportionment resolution, CRFD suppression rate).
+- `docs/README.md`: Discharge Delays and CRFD rows added to data table; `S9_BUILD_SUMMARY.md` added to repo structure; review stamp updated.
+
+### Notes
+- CRFD cohort disaggregation is a known data gap — both `mental_health` and `learning_disability` tenant types share the same MHS26 signal. Deferred until a disaggregated source is available.
+- DRD percentage columns are UTLA-level pass-through for county districts (all E07 districts under an E10 county inherit the same value).
+- Monthly refresh not yet scheduled in n8n. Node 9 GeoJSON export query needs patching to include the three new columns.
+
 ## [2026-07-12]
 ### Added
 - Demand map: "Care Providers (SL)" layer — active, non-dormant CQC supported living locations per LA, cream-to-amber quantile ramp, sidebar entry separated as the only supply-side layer, "Care Supply (CQC)" section in the detail panel, legend ends None/High. Dual-registered locations count twice by design (both registrations are regulated entities).
