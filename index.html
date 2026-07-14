@@ -276,7 +276,24 @@
   </div>
 </aside>
 
-<div id="map"></div>
+<div id="map">
+  <div id="map-legend" style="display:none;">
+    <div id="legend-title"></div>
+    <div id="legend-gradient-bar"></div>
+    <div id="legend-labels">
+      <span id="legend-min"></span>
+      <span id="legend-max"></span>
+    </div>
+    <div id="legend-nodata">
+      <span class="nodata-dot"></span>
+      <span>No data</span>
+    </div>
+    <div class="lg-stress">
+      <span><i style="border-color:#ef4444;"></i>Section 114 notice</span>
+      <span><i style="border-color:#f97316;"></i>Emergency financial support</span>
+    </div>
+  </div>
+</div>
 
 <div id="overlay">
   <div class="spinner" id="spinner"></div>
@@ -284,23 +301,6 @@
 </div>
 
 <div id="tooltip"></div>
-
-<div id="map-legend" style="display:none;">
-  <div id="legend-title"></div>
-  <div id="legend-gradient-bar"></div>
-  <div id="legend-labels">
-    <span id="legend-min"></span>
-    <span id="legend-max"></span>
-  </div>
-  <div id="legend-nodata">
-    <span class="nodata-dot"></span>
-    <span>No data</span>
-  </div>
-  <div class="lg-stress">
-    <span><i style="border-color:#ef4444;"></i>Section 114 notice</span>
-    <span><i style="border-color:#f97316;"></i>Emergency financial support</span>
-  </div>
-</div>
 
 <div id="panel">
   <button id="panel-close" aria-label="Close">✕</button>
