@@ -146,19 +146,19 @@
   #tooltip .tt-val { font-size: 10px; color: var(--text2); margin-top: 1px; }
 
   /* Legend */
-  #legend {
-    position: absolute; left: 16px; bottom: 24px; z-index: 10;
-    background: rgba(250,247,244,0.92); border: 1px solid var(--border);
-    border-radius: 8px; padding: 10px 14px; backdrop-filter: blur(4px);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  #map-legend {
+    position: absolute; bottom: 32px; left: 16px; z-index: 10;
+    background: rgba(14, 13, 11, 0.82); border: 1px solid rgba(201, 169, 110, 0.25);
+    border-radius: 6px; padding: 10px 14px; min-width: 200px;
+    color: #F0ECE4; font-family: inherit; font-size: 12px;
+    pointer-events: none; backdrop-filter: blur(4px);
   }
-  #legend .lg-title { font-size: 11px; font-weight: 600; color: var(--text1); margin-bottom: 6px; }
-  .lg-bar { display: flex; width: 200px; height: 12px; border-radius: 3px; overflow: hidden; }
-  .lg-bar span { flex: 1; }
-  .lg-ends { display: flex; justify-content: space-between; width: 200px; margin-top: 4px; font-size: 10px; color: var(--text2); }
-  .lg-nodata { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 10px; color: var(--text2); }
-  .lg-nodata i { width: 10px; height: 10px; border-radius: 50%; background: #333333; display: inline-block; }
-  .lg-stress { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 10px; color: var(--text2); }
+  #legend-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #C9A96E; }
+  #legend-gradient-bar { height: 10px; border-radius: 3px; margin-bottom: 4px; }
+  #legend-labels { display: flex; justify-content: space-between; font-size: 11px; color: #C0B9AE; margin-bottom: 6px; }
+  #legend-nodata { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #8C8880; }
+  .nodata-dot { width: 10px; height: 10px; border-radius: 50%; background: #3a3a3a; border: 1px solid #666; display: inline-block; }
+  .lg-stress { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 10px; color: #8C8880; }
   .lg-stress i { width: 14px; height: 0; border-top: 3px solid; display: inline-block; margin-right: 6px; vertical-align: middle; }
 
   /* Detail panel */
@@ -210,8 +210,7 @@
     #map { left: 0; }
     #hamburger { display: block; }
     #panel { width: min(340px, 92vw); }
-    #legend { left: 12px; bottom: 20px; }
-    .lg-bar, .lg-ends { width: 160px; }
+    #map-legend { left: 12px; bottom: 20px; min-width: 160px; }
   }
 </style>
 </head>
@@ -286,11 +285,17 @@
 
 <div id="tooltip"></div>
 
-<div id="legend" style="display:none;">
-  <div class="lg-title" id="lg-title"></div>
-  <div class="lg-bar" id="lg-bar"></div>
-  <div class="lg-ends"><span>Low</span><span>Critical</span></div>
-  <div class="lg-nodata"><i></i><span>No data</span></div>
+<div id="map-legend" style="display:none;">
+  <div id="legend-title"></div>
+  <div id="legend-gradient-bar"></div>
+  <div id="legend-labels">
+    <span id="legend-min"></span>
+    <span id="legend-max"></span>
+  </div>
+  <div id="legend-nodata">
+    <span class="nodata-dot"></span>
+    <span>No data</span>
+  </div>
   <div class="lg-stress">
     <span><i style="border-color:#ef4444;"></i>Section 114 notice</span>
     <span><i style="border-color:#f97316;"></i>Emergency financial support</span>
@@ -329,20 +334,20 @@ var LAYER_COLOR_SCALES = {
 var NO_DATA_COLOR = '#333333';
 
 var LAYERS = [
-  { key: 'ta',    dot: '#4ade80', name: 'TA Households',              desc: 'Temporary accommodation demand',      field: 'ta_households_current',       reversed: false },
-  { key: 'spend', dot: '#f59e0b', name: 'Homelessness Spend',         desc: 'Total annual spend (2024-25)',        field: 'ro4_total_homelessness_000',  reversed: false, money: true },
-  { key: 'reg',   dot: '#f97316', name: 'Housing Register',           desc: 'Social housing waiting lists',        field: 'housing_register',            reversed: false },
-  { key: 'care',  dot: '#ef4444', name: 'Care Leavers',               desc: 'Semi-independent housing need',       field: 'care_leavers_semi_indep',     reversed: false },
-  { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing cases',              field: 'marac_cases',                 reversed: false },
-  { key: 'rs',    dot: '#06b6d4', name: 'Rough Sleeping',             desc: 'Single-night snapshot',               field: 'rough_sleeping_current',      reversed: false },
-  { key: 'imd',   dot: '#a3e635', name: 'Deprivation (IMD)',          desc: 'Index of Multiple Deprivation 2025', field: 'imd_rank_of_average_rank',    reversed: true },
-  { key: 'hb',    dot: '#818cf8', name: 'HB Asylum Seekers',          desc: 'Supported accommodation caseload',    field: 'hb_sa_caseload',              reversed: false },
-  { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate (£/week)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true },
-  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate (£/week)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true },
+  { key: 'ta',    dot: '#4ade80', name: 'TA Households',              desc: 'Temporary accommodation demand',      field: 'ta_households_current',       reversed: false, minLabel: 'Lower demand', maxLabel: 'Higher demand' },
+  { key: 'spend', dot: '#f59e0b', name: 'Homelessness Spend',         desc: 'Total annual spend (2024-25)',        field: 'ro4_total_homelessness_000',  reversed: false, money: true, minLabel: 'Lower spend', maxLabel: 'Higher spend' },
+  { key: 'reg',   dot: '#f97316', name: 'Housing Register',           desc: 'Social housing waiting lists',        field: 'housing_register',            reversed: false, minLabel: 'Smaller', maxLabel: 'Larger' },
+  { key: 'care',  dot: '#ef4444', name: 'Care Leavers',               desc: 'Semi-independent housing need',       field: 'care_leavers_semi_indep',     reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
+  { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing cases',              field: 'marac_cases',                 reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
+  { key: 'rs',    dot: '#06b6d4', name: 'Rough Sleeping',             desc: 'Single-night snapshot',               field: 'rough_sleeping_current',      reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
+  { key: 'imd',   dot: '#a3e635', name: 'Deprivation (IMD)',          desc: 'Index of Multiple Deprivation 2025', field: 'imd_rank_of_average_rank',    reversed: true, minLabel: 'More deprived', maxLabel: 'Less deprived' },
+  { key: 'hb',    dot: '#818cf8', name: 'HB Asylum Seekers',          desc: 'Supported accommodation caseload',    field: 'hb_sa_caseload',              reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
+  { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate (£/week)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
+  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate (£/week)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
   // S11 — the pipeline's only supply-side layer, visually separated in the sidebar
-  { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, ends: ['None', 'High'] },
+  { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, minLabel: 'Fewer', maxLabel: 'More' },
   // S19 — house prices (supply-side context)
-  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI (all property)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], ends: ['< £150k', '£400k+'] }
+  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI (all property)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' }
 ];
 
 var map, geojson, laIndex = {}, activeLayer = LAYERS[0];
@@ -540,7 +545,7 @@ function initMap() {
     wireMapEvents();
     updateLegend();
     document.getElementById('overlay').style.display = 'none';
-    document.getElementById('legend').style.display = 'block';
+    document.getElementById('map-legend').style.display = 'block';
   });
 
   map.on('error', function (e) {
@@ -718,24 +723,24 @@ function setActiveLayer(layer) {
 }
 
 function updateLegend() {
-  document.getElementById('lg-title').textContent = activeLayer.name;
-  var bar = document.getElementById('lg-bar');
-  bar.innerHTML = '';
-  var colors = LAYER_COLOR_SCALES[activeLayer.field];
-  colors.forEach(function (c) {
-    var s = document.createElement('span');
-    s.style.background = c;
-    bar.appendChild(s);
-  });
-  // For IMD the scale runs Critical (rank 1, most deprived) -> Low.
-  // Supply-side layers carry their own end labels (e.g. None -> High).
-  var ends = document.querySelector('.lg-ends');
-  if (activeLayer.ends) {
-    ends.innerHTML = '<span>' + esc(activeLayer.ends[0]) + '</span><span>' + esc(activeLayer.ends[1]) + '</span>';
+  var layer = activeLayer;
+  document.getElementById('legend-title').textContent = layer.name;
+  var colors = LAYER_COLOR_SCALES[layer.field];
+  var bar = document.getElementById('legend-gradient-bar');
+  var minEl = document.getElementById('legend-min');
+  var maxEl = document.getElementById('legend-max');
+  if (colors && layer.minLabel) {
+    bar.style.background = 'linear-gradient(to right, ' + colors.join(', ') + ')';
+    bar.style.display = 'block';
+    minEl.textContent = layer.minLabel;
+    maxEl.textContent = layer.maxLabel;
+    document.getElementById('legend-labels').style.display = 'flex';
   } else {
-    ends.innerHTML = activeLayer.reversed
-      ? '<span>Critical</span><span>Low</span>'
-      : '<span>Low</span><span>Critical</span>';
+    bar.style.background = layer.dot || '#888';
+    bar.style.display = 'block';
+    minEl.textContent = '';
+    maxEl.textContent = '';
+    document.getElementById('legend-labels').style.display = 'none';
   }
 }
 
