@@ -1,0 +1,1186 @@
+{
+  "generated": "2026-07-14T20:06:36.947007+00:00",
+  "edition": "2026-04",
+  "data": {
+    "E06000001": {
+      "avg_price_all": 129129.0,
+      "annual_change_pct": 2.1
+    },
+    "E06000002": {
+      "avg_price_all": 139005.0,
+      "annual_change_pct": 0.4
+    },
+    "E06000003": {
+      "avg_price_all": 154422.0,
+      "annual_change_pct": 5.1
+    },
+    "E06000004": {
+      "avg_price_all": 169540.0,
+      "annual_change_pct": 3.0
+    },
+    "E06000005": {
+      "avg_price_all": 156880.0,
+      "annual_change_pct": 1.9
+    },
+    "E06000006": {
+      "avg_price_all": 193435.0,
+      "annual_change_pct": 5.8
+    },
+    "E06000007": {
+      "avg_price_all": 253219.0,
+      "annual_change_pct": 3.3
+    },
+    "E06000008": {
+      "avg_price_all": 165813.0,
+      "annual_change_pct": 4.7
+    },
+    "E06000009": {
+      "avg_price_all": 134732.0,
+      "annual_change_pct": 4.4
+    },
+    "E06000010": {
+      "avg_price_all": 135051.0,
+      "annual_change_pct": 4.8
+    },
+    "E06000011": {
+      "avg_price_all": 219544.0,
+      "annual_change_pct": 1.7
+    },
+    "E06000012": {
+      "avg_price_all": 149911.0,
+      "annual_change_pct": 1.3
+    },
+    "E06000013": {
+      "avg_price_all": 179553.0,
+      "annual_change_pct": 4.4
+    },
+    "E06000014": {
+      "avg_price_all": 308788.0,
+      "annual_change_pct": 2.8
+    },
+    "E06000015": {
+      "avg_price_all": 205065.0,
+      "annual_change_pct": 1.7
+    },
+    "E06000016": {
+      "avg_price_all": 234631.0,
+      "annual_change_pct": 2.9
+    },
+    "E06000017": {
+      "avg_price_all": 305174.0,
+      "annual_change_pct": -0.8
+    },
+    "E06000018": {
+      "avg_price_all": 192543.0,
+      "annual_change_pct": 0.4
+    },
+    "E06000019": {
+      "avg_price_all": 288434.0,
+      "annual_change_pct": 5.6
+    },
+    "E06000020": {
+      "avg_price_all": 220193.0,
+      "annual_change_pct": 2.2
+    },
+    "E06000021": {
+      "avg_price_all": 152101.0,
+      "annual_change_pct": 4.7
+    },
+    "E06000022": {
+      "avg_price_all": 400205.0,
+      "annual_change_pct": -1.1
+    },
+    "E06000023": {
+      "avg_price_all": 353662.0,
+      "annual_change_pct": 0.3
+    },
+    "E06000024": {
+      "avg_price_all": 313919.0,
+      "annual_change_pct": 6.1
+    },
+    "E06000025": {
+      "avg_price_all": 338054.0,
+      "annual_change_pct": 1.0
+    },
+    "E06000026": {
+      "avg_price_all": 216463.0,
+      "annual_change_pct": 2.9
+    },
+    "E06000027": {
+      "avg_price_all": 224372.0,
+      "annual_change_pct": -2.6
+    },
+    "E06000030": {
+      "avg_price_all": 260570.0,
+      "annual_change_pct": 2.3
+    },
+    "E06000031": {
+      "avg_price_all": 236378.0,
+      "annual_change_pct": 2.1
+    },
+    "E06000032": {
+      "avg_price_all": 283357.0,
+      "annual_change_pct": -2.1
+    },
+    "E06000033": {
+      "avg_price_all": 327030.0,
+      "annual_change_pct": 1.6
+    },
+    "E06000034": {
+      "avg_price_all": 328942.0,
+      "annual_change_pct": 2.1
+    },
+    "E06000035": {
+      "avg_price_all": 294322.0,
+      "annual_change_pct": 0.1
+    },
+    "E06000036": {
+      "avg_price_all": 397667.0,
+      "annual_change_pct": 0.2
+    },
+    "E06000037": {
+      "avg_price_all": 400550.0,
+      "annual_change_pct": 0.4
+    },
+    "E06000038": {
+      "avg_price_all": 345112.0,
+      "annual_change_pct": -4.1
+    },
+    "E06000039": {
+      "avg_price_all": 338287.0,
+      "annual_change_pct": -3.4
+    },
+    "E06000040": {
+      "avg_price_all": 565201.0,
+      "annual_change_pct": -0.8
+    },
+    "E06000041": {
+      "avg_price_all": 485606.0,
+      "annual_change_pct": -4.5
+    },
+    "E06000042": {
+      "avg_price_all": 318038.0,
+      "annual_change_pct": -3.0
+    },
+    "E06000043": {
+      "avg_price_all": 406137.0,
+      "annual_change_pct": -0.9
+    },
+    "E06000044": {
+      "avg_price_all": 250377.0,
+      "annual_change_pct": -0.2
+    },
+    "E06000045": {
+      "avg_price_all": 234150.0,
+      "annual_change_pct": -1.3
+    },
+    "E06000046": {
+      "avg_price_all": 238239.0,
+      "annual_change_pct": -1.6
+    },
+    "E06000047": {
+      "avg_price_all": 138767.0,
+      "annual_change_pct": 4.7
+    },
+    "E06000049": {
+      "avg_price_all": 296091.0,
+      "annual_change_pct": 1.1
+    },
+    "E06000050": {
+      "avg_price_all": 264715.0,
+      "annual_change_pct": 2.2
+    },
+    "E06000051": {
+      "avg_price_all": 280197.0,
+      "annual_change_pct": 2.5
+    },
+    "E06000052": {
+      "avg_price_all": 277017.0,
+      "annual_change_pct": 2.4
+    },
+    "E06000054": {
+      "avg_price_all": 325267.0,
+      "annual_change_pct": 0.7
+    },
+    "E06000055": {
+      "avg_price_all": 330716.0,
+      "annual_change_pct": 4.8
+    },
+    "E06000056": {
+      "avg_price_all": 358992.0,
+      "annual_change_pct": 4.0
+    },
+    "E06000057": {
+      "avg_price_all": 204603.0,
+      "annual_change_pct": 5.3
+    },
+    "E06000058": {
+      "avg_price_all": 311309.0,
+      "annual_change_pct": -2.4
+    },
+    "E06000059": {
+      "avg_price_all": 325696.0,
+      "annual_change_pct": -0.6
+    },
+    "E06000060": {
+      "avg_price_all": 478521.0,
+      "annual_change_pct": 0.3
+    },
+    "E06000061": {
+      "avg_price_all": 254495.0,
+      "annual_change_pct": 2.4
+    },
+    "E06000062": {
+      "avg_price_all": 293021.0,
+      "annual_change_pct": 1.4
+    },
+    "E06000063": {
+      "avg_price_all": 172186.0,
+      "annual_change_pct": 4.8
+    },
+    "E06000064": {
+      "avg_price_all": 223414.0,
+      "annual_change_pct": 2.3
+    },
+    "E06000065": {
+      "avg_price_all": 270836.0,
+      "annual_change_pct": 3.0
+    },
+    "E06000066": {
+      "avg_price_all": 277347.0,
+      "annual_change_pct": 1.0
+    },
+    "E07000008": {
+      "avg_price_all": 462145.0,
+      "annual_change_pct": -4.2
+    },
+    "E07000009": {
+      "avg_price_all": 338848.0,
+      "annual_change_pct": 0.8
+    },
+    "E07000010": {
+      "avg_price_all": 224590.0,
+      "annual_change_pct": 0.6
+    },
+    "E07000011": {
+      "avg_price_all": 308404.0,
+      "annual_change_pct": 4.3
+    },
+    "E07000012": {
+      "avg_price_all": 432985.0,
+      "annual_change_pct": 1.9
+    },
+    "E07000032": {
+      "avg_price_all": 235323.0,
+      "annual_change_pct": 5.7
+    },
+    "E07000033": {
+      "avg_price_all": 185188.0,
+      "annual_change_pct": 2.3
+    },
+    "E07000034": {
+      "avg_price_all": 203294.0,
+      "annual_change_pct": 4.8
+    },
+    "E07000035": {
+      "avg_price_all": 344689.0,
+      "annual_change_pct": 5.5
+    },
+    "E07000036": {
+      "avg_price_all": 219110.0,
+      "annual_change_pct": 0.7
+    },
+    "E07000037": {
+      "avg_price_all": 250081.0,
+      "annual_change_pct": 0.0
+    },
+    "E07000038": {
+      "avg_price_all": 250089.0,
+      "annual_change_pct": 6.1
+    },
+    "E07000039": {
+      "avg_price_all": 258893.0,
+      "annual_change_pct": 4.6
+    },
+    "E07000040": {
+      "avg_price_all": 345899.0,
+      "annual_change_pct": 1.6
+    },
+    "E07000041": {
+      "avg_price_all": 287013.0,
+      "annual_change_pct": -2.4
+    },
+    "E07000042": {
+      "avg_price_all": 291923.0,
+      "annual_change_pct": -1.0
+    },
+    "E07000043": {
+      "avg_price_all": 277169.0,
+      "annual_change_pct": -2.9
+    },
+    "E07000044": {
+      "avg_price_all": 375098.0,
+      "annual_change_pct": 0.1
+    },
+    "E07000045": {
+      "avg_price_all": 288664.0,
+      "annual_change_pct": -4.0
+    },
+    "E07000046": {
+      "avg_price_all": 264588.0,
+      "annual_change_pct": -1.4
+    },
+    "E07000047": {
+      "avg_price_all": 307291.0,
+      "annual_change_pct": 6.9
+    },
+    "E07000061": {
+      "avg_price_all": 252391.0,
+      "annual_change_pct": -3.3
+    },
+    "E07000062": {
+      "avg_price_all": 238912.0,
+      "annual_change_pct": -3.4
+    },
+    "E07000063": {
+      "avg_price_all": 371860.0,
+      "annual_change_pct": 2.4
+    },
+    "E07000064": {
+      "avg_price_all": 343771.0,
+      "annual_change_pct": 0.1
+    },
+    "E07000065": {
+      "avg_price_all": 388369.0,
+      "annual_change_pct": 0.6
+    },
+    "E07000066": {
+      "avg_price_all": 356216.0,
+      "annual_change_pct": -1.4
+    },
+    "E07000067": {
+      "avg_price_all": 316637.0,
+      "annual_change_pct": -1.4
+    },
+    "E07000068": {
+      "avg_price_all": 523144.0,
+      "annual_change_pct": 2.6
+    },
+    "E07000069": {
+      "avg_price_all": 363997.0,
+      "annual_change_pct": 3.1
+    },
+    "E07000070": {
+      "avg_price_all": 381136.0,
+      "annual_change_pct": 0.5
+    },
+    "E07000071": {
+      "avg_price_all": 298311.0,
+      "annual_change_pct": 0.0
+    },
+    "E07000072": {
+      "avg_price_all": 523651.0,
+      "annual_change_pct": 1.9
+    },
+    "E07000073": {
+      "avg_price_all": 318143.0,
+      "annual_change_pct": 5.1
+    },
+    "E07000074": {
+      "avg_price_all": 390649.0,
+      "annual_change_pct": 4.5
+    },
+    "E07000075": {
+      "avg_price_all": 403811.0,
+      "annual_change_pct": 3.7
+    },
+    "E07000076": {
+      "avg_price_all": 255529.0,
+      "annual_change_pct": -1.0
+    },
+    "E07000077": {
+      "avg_price_all": 456409.0,
+      "annual_change_pct": -4.5
+    },
+    "E07000078": {
+      "avg_price_all": 332502.0,
+      "annual_change_pct": 4.8
+    },
+    "E07000079": {
+      "avg_price_all": 390591.0,
+      "annual_change_pct": -1.2
+    },
+    "E07000080": {
+      "avg_price_all": 290398.0,
+      "annual_change_pct": 1.7
+    },
+    "E07000081": {
+      "avg_price_all": 239323.0,
+      "annual_change_pct": 4.1
+    },
+    "E07000082": {
+      "avg_price_all": 345405.0,
+      "annual_change_pct": 3.4
+    },
+    "E07000083": {
+      "avg_price_all": 319597.0,
+      "annual_change_pct": 3.6
+    },
+    "E07000084": {
+      "avg_price_all": 361820.0,
+      "annual_change_pct": -3.0
+    },
+    "E07000085": {
+      "avg_price_all": 432571.0,
+      "annual_change_pct": -1.2
+    },
+    "E07000086": {
+      "avg_price_all": 305948.0,
+      "annual_change_pct": -0.4
+    },
+    "E07000087": {
+      "avg_price_all": 325771.0,
+      "annual_change_pct": -0.4
+    },
+    "E07000088": {
+      "avg_price_all": 232020.0,
+      "annual_change_pct": -2.2
+    },
+    "E07000089": {
+      "avg_price_all": 473396.0,
+      "annual_change_pct": 1.9
+    },
+    "E07000090": {
+      "avg_price_all": 314715.0,
+      "annual_change_pct": 2.8
+    },
+    "E07000091": {
+      "avg_price_all": 370226.0,
+      "annual_change_pct": -1.1
+    },
+    "E07000092": {
+      "avg_price_all": 318817.0,
+      "annual_change_pct": -0.9
+    },
+    "E07000093": {
+      "avg_price_all": 374341.0,
+      "annual_change_pct": -0.7
+    },
+    "E07000094": {
+      "avg_price_all": 462014.0,
+      "annual_change_pct": -1.1
+    },
+    "E07000095": {
+      "avg_price_all": 411091.0,
+      "annual_change_pct": 1.2
+    },
+    "E07000096": {
+      "avg_price_all": 451749.0,
+      "annual_change_pct": -0.2
+    },
+    "E07000098": {
+      "avg_price_all": 554663.0,
+      "annual_change_pct": 0.5
+    },
+    "E07000099": {
+      "avg_price_all": 420364.0,
+      "annual_change_pct": 2.4
+    },
+    "E07000102": {
+      "avg_price_all": 579240.0,
+      "annual_change_pct": -1.7
+    },
+    "E07000103": {
+      "avg_price_all": 387493.0,
+      "annual_change_pct": 0.4
+    },
+    "E07000105": {
+      "avg_price_all": 349027.0,
+      "annual_change_pct": 2.7
+    },
+    "E07000106": {
+      "avg_price_all": 339085.0,
+      "annual_change_pct": 0.0
+    },
+    "E07000107": {
+      "avg_price_all": 345074.0,
+      "annual_change_pct": 1.2
+    },
+    "E07000108": {
+      "avg_price_all": 273349.0,
+      "annual_change_pct": 0.7
+    },
+    "E07000109": {
+      "avg_price_all": 342112.0,
+      "annual_change_pct": -2.1
+    },
+    "E07000110": {
+      "avg_price_all": 354594.0,
+      "annual_change_pct": 0.5
+    },
+    "E07000111": {
+      "avg_price_all": 547936.0,
+      "annual_change_pct": 3.2
+    },
+    "E07000112": {
+      "avg_price_all": 305770.0,
+      "annual_change_pct": -1.4
+    },
+    "E07000113": {
+      "avg_price_all": 291124.0,
+      "annual_change_pct": 1.9
+    },
+    "E07000114": {
+      "avg_price_all": 263199.0,
+      "annual_change_pct": -3.9
+    },
+    "E07000115": {
+      "avg_price_all": 403340.0,
+      "annual_change_pct": 0.5
+    },
+    "E07000116": {
+      "avg_price_all": 448822.0,
+      "annual_change_pct": -0.1
+    },
+    "E07000117": {
+      "avg_price_all": 129556.0,
+      "annual_change_pct": 2.6
+    },
+    "E07000118": {
+      "avg_price_all": 213492.0,
+      "annual_change_pct": 5.2
+    },
+    "E07000119": {
+      "avg_price_all": 221288.0,
+      "annual_change_pct": 0.8
+    },
+    "E07000120": {
+      "avg_price_all": 139800.0,
+      "annual_change_pct": 9.1
+    },
+    "E07000121": {
+      "avg_price_all": 193299.0,
+      "annual_change_pct": 0.2
+    },
+    "E07000122": {
+      "avg_price_all": 150737.0,
+      "annual_change_pct": 8.1
+    },
+    "E07000123": {
+      "avg_price_all": 190442.0,
+      "annual_change_pct": 10.6
+    },
+    "E07000124": {
+      "avg_price_all": 280965.0,
+      "annual_change_pct": 1.4
+    },
+    "E07000125": {
+      "avg_price_all": 189086.0,
+      "annual_change_pct": 1.1
+    },
+    "E07000126": {
+      "avg_price_all": 206485.0,
+      "annual_change_pct": 1.6
+    },
+    "E07000127": {
+      "avg_price_all": 241925.0,
+      "annual_change_pct": 6.8
+    },
+    "E07000128": {
+      "avg_price_all": 186869.0,
+      "annual_change_pct": -0.4
+    },
+    "E07000129": {
+      "avg_price_all": 282579.0,
+      "annual_change_pct": 0.1
+    },
+    "E07000130": {
+      "avg_price_all": 275765.0,
+      "annual_change_pct": 4.2
+    },
+    "E07000131": {
+      "avg_price_all": 337960.0,
+      "annual_change_pct": 3.7
+    },
+    "E07000132": {
+      "avg_price_all": 265209.0,
+      "annual_change_pct": 2.1
+    },
+    "E07000133": {
+      "avg_price_all": 286027.0,
+      "annual_change_pct": -0.1
+    },
+    "E07000134": {
+      "avg_price_all": 285265.0,
+      "annual_change_pct": 5.0
+    },
+    "E07000135": {
+      "avg_price_all": 259309.0,
+      "annual_change_pct": -2.8
+    },
+    "E07000136": {
+      "avg_price_all": 188814.0,
+      "annual_change_pct": 6.1
+    },
+    "E07000137": {
+      "avg_price_all": 213229.0,
+      "annual_change_pct": 2.5
+    },
+    "E07000138": {
+      "avg_price_all": 185464.0,
+      "annual_change_pct": -0.3
+    },
+    "E07000139": {
+      "avg_price_all": 246451.0,
+      "annual_change_pct": 4.1
+    },
+    "E07000140": {
+      "avg_price_all": 225896.0,
+      "annual_change_pct": 3.9
+    },
+    "E07000141": {
+      "avg_price_all": 258553.0,
+      "annual_change_pct": 2.9
+    },
+    "E07000142": {
+      "avg_price_all": 210718.0,
+      "annual_change_pct": 5.7
+    },
+    "E07000143": {
+      "avg_price_all": 275312.0,
+      "annual_change_pct": 3.1
+    },
+    "E07000144": {
+      "avg_price_all": 312908.0,
+      "annual_change_pct": 7.5
+    },
+    "E07000145": {
+      "avg_price_all": 207741.0,
+      "annual_change_pct": 2.3
+    },
+    "E07000146": {
+      "avg_price_all": 259956.0,
+      "annual_change_pct": 0.7
+    },
+    "E07000147": {
+      "avg_price_all": 285303.0,
+      "annual_change_pct": -2.3
+    },
+    "E07000148": {
+      "avg_price_all": 230372.0,
+      "annual_change_pct": 2.3
+    },
+    "E07000149": {
+      "avg_price_all": 313346.0,
+      "annual_change_pct": 1.5
+    },
+    "E07000170": {
+      "avg_price_all": 188642.0,
+      "annual_change_pct": 3.0
+    },
+    "E07000171": {
+      "avg_price_all": 209886.0,
+      "annual_change_pct": 3.6
+    },
+    "E07000172": {
+      "avg_price_all": 249991.0,
+      "annual_change_pct": -0.4
+    },
+    "E07000173": {
+      "avg_price_all": 244054.0,
+      "annual_change_pct": 1.6
+    },
+    "E07000174": {
+      "avg_price_all": 184779.0,
+      "annual_change_pct": -2.3
+    },
+    "E07000175": {
+      "avg_price_all": 236330.0,
+      "annual_change_pct": 6.4
+    },
+    "E07000176": {
+      "avg_price_all": 337922.0,
+      "annual_change_pct": 3.3
+    },
+    "E07000177": {
+      "avg_price_all": 355683.0,
+      "annual_change_pct": 3.2
+    },
+    "E07000178": {
+      "avg_price_all": 475481.0,
+      "annual_change_pct": 3.3
+    },
+    "E07000179": {
+      "avg_price_all": 466091.0,
+      "annual_change_pct": 1.7
+    },
+    "E07000180": {
+      "avg_price_all": 416575.0,
+      "annual_change_pct": 6.9
+    },
+    "E07000181": {
+      "avg_price_all": 418246.0,
+      "annual_change_pct": -1.2
+    },
+    "E07000192": {
+      "avg_price_all": 227110.0,
+      "annual_change_pct": 1.5
+    },
+    "E07000193": {
+      "avg_price_all": 224317.0,
+      "annual_change_pct": 1.8
+    },
+    "E07000194": {
+      "avg_price_all": 335981.0,
+      "annual_change_pct": 3.4
+    },
+    "E07000195": {
+      "avg_price_all": 199463.0,
+      "annual_change_pct": 1.4
+    },
+    "E07000196": {
+      "avg_price_all": 309370.0,
+      "annual_change_pct": 5.1
+    },
+    "E07000197": {
+      "avg_price_all": 263329.0,
+      "annual_change_pct": 5.1
+    },
+    "E07000198": {
+      "avg_price_all": 225917.0,
+      "annual_change_pct": 5.5
+    },
+    "E07000199": {
+      "avg_price_all": 226366.0,
+      "annual_change_pct": 1.8
+    },
+    "E07000200": {
+      "avg_price_all": 326979.0,
+      "annual_change_pct": 1.7
+    },
+    "E07000202": {
+      "avg_price_all": 215893.0,
+      "annual_change_pct": -4.8
+    },
+    "E07000203": {
+      "avg_price_all": 316783.0,
+      "annual_change_pct": 4.6
+    },
+    "E07000207": {
+      "avg_price_all": 741058.0,
+      "annual_change_pct": -1.9
+    },
+    "E07000208": {
+      "avg_price_all": 567096.0,
+      "annual_change_pct": 2.8
+    },
+    "E07000209": {
+      "avg_price_all": 524774.0,
+      "annual_change_pct": -3.9
+    },
+    "E07000210": {
+      "avg_price_all": 546970.0,
+      "annual_change_pct": -0.4
+    },
+    "E07000211": {
+      "avg_price_all": 496110.0,
+      "annual_change_pct": 3.1
+    },
+    "E07000212": {
+      "avg_price_all": 479830.0,
+      "annual_change_pct": 1.3
+    },
+    "E07000213": {
+      "avg_price_all": 436349.0,
+      "annual_change_pct": -0.1
+    },
+    "E07000214": {
+      "avg_price_all": 444858.0,
+      "annual_change_pct": 1.9
+    },
+    "E07000215": {
+      "avg_price_all": 498766.0,
+      "annual_change_pct": -1.8
+    },
+    "E07000216": {
+      "avg_price_all": 566729.0,
+      "annual_change_pct": 1.6
+    },
+    "E07000217": {
+      "avg_price_all": 436416.0,
+      "annual_change_pct": -3.0
+    },
+    "E07000218": {
+      "avg_price_all": 266756.0,
+      "annual_change_pct": 0.2
+    },
+    "E07000219": {
+      "avg_price_all": 226344.0,
+      "annual_change_pct": 1.1
+    },
+    "E07000220": {
+      "avg_price_all": 279400.0,
+      "annual_change_pct": 2.3
+    },
+    "E07000221": {
+      "avg_price_all": 394347.0,
+      "annual_change_pct": 2.6
+    },
+    "E07000222": {
+      "avg_price_all": 373117.0,
+      "annual_change_pct": 3.0
+    },
+    "E07000223": {
+      "avg_price_all": 355669.0,
+      "annual_change_pct": -3.0
+    },
+    "E07000224": {
+      "avg_price_all": 321669.0,
+      "annual_change_pct": 0.1
+    },
+    "E07000225": {
+      "avg_price_all": 427112.0,
+      "annual_change_pct": -4.8
+    },
+    "E07000226": {
+      "avg_price_all": 338449.0,
+      "annual_change_pct": 2.4
+    },
+    "E07000227": {
+      "avg_price_all": 432927.0,
+      "annual_change_pct": -1.9
+    },
+    "E07000228": {
+      "avg_price_all": 432190.0,
+      "annual_change_pct": 0.8
+    },
+    "E07000229": {
+      "avg_price_all": 299030.0,
+      "annual_change_pct": -5.2
+    },
+    "E07000234": {
+      "avg_price_all": 332471.0,
+      "annual_change_pct": -0.3
+    },
+    "E07000235": {
+      "avg_price_all": 342565.0,
+      "annual_change_pct": 3.9
+    },
+    "E07000236": {
+      "avg_price_all": 247308.0,
+      "annual_change_pct": 2.0
+    },
+    "E07000237": {
+      "avg_price_all": 251825.0,
+      "annual_change_pct": 1.3
+    },
+    "E07000238": {
+      "avg_price_all": 323344.0,
+      "annual_change_pct": 3.2
+    },
+    "E07000239": {
+      "avg_price_all": 229867.0,
+      "annual_change_pct": 1.2
+    },
+    "E07000240": {
+      "avg_price_all": 631152.0,
+      "annual_change_pct": 1.7
+    },
+    "E07000241": {
+      "avg_price_all": 463347.0,
+      "annual_change_pct": 6.9
+    },
+    "E07000242": {
+      "avg_price_all": 455458.0,
+      "annual_change_pct": 4.3
+    },
+    "E07000243": {
+      "avg_price_all": 319265.0,
+      "annual_change_pct": 3.1
+    },
+    "E07000244": {
+      "avg_price_all": 283530.0,
+      "annual_change_pct": 2.1
+    },
+    "E07000245": {
+      "avg_price_all": 298038.0,
+      "annual_change_pct": 4.3
+    },
+    "E08000001": {
+      "avg_price_all": 199946.0,
+      "annual_change_pct": 1.9
+    },
+    "E08000002": {
+      "avg_price_all": 233630.0,
+      "annual_change_pct": 0.9
+    },
+    "E08000003": {
+      "avg_price_all": 247344.0,
+      "annual_change_pct": 1.3
+    },
+    "E08000004": {
+      "avg_price_all": 212066.0,
+      "annual_change_pct": 4.0
+    },
+    "E08000005": {
+      "avg_price_all": 211558.0,
+      "annual_change_pct": 5.1
+    },
+    "E08000006": {
+      "avg_price_all": 232391.0,
+      "annual_change_pct": -2.9
+    },
+    "E08000007": {
+      "avg_price_all": 311307.0,
+      "annual_change_pct": 3.8
+    },
+    "E08000008": {
+      "avg_price_all": 212609.0,
+      "annual_change_pct": 5.2
+    },
+    "E08000009": {
+      "avg_price_all": 381052.0,
+      "annual_change_pct": 2.4
+    },
+    "E08000010": {
+      "avg_price_all": 190802.0,
+      "annual_change_pct": 3.4
+    },
+    "E08000011": {
+      "avg_price_all": 192756.0,
+      "annual_change_pct": 3.8
+    },
+    "E08000012": {
+      "avg_price_all": 183615.0,
+      "annual_change_pct": 3.6
+    },
+    "E08000013": {
+      "avg_price_all": 184470.0,
+      "annual_change_pct": 7.7
+    },
+    "E08000014": {
+      "avg_price_all": 218893.0,
+      "annual_change_pct": 2.9
+    },
+    "E08000015": {
+      "avg_price_all": 216862.0,
+      "annual_change_pct": 6.1
+    },
+    "E08000016": {
+      "avg_price_all": 173100.0,
+      "annual_change_pct": 5.6
+    },
+    "E08000017": {
+      "avg_price_all": 173624.0,
+      "annual_change_pct": 4.0
+    },
+    "E08000018": {
+      "avg_price_all": 190256.0,
+      "annual_change_pct": 2.4
+    },
+    "E08000019": {
+      "avg_price_all": 222080.0,
+      "annual_change_pct": 3.4
+    },
+    "E08000021": {
+      "avg_price_all": 209071.0,
+      "annual_change_pct": 5.0
+    },
+    "E08000022": {
+      "avg_price_all": 197229.0,
+      "annual_change_pct": 1.0
+    },
+    "E08000023": {
+      "avg_price_all": 156931.0,
+      "annual_change_pct": 1.9
+    },
+    "E08000024": {
+      "avg_price_all": 145293.0,
+      "annual_change_pct": 6.0
+    },
+    "E08000025": {
+      "avg_price_all": 235682.0,
+      "annual_change_pct": 0.7
+    },
+    "E08000026": {
+      "avg_price_all": 218334.0,
+      "annual_change_pct": -0.1
+    },
+    "E08000027": {
+      "avg_price_all": 229829.0,
+      "annual_change_pct": 4.2
+    },
+    "E08000028": {
+      "avg_price_all": 212547.0,
+      "annual_change_pct": 4.5
+    },
+    "E08000029": {
+      "avg_price_all": 330248.0,
+      "annual_change_pct": 1.5
+    },
+    "E08000030": {
+      "avg_price_all": 214922.0,
+      "annual_change_pct": 2.2
+    },
+    "E08000031": {
+      "avg_price_all": 215264.0,
+      "annual_change_pct": 4.5
+    },
+    "E08000032": {
+      "avg_price_all": 188505.0,
+      "annual_change_pct": 5.7
+    },
+    "E08000033": {
+      "avg_price_all": 190555.0,
+      "annual_change_pct": 5.0
+    },
+    "E08000034": {
+      "avg_price_all": 205741.0,
+      "annual_change_pct": 4.0
+    },
+    "E08000035": {
+      "avg_price_all": 246882.0,
+      "annual_change_pct": 3.3
+    },
+    "E08000036": {
+      "avg_price_all": 196895.0,
+      "annual_change_pct": 2.7
+    },
+    "E08000037": {
+      "avg_price_all": 158885.0,
+      "annual_change_pct": 6.9
+    },
+    "E09000001": {
+      "avg_price_all": 612427.0,
+      "annual_change_pct": -25.1
+    },
+    "E09000002": {
+      "avg_price_all": 360007.0,
+      "annual_change_pct": -0.8
+    },
+    "E09000003": {
+      "avg_price_all": 587297.0,
+      "annual_change_pct": -3.8
+    },
+    "E09000004": {
+      "avg_price_all": 408488.0,
+      "annual_change_pct": 2.5
+    },
+    "E09000005": {
+      "avg_price_all": 547995.0,
+      "annual_change_pct": -2.1
+    },
+    "E09000006": {
+      "avg_price_all": 520379.0,
+      "annual_change_pct": 0.4
+    },
+    "E09000007": {
+      "avg_price_all": 794527.0,
+      "annual_change_pct": -2.9
+    },
+    "E09000008": {
+      "avg_price_all": 395442.0,
+      "annual_change_pct": -0.3
+    },
+    "E09000009": {
+      "avg_price_all": 556675.0,
+      "annual_change_pct": -4.2
+    },
+    "E09000010": {
+      "avg_price_all": 465031.0,
+      "annual_change_pct": -1.3
+    },
+    "E09000011": {
+      "avg_price_all": 455805.0,
+      "annual_change_pct": -1.8
+    },
+    "E09000012": {
+      "avg_price_all": 612501.0,
+      "annual_change_pct": 1.3
+    },
+    "E09000013": {
+      "avg_price_all": 741612.0,
+      "annual_change_pct": -7.6
+    },
+    "E09000014": {
+      "avg_price_all": 629835.0,
+      "annual_change_pct": 0.8
+    },
+    "E09000015": {
+      "avg_price_all": 527239.0,
+      "annual_change_pct": -2.1
+    },
+    "E09000016": {
+      "avg_price_all": 446877.0,
+      "annual_change_pct": 1.8
+    },
+    "E09000017": {
+      "avg_price_all": 469888.0,
+      "annual_change_pct": -0.4
+    },
+    "E09000018": {
+      "avg_price_all": 497276.0,
+      "annual_change_pct": -4.7
+    },
+    "E09000019": {
+      "avg_price_all": 665067.0,
+      "annual_change_pct": -5.4
+    },
+    "E09000020": {
+      "avg_price_all": 1272760.0,
+      "annual_change_pct": -8.4
+    },
+    "E09000021": {
+      "avg_price_all": 571088.0,
+      "annual_change_pct": -3.0
+    },
+    "E09000022": {
+      "avg_price_all": 558911.0,
+      "annual_change_pct": -0.2
+    },
+    "E09000023": {
+      "avg_price_all": 489995.0,
+      "annual_change_pct": -0.8
+    },
+    "E09000024": {
+      "avg_price_all": 591638.0,
+      "annual_change_pct": -3.5
+    },
+    "E09000025": {
+      "avg_price_all": 395266.0,
+      "annual_change_pct": -3.2
+    },
+    "E09000026": {
+      "avg_price_all": 502501.0,
+      "annual_change_pct": 2.7
+    },
+    "E09000027": {
+      "avg_price_all": 794027.0,
+      "annual_change_pct": -2.3
+    },
+    "E09000028": {
+      "avg_price_all": 572455.0,
+      "annual_change_pct": -1.2
+    },
+    "E09000029": {
+      "avg_price_all": 452352.0,
+      "annual_change_pct": 2.0
+    },
+    "E09000030": {
+      "avg_price_all": 457504.0,
+      "annual_change_pct": -12.6
+    },
+    "E09000031": {
+      "avg_price_all": 524099.0,
+      "annual_change_pct": 3.4
+    },
+    "E09000032": {
+      "avg_price_all": 670960.0,
+      "annual_change_pct": -5.3
+    },
+    "E09000033": {
+      "avg_price_all": 814679.0,
+      "annual_change_pct": -19.6
+    }
+  }
+}

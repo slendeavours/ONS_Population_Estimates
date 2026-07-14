@@ -310,6 +310,7 @@
 var MAPBOX_TOKEN = ['pk', 'eyJ1IjoiZW5kZWF2b3VycyIsImEiOiJjbXJjcHF3YmwwMzhyMndyOWs5MWQ3NzJxIn0', 'Meur0Rwn_YaN9ghtr5lxmQ'].join('.');
 var BOUNDARIES_URL = 'https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/data/boundaries/la_boundaries.geojson';
 var SIGNALS_URL = 'https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/data/signals/staging_la_signals_latest.json';
+var HPI_URL = 'https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/hpi_la_prices.json';
 
 var LAYER_COLOR_SCALES = {
   ta_households_current: ['#fff7f7', '#fecaca', '#f87171', '#ef4444', '#dc2626', '#b91c1c', '#7f1d1d'],
@@ -322,7 +323,8 @@ var LAYER_COLOR_SCALES = {
   hb_sa_caseload: ['#eef2ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#312e81'],
   lha_sar_weekly: ['#f7fee7', '#d9f99d', '#bef264', '#a3e635', '#84cc16', '#65a30d', '#3f6212'],
   lha_1bed_weekly: ['#fefce8', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04', '#854d0e'],
-  supported_living_locations: ['#f0ece4', '#e8d9bb', '#dcc79a', '#d4b87a', '#c9a96e', '#b08040', '#a07840']
+  supported_living_locations: ['#f0ece4', '#e8d9bb', '#dcc79a', '#d4b87a', '#c9a96e', '#b08040', '#a07840'],
+  avg_price_all: ['#C9A96E', '#D4B483', '#DFC69A', '#E8D8BA', '#C8C0B0', '#8C8880']
 };
 var NO_DATA_COLOR = '#333333';
 
@@ -338,7 +340,9 @@ var LAYERS = [
   { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate (£/week)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true },
   { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate (£/week)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true },
   // S11 — the pipeline's only supply-side layer, visually separated in the sidebar
-  { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, ends: ['None', 'High'] }
+  { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, ends: ['None', 'High'] },
+  // S19 — house prices (supply-side context)
+  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI (all property)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], ends: ['< £150k', '£400k+'] }
 ];
 
 var map, geojson, laIndex = {}, activeLayer = LAYERS[0];
@@ -356,6 +360,10 @@ function fmtMoney000(v) {
 function fmtMoneyWeek(v) {
   if (v === null || v === undefined || typeof v !== 'number') return '—';
   return '£' + v.toFixed(2) + '/wk';
+}
+function fmtMoneyPrice(v) {
+  if (v === null || v === undefined || typeof v !== 'number') return '—';
+  return '£' + Math.round(v).toLocaleString('en-GB');
 }
 function fmtPct(v) {
   if (v === null || v === undefined || typeof v !== 'number') return '—';
@@ -385,16 +393,21 @@ function fail(msg) {
 
 Promise.all([
   fetch(BOUNDARIES_URL).then(function (r) { if (!r.ok) throw new Error('boundaries HTTP ' + r.status); return r.json(); }),
-  fetch(SIGNALS_URL).then(function (r) { if (!r.ok) throw new Error('signals HTTP ' + r.status); return r.json(); })
+  fetch(SIGNALS_URL).then(function (r) { if (!r.ok) throw new Error('signals HTTP ' + r.status); return r.json(); }),
+  fetch(HPI_URL).then(function (r) { if (!r.ok) throw new Error('hpi HTTP ' + r.status); return r.json(); })
 ]).then(function (results) {
   geojson = results[0];
   var raw = results[1];
+  var hpi = results[2];
   var signals = Array.isArray(raw) ? raw : (raw.signals || []);
   if (!geojson.features || !geojson.features.length) throw new Error('Boundary file contains no features');
   if (!signals.length) throw new Error('Signals file contains no rows');
 
   var byCode = {};
   signals.forEach(function (s) { byCode[s.lad24cd] = s; });
+
+  var hpiData = hpi.data || {};
+  var hpiEdition = hpi.edition || '';
 
   geojson.features.forEach(function (f) {
     var p = f.properties;
@@ -404,6 +417,12 @@ Promise.all([
         if (k === 'data_quality') return;
         p[k] = sig[k];
       });
+    }
+    var hp = hpiData[p.lad24cd];
+    if (hp) {
+      p.avg_price_all = hp.avg_price_all;
+      p.annual_change_pct = hp.annual_change_pct;
+      p.hpi_edition = hpiEdition;
     }
     p.la_name = p.la_name || p.lad24nm || p.lad24cd;
     laIndex[p.lad24cd] = { code: p.lad24cd, name: p.la_name, bbox: featureBbox(f), props: p };
@@ -447,7 +466,7 @@ function quantileBreaks(field) {
 
 function fillColorExpr(layer) {
   var colors = LAYER_COLOR_SCALES[layer.field];
-  var breaks = quantileBreaks(layer.field);
+  var breaks = layer.fixedBreaks || quantileBreaks(layer.field);
   var step = ['step', ['get', layer.field], colors[0]];
   var prev = -Infinity;
   for (var i = 0; i < breaks.length; i++) {
@@ -548,10 +567,16 @@ function wireMapEvents() {
     var v = f.properties[activeLayer.field];
     var val = (v === null || v === undefined || v === 'null')
       ? 'No data'
-      : (activeLayer.moneyWeek ? fmtMoneyWeek(Number(v))
+      : (activeLayer.moneyPrice ? fmtMoneyPrice(Number(v))
+         : activeLayer.moneyWeek ? fmtMoneyWeek(Number(v))
          : activeLayer.money ? fmtMoney000(Number(v))
          : fmtNum(Number(v)));
-    tooltip.innerHTML = '<div>' + esc(f.properties.la_name) + '</div><div class="tt-val">' + esc(activeLayer.name) + ': ' + esc(val) + '</div>';
+    var ttHtml = '<div>' + esc(f.properties.la_name) + '</div><div class="tt-val">' + esc(activeLayer.name) + ': ' + esc(val) + '</div>';
+    if (activeLayer.field === 'avg_price_all') {
+      var acp = f.properties.annual_change_pct;
+      if (typeof acp === 'number') ttHtml += '<div class="tt-val">' + esc(fmtPct(acp)) + ' yr · ' + esc(f.properties.hpi_edition || '') + '</div>';
+    }
+    tooltip.innerHTML = ttHtml;
     tooltip.style.display = 'block';
     tooltip.style.left = (e.point.x + map.getContainer().offsetLeft + 14) + 'px';
     tooltip.style.top = (e.point.y + 14) + 'px';
@@ -633,6 +658,10 @@ function openPanel(p) {
 
     '<div class="pn-section">Care Supply (CQC)</div>' +
     row('Supported Living Locations', esc(fmtNum(p.supported_living_locations))) +
+
+    '<div class="pn-section">House Prices (LR HPI)</div>' +
+    row('Avg Price (All)', esc(fmtMoneyPrice(p.avg_price_all))) +
+    row('Annual Change', typeof p.annual_change_pct === 'number' ? esc(fmtPct(p.annual_change_pct)) : '—', typeof p.annual_change_pct === 'number' ? (p.annual_change_pct >= 0 ? 'pos' : 'neg') : '') +
 
     '<div class="pn-section">Context</div>' +
     row('Population', esc(fmtNum(p.population))) +
