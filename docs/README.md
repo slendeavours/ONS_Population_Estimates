@@ -2,7 +2,7 @@
 
 <!-- repo-meta
 status: active
-last-reviewed: 2026-07-13
+last-reviewed: 2026-07-16
 type: tool
 consumed-by: map.slendeavours.org, n8n exempt_pipeline workflows
 -->
@@ -39,6 +39,7 @@ Legacy Kepler.gl viewers are retained in `/viewers/` for reference but are no lo
 | Care Providers (SL) | Active, non-dormant CQC supported living locations per LA (supply side) |
 | Discharge Delays (S9a) | Bed days lost to delayed discharge, % delayed 1+ days (DRD monthly, UTLA→LAD apportioned) |
 | CRFD (S9b) | MHS26 clinically ready for discharge days — combined MH+LD/autism (MHSDS monthly, direct LA level) |
+| PIP Claimants (S19) | Total PIP caseload and enhanced daily living claimants per LA (DWP Stat-Xplore, monthly) |
 
 ## How Often Is It Updated?
 
@@ -69,11 +70,12 @@ CNAME                                       Custom domain config for GitHub Page
   METHODOLOGY.md                            Sources and calculations
   s18_pipr_source.md                        Source 18 (ONS PIPR private rents) register entry
   s18_pipr_workbook_structure.md            PIPR workbook spec (n8n S18 build reference)
+  s19_pip_source.md                        Source 19 (DWP PIP claimants) register entry
   geography_dimension.md                    la_geography / la_succession dimension tables
   S9_BUILD_SUMMARY.md                      S9 sources build summary (UCES project knowledge)
   /nodes/                                   Pipeline node documentation
   /decisions/                               Decision records (dated, one per non-obvious decision)
-/scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC fetch, process, map, load, verify)
+/scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC; S19 PIP schema discovery + fetch + load)
 /viewers/                                   Legacy Kepler.gl viewers (retained, unmaintained)
 /n8n/                                       n8n workflow exports
 ```

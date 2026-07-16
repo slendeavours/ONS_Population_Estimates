@@ -5,6 +5,25 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [Unreleased]
 
+## [2026-07-16]
+### Added
+- Source 19 (DWP PIP Claimants): `la_pip_claimants` table with `pip_total_claimants` and `pip_enhanced_daily_living` columns, 296 English LAs, month Apr-26. National total 3,710,753. Schema discovered programmatically from Stat-Xplore REST API `/schema` endpoint.
+- Build script `scripts/s19_pip_build.py` — full pipeline: schema discovery with checkpoint caching, geography resolution, batched table queries (15 LAs/batch, exponential backoff on 504), upsert via `json_to_recordset`, 6-check verification suite.
+- Representative query bodies: `s19_query_total.json`, `s19_query_enhanced_dl.json`.
+- Node documentation: `docs/nodes/s19_node1..6*.md`.
+- Source summary: `docs/s19_pip_source.md` (publisher, cadence, coverage, dual-lens note, refresh procedure).
+
+### Changed
+- `docs/METHODOLOGY.md`: S19 (DWP PIP) added to source register; `la_pip_claimants` added to architecture table list.
+- `docs/README.md`: PIP Claimants row added to data table; S19 script and docs added to repo structure; review stamp updated.
+- `.gitignore`: `s19_cache/` added (Stat-Xplore API response cache, local only).
+
+### Notes
+- DWP applies statistical disclosure control: values below rounding threshold appear as NULL (not zero).
+- Stat-Xplore `/schema` paginates valueset members at 100; the build script follows `Link: rel="next"` headers automatically.
+- Enhanced daily living is the sharper HSS-lens demand proxy (disability as core eligibility criterion for supported living). Total caseload is the broader measure.
+- PIP caseload is not yet wired into Workflow 1 or the demand map. W1 integration and map visualisation are explicitly out of scope for this build.
+
 ## [2026-07-13]
 ### Added
 - Source 9a (NHS DRD monthly discharge delays): 26 months (Apr 2024 – May 2026) loaded into `nhs_drd_discharge_delays` (3,978 rows, 153 UTLAs). UTLA→LAD apportionment via population-weighted `utla_lad_mapping` (296 rows) and `vw_drd_discharge_delays_lad` view.

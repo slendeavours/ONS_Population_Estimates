@@ -23,6 +23,7 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 | 14 | VOA/DWP LHA rates | LHA weekly rates (SAR, 1–4 bed) by BRMA, mapped to LAs | VOA/DWP | Annual (late January) |
 | 17 | SafeLives MARAC data | MARAC cases, rate per 10k | SafeLives | Annual |
 | 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | ONS | Monthly |
+| 19 | DWP Stat-Xplore PIP | PIP total claimants and enhanced daily living per LA (demand proxy for supported living) | DWP | Monthly |
 | 9a | NHS DRD monthly | Bed days lost to delayed discharge, % delayed 1+ days (UTLA→LAD apportioned) | NHSE | Monthly |
 | 9b | MHSDS MHS26 | CRFD delayed discharge days — combined MH+LD/autism (direct LA level) | NHS Digital | Monthly |
 
@@ -53,6 +54,7 @@ Raw Sources (CSV / API)
   │ nhs_drd_discharge_delays│ (S9a: DRD discharge delays at UTLA level)
   │ nhs_mh_crfd             │ (S9b: MHSDS MHS26 CRFD at LA level)
   │ utla_lad_mapping        │ (S9: UTLA→LAD pop-weighted crosswalk)
+  │ la_pip_claimants         │ (S19: PIP claimants by LA/month)
   │ la_geography            │ (geography dimension, code validity)
   │ la_succession           │ (predecessor → successor mappings)
   └─────────────────────────┘

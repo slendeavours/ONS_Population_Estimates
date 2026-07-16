@@ -1,0 +1,85 @@
+{
+  "database": "str:database:PIP_Monthly_new",
+  "measures": [
+    "str:count:PIP_Monthly_new:V_F_PIP_MONTHLY"
+  ],
+  "recodes": {
+    "str:field:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE": {
+      "map": [
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000001"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000002"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000003"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000004"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000005"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000047"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000057"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E08000021"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E08000022"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E08000023"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E08000024"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E08000037"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000006"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000007"
+        ],
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE:V_C_MASTERGEOG21_LA_TO_REGION:E06000008"
+        ]
+      ],
+      "total": false
+    },
+    "str:field:PIP_Monthly_new:F_PIP_DATE:DATE2": {
+      "map": [
+        [
+          "str:value:PIP_Monthly_new:F_PIP_DATE:DATE2:C_PIP_DATE:202604"
+        ]
+      ],
+      "total": false
+    },
+    "str:field:PIP_Monthly_new:V_F_PIP_MONTHLY:DL_AWARD_TYPE": {
+      "map": [
+        [
+          "str:value:PIP_Monthly_new:V_F_PIP_MONTHLY:DL_AWARD_TYPE:C_PIP_DL_AWARD_TYPE:1"
+        ]
+      ],
+      "total": false
+    }
+  },
+  "dimensions": [
+    [
+      "str:field:PIP_Monthly_new:V_F_PIP_MONTHLY:COA_CODE"
+    ],
+    [
+      "str:field:PIP_Monthly_new:F_PIP_DATE:DATE2"
+    ],
+    [
+      "str:field:PIP_Monthly_new:V_F_PIP_MONTHLY:DL_AWARD_TYPE"
+    ]
+  ]
+}

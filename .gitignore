@@ -12,6 +12,9 @@ venv/
 # Raw source downloads (re-fetchable from ONS; see scripts/s18_pipr_fetch.py)
 data/raw/
 
+# Stat-Xplore API response cache (local only, re-fetchable)
+s19_cache/
+
 # Local tooling
 .claude/
 .vscode/
