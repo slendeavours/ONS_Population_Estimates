@@ -5,6 +5,23 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [Unreleased]
 
+## [2026-07-22]
+### Added
+- Source 8b (DWP HB Accommodation Type Breakdown): `la_hb_accom_type_caseload` table with SA, TA, OTHER, UNKNOWN categories across 296 English LAs, 6 months (202509-202602). National SA total ~230k, TA ~112k. Schema discovered from Stat-Xplore REST API.
+- Build script `scripts/s8b_hb_accom_type_build.py` — full pipeline: metadata discovery, batched table queries (50 LAs/batch), geography resolution via `la_code_lookup`, upsert via `json_to_recordset`, verification suite (coverage, boundary, anchor, consistency, reasonableness).
+- New map layer: "HB Specified Accommodation" choropleth (mid-blue sequential ramp), inserted below "TA Households" in the layer list. Driven by `hb_sa_claimants_latest` in the signals JSON.
+- `hb_sa_claimants_latest` field added to `staging_la_signals_latest.json` (296/296 LAs, latest month Feb-26).
+
+### Changed
+- `docs/DATA_DICTIONARY.md`: `hb_sa_claimants_latest` added to Housing Benefit section.
+- `docs/README.md`: HB Accommodation Type row added to data table; S8b script added to repo structure; review stamp updated to 2026-07-22.
+
+### Notes
+- Stat-Xplore returns monthly granularity for the accommodation type breakdown, not quarterly as the DWP release note implied. Refresh cadence recorded as monthly.
+- The existing S8 table `la_hb_sa_caseload` (filtered to C_SATA:1) is unchanged. S8b stores the full breakdown in a separate table.
+- Two historical geography codes (E07000028, E07000189) were unresolvable — these are extinct LAs with no successor in `la_code_lookup`. All 296 current LAD24CD codes are covered.
+- Birmingham SA consistency check: 9.6% difference vs `la_hb_sa_caseload` for Nov-25 — within the 10% threshold, attributable to retrospective revisions.
+
 ## [2026-07-16]
 ### Added
 - Source 19 (DWP PIP Claimants): `la_pip_claimants` table with `pip_total_claimants` and `pip_enhanced_daily_living` columns, 296 English LAs, month Apr-26. National total 3,710,753. Schema discovered programmatically from Stat-Xplore REST API `/schema` endpoint.

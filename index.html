@@ -326,6 +326,7 @@ var LAYER_COLOR_SCALES = {
   rough_sleeping_current: ['#ecfeff', '#a5f3fc', '#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#164e63'],
   imd_rank_of_average_rank: ['#166534', '#15803d', '#16a34a', '#4ade80', '#bbf7d0', '#dcfce7', '#f0fdf4'],
   hb_sa_caseload: ['#eef2ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#312e81'],
+  hb_sa_claimants_latest: ['#DBEAFE', '#93C5FD', '#60A5FA', '#3B82F6', '#2563EB', '#1D4ED8', '#1E40AF'],
   lha_sar_weekly: ['#f7fee7', '#d9f99d', '#bef264', '#a3e635', '#84cc16', '#65a30d', '#3f6212'],
   lha_1bed_weekly: ['#fefce8', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04', '#854d0e'],
   supported_living_locations: ['#f0ece4', '#e8d9bb', '#dcc79a', '#d4b87a', '#c9a96e', '#b08040', '#a07840'],
@@ -335,6 +336,7 @@ var NO_DATA_COLOR = '#333333';
 
 var LAYERS = [
   { key: 'ta',    dot: '#4ade80', name: 'TA Households',              desc: 'Temporary accommodation demand',      field: 'ta_households_current',       reversed: false, minLabel: 'Lower demand', maxLabel: 'Higher demand' },
+  { key: 'hbsa',  dot: '#3B82F6', name: 'HB Specified Accommodation', desc: 'HB claimants in specified accommodation', field: 'hb_sa_claimants_latest', reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
   { key: 'spend', dot: '#f59e0b', name: 'Homelessness Spend',         desc: 'Total annual spend (2024-25)',        field: 'ro4_total_homelessness_000',  reversed: false, money: true, minLabel: 'Lower spend', maxLabel: 'Higher spend' },
   { key: 'reg',   dot: '#f97316', name: 'Housing Register',           desc: 'Social housing waiting lists',        field: 'housing_register',            reversed: false, minLabel: 'Smaller', maxLabel: 'Larger' },
   { key: 'care',  dot: '#ef4444', name: 'Care Leavers',               desc: 'Semi-independent housing need',       field: 'care_leavers_semi_indep',     reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
@@ -645,6 +647,7 @@ function openPanel(p) {
     row('Housing Register', esc(fmtNum(p.housing_register))) +
     row('Rough Sleeping', esc(fmtNum(p.rough_sleeping_current))) +
     row('HB Asylum Seekers', esc(fmtNum(p.hb_sa_caseload))) +
+    row('HB Specified Accom', esc(fmtNum(p.hb_sa_claimants_latest))) +
 
     '<div class="pn-section">Cohort Demand</div>' +
     row('Care Leavers', esc(fmtNum(p.care_leavers_semi_indep))) +

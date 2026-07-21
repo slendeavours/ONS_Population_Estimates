@@ -77,6 +77,7 @@ Source: DWP STAT-Xplore Housing Benefit caseload data
 | Column | Type | Range | Description |
 |---|---|---|---|
 | `hb_sa_caseload` | integer | 0 – 5,000+ | Housing Benefit claimants who are asylum seekers (proxy for exempt accommodation pressure) |
+| `hb_sa_claimants_latest` | integer | 0 – 36,000+ | HB claimants in Specified Accommodation, latest month (S8b accommodation type breakdown) |
 
 ---
 

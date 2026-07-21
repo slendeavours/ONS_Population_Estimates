@@ -2,7 +2,7 @@
 
 <!-- repo-meta
 status: active
-last-reviewed: 2026-07-16
+last-reviewed: 2026-07-22
 type: tool
 consumed-by: map.slendeavours.org, n8n exempt_pipeline workflows
 -->
@@ -31,7 +31,7 @@ Legacy Kepler.gl viewers are retained in `/viewers/` for reference but are no lo
 | Rough Sleeping | Current count, prior year count |
 | Care Leavers | Semi-independent placement count |
 | Domestic Violence | MARAC cases, rate per 10k population |
-| Housing Pressure | Housing register (waiting list), HB asylum seekers |
+| Housing Pressure | Housing register (waiting list), HB asylum seekers, HB specified accommodation claimants |
 | Expenditure | B&B spend, nightly-paid spend, total homelessness spend (£000s) |
 | Fiscal Risk | EFS support flag, S.114 notice flag |
 | Deprivation | IMD rank of average rank |
@@ -40,6 +40,7 @@ Legacy Kepler.gl viewers are retained in `/viewers/` for reference but are no lo
 | Discharge Delays (S9a) | Bed days lost to delayed discharge, % delayed 1+ days (DRD monthly, UTLA→LAD apportioned) |
 | CRFD (S9b) | MHS26 clinically ready for discharge days — combined MH+LD/autism (MHSDS monthly, direct LA level) |
 | PIP Claimants (S19) | Total PIP caseload and enhanced daily living claimants per LA (DWP Stat-Xplore, monthly) |
+| HB Accommodation Type (S8b) | HB claimants by accommodation type: SA, TA, Other, Unknown (DWP Stat-Xplore, monthly) |
 
 ## How Often Is It Updated?
 
@@ -75,7 +76,7 @@ CNAME                                       Custom domain config for GitHub Page
   S9_BUILD_SUMMARY.md                      S9 sources build summary (UCES project knowledge)
   /nodes/                                   Pipeline node documentation
   /decisions/                               Decision records (dated, one per non-obvious decision)
-/scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC; S19 PIP schema discovery + fetch + load)
+/scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC; S19 PIP; S8b HB accommodation type)
 /viewers/                                   Legacy Kepler.gl viewers (retained, unmaintained)
 /n8n/                                       n8n workflow exports
 ```
