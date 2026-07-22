@@ -13,6 +13,7 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 - `hb_sa_claimants_latest` field added to `staging_la_signals_latest.json` (296/296 LAs, latest month Feb-26).
 
 ### Changed
+- W1 run 11: `staging_la_signals` gains `pip_total_claimants`, `pip_enhanced_daily_living`, `pip_rate_per_1000` — wired from `la_pip_claimants` (S19, Apr-26). Completes the HSS three-layer package (S11 supply + S19 demand + S9 flow) in a single row per LA.
 - `docs/DATA_DICTIONARY.md`: `hb_sa_claimants_latest` added to Housing Benefit section.
 - `docs/README.md`: HB Accommodation Type row added to data table; S8b script added to repo structure; review stamp updated to 2026-07-22.
 

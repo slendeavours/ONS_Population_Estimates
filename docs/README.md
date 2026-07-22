@@ -72,6 +72,7 @@ CNAME                                       Custom domain config for GitHub Page
   s18_pipr_source.md                        Source 18 (ONS PIPR private rents) register entry
   s18_pipr_workbook_structure.md            PIPR workbook spec (n8n S18 build reference)
   s19_pip_source.md                        Source 19 (DWP PIP claimants) register entry
+  s19_pip_w1_integration.md               S19 PIP W1 integration summary (run 11)
   geography_dimension.md                    la_geography / la_succession dimension tables
   S9_BUILD_SUMMARY.md                      S9 sources build summary (UCES project knowledge)
   /nodes/                                   Pipeline node documentation
