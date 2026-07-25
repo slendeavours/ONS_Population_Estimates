@@ -27,12 +27,22 @@ if not API_KEY:
     sys.exit("HARD STOP: Stat-Xplore_Token missing from environment.")
 
 DB_HOST = (os.getenv("PG_HOST") or "localhost").replace("postgres", "localhost")
+
+def _require_env(name):
+    """Credentials must come from the environment. Never fall back to a
+    literal: a default in source is a published credential."""
+    value = os.environ.get(name)
+    if not value:
+        sys.exit(f"HARD STOP: {name} is not set. Set it in the environment "
+                 f"or .env. This script will not guess a credential.")
+    return value
+
 DB_CFG = dict(
     host=DB_HOST,
     port=int(os.getenv("PG_PORT", "5432")),
     dbname=os.getenv("PG_DATABASE", "exempt_pipeline"),
-    user=os.getenv("PG_USER", "n8nuser"),
-    password=os.getenv("PG_PASSWORD", ""),
+    user=_require_env("PG_USER"),
+    password=_require_env("PG_PASSWORD"),
 )
 
 SCRIPT_DIR = Path(__file__).resolve().parent

@@ -8,12 +8,21 @@ import datetime
 import psycopg2
 import psycopg2.extras
 
+def _require_env(name):
+    """Credentials must come from the environment. Never fall back to a
+    literal: a default in source is a published credential."""
+    value = os.environ.get(name)
+    if not value:
+        sys.exit(f"HARD STOP: {name} is not set. Set it in the environment "
+                 f"or .env. This script will not guess a credential.")
+    return value
+
 DB_CFG = dict(
-    host="localhost",
-    port=5432,
-    dbname="exempt_pipeline",
-    user=os.environ.get("PG_USER", "n8nuser"),
-    password=os.environ.get("PG_PASSWORD", "n8npassword"),
+    host=os.environ.get("PG_HOST", "localhost"),
+    port=int(os.environ.get("PG_PORT", "5432")),
+    dbname=os.environ.get("PG_DATABASE", "exempt_pipeline"),
+    user=_require_env("PG_USER"),
+    password=_require_env("PG_PASSWORD"),
 )
 
 EDITION = "April 2026"
