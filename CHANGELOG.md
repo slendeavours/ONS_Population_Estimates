@@ -5,6 +5,14 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [Unreleased]
 
+### Security
+- **A database credential was supplied as a fallback default in `s15_hpi_build.py` and has been removed. The credential has been rotated.** The value is not restated here or anywhere else in the repository. It had been present across 17 commits under two filenames, and the account it belonged to is a Postgres superuser owning four databases, so the exposure was cluster-wide rather than limited to `exempt_pipeline`.
+- Every build script now resolves `PG_USER` and `PG_PASSWORD` through a `_require_env` helper that stops with a clear error rather than falling back to a literal. Host, port and database name keep defaults; they are addressing, not credentials. `scripts/s11_cqc_load.py` and `scripts/s18_pipr_load.py` already behaved this way and are unchanged.
+- Hardcoded absolute `.env` path removed from `scripts/s8b_hb_accom_type_build.py`. It resolved relative to a specific machine and leaked a local username.
+- `.gitleaks.toml` added. **The default gitleaks ruleset does not catch this class of leak** — verified, it reports "no leaks found" against the history containing the live credential, because its rules target high-entropy secrets and this was a short dictionary word. Four custom rules close the gap: credential defaults in `os.getenv`/`environ.get`, inline database credential literals, connection URIs with embedded credentials, and hardcoded local paths.
+- History has **not** been rewritten. Rotation makes the exposed value inert, and rewriting published history would break every existing clone and fork without recovering a secret that must be assumed compromised regardless.
+- Decision record: `docs/decisions/2026-07-25-credential-default-exposure.md`.
+
 ## [2026-07-22]
 ### Added
 - Source 8b (DWP HB Accommodation Type Breakdown): `la_hb_accom_type_caseload` table with SA, TA, OTHER, UNKNOWN categories across 296 English LAs, 6 months (202509-202602). National SA total ~230k, TA ~112k. Schema discovered from Stat-Xplore REST API.
