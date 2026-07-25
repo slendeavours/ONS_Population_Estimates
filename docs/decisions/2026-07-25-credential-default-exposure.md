@@ -105,6 +105,50 @@ the log prefix, **a successful login using the correct credential leaves no
 trace whatsoever.** The log can show failed attempts; it cannot show whether
 anyone succeeded. Absence of evidence here is not evidence of absence.
 
+### The control that closes this exposure class is the port binding, not the password
+
+Rotating the password fixes *this* credential. It does not stop the next one
+being reachable. **Binding Postgres to loopback is what closes the class.**
+
+```yaml
+ports:
+  - "127.0.0.1:5432:5432"
+```
+
+Nothing requires 5432 on all interfaces. n8n reaches Postgres as
+`postgres:5432` over the Docker network and is unaffected by host port
+binding. The host port exists solely for the Python build scripts, which run
+on **native Windows** (`sys.platform == win32`, no WSL) and connect to
+`localhost`. Loopback serves them exactly as well.
+
+With the port on loopback, an exposed credential is no longer an exposed
+database. The password becomes one control among several rather than the only
+one — which is what it was, given `pg_hba` ends `host all all all`.
+
+**The same applies to the rest of the stack.** `qdrant` (6333) and `ollama`
+(11434) are also published on `0.0.0.0`. Same exposure class, same fix.
+
+## Process finding: redaction must be default, not selective
+
+While establishing reachability, `docker inspect --format '{{json .Config.Cmd}}'`
+printed the full `CLOUDFLARED_TOKEN` into the working transcript. Every other
+secret handled in that session was redacted — `.env` was printed keys-only,
+container environments were piped through a redacting `sed`, and secret
+searches compared values without echoing them.
+
+The difference was that container **environment** was recognised as
+secret-bearing and container **command** was not. That was a judgement call
+made per-command, and it should not have been a judgement call at all.
+
+**Rule: any command that dumps full container configuration or environment —
+`docker inspect` with no format filter, `.Config.Env`, `.Config.Cmd`,
+`.Config.Entrypoint`, `docker compose config` — is redacted by default.**
+Redaction is not applied where a secret is expected; it is applied wherever
+one is possible, and lifted only for a named field known to be safe.
+
+The token is being refreshed. The exposure is bounded to this session's
+transcript, but the process error would have recurred.
+
 ## Scan coverage
 
 gitleaks reports commits processed, not commits examined; the two differ by 13
@@ -237,6 +281,16 @@ with `gitleaks git .`.** Neither alone is sufficient.
   Anthropic, HubSpot, Microsoft Outlook, OpenAI, Pinecone, Stat-Xplore and the
   rest. That is a scheduled maintenance task with the credential values to hand,
   not something to fold into a database password rotation.
+- **Follow-up, defence in depth, not open exposure — only after the loopback
+  binding lands.** Neither of these is urgent once nothing off-box can reach
+  the port, and both are worth doing anyway:
+  - `ssl = off`. Connections are unencrypted. SCRAM protects the password
+    itself, but every row in transit is plaintext. Relevant to anything
+    crossing the Docker bridge, and to any future non-loopback access.
+  - `pg_hba.conf` ends `host all all all scram-sha-256` — any host, any user,
+    any database. Once the port is on loopback this is reachable only from the
+    host and the Docker network, but it grants far more than either needs.
+    Narrow to the Docker subnet and `127.0.0.1`.
 - Consider a scoped, non-superuser role for the pipeline. `pipeline_user`
   already exists and is not a superuser; the build scripts connect as the
   superuser only because that is what the `.env` supplies.
