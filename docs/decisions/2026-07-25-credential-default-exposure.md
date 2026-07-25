@@ -66,6 +66,62 @@ counts are not public, automated scrapers index public repositories
 continuously, and a credential in a public repository must be treated as
 harvested from the moment it lands.
 
+## Reachability of port 5432 — what bounds the incident
+
+Established from the host on 2026-07-25:
+
+| Check | Finding |
+|---|---|
+| Compose publishes | `"5432:5432"` with no host IP, so `docker port` reports `0.0.0.0:5432` and `[::]:5432` — **all interfaces** |
+| `listen_addresses` | `*` |
+| `pg_hba.conf` final rule | `host all all all scram-sha-256` — **any host, any user, any database**, password only |
+| TLS | `ssl = off` — connections are unencrypted |
+| Windows Firewall | No rule scoped to 5432. Two enabled inbound `Docker Desktop Backend` **Allow** rules on the **Public** profile, which permit inbound to published container ports |
+| Host address | `192.168.1.203/24` on WiFi, gateway `192.168.1.254` — RFC1918, behind NAT |
+| Log retention | Container log spans **2026-05-09 to present**, so it covers the whole exposure window and has not rotated past it |
+| `log_connections` | **off** |
+| `log_line_prefix` | `'%m [%p] '` — **no `%h`**, so no client address on any line |
+
+**Conclusion: LAN-reachable is confirmed. Internet-reachability could not be
+excluded from the host.** Anyone on `192.168.1.0/24` could reach
+`192.168.1.203:5432` and authenticate as a superuser with the published
+credential. Whether that extended beyond the LAN depends on two things not
+readable from this machine: the router's inbound port-forwarding or UPnP state,
+and the Cloudflare tunnel's ingress rules. The tunnel is token-based and
+remotely managed (`tunnel run --token …`), so its configuration lives in the
+Cloudflare Zero Trust dashboard rather than on disk. `cloudflared` shares the
+`demo` Docker network with `postgres`, so it *can* route to `postgres:5432`;
+whether any ingress rule does so is unknown.
+
+### What the logs can and cannot tell us
+
+25 `FATAL` lines are retained. Authentication failures for user `postgres`
+cluster on 15–16 June 2026 — a signature consistent with automated scanning,
+but **predating the 14 July exposure**. One `pipeline_user` failure on 10 July.
+**None after 14 July.**
+
+That absence is not reassurance. With `log_connections = off` and no `%h` in
+the log prefix, **a successful login using the correct credential leaves no
+trace whatsoever.** The log can show failed attempts; it cannot show whether
+anyone succeeded. Absence of evidence here is not evidence of absence.
+
+## Scan coverage
+
+gitleaks reports commits processed, not commits examined; the two differ by 13
+in this repository and the mechanism for 12 of them was not established. For
+secrets with a known literal value, coverage is complete and independently
+verified across all 78 commits. For unknown secrets, up to 13 commits may not
+have been pattern-matched; `gitleaks dir` on the working tree mitigates this
+for anything currently present.
+
+Report the tool's figure as **commits reported by tool**, never as "commits
+scanned", so it is not mistaken for a coverage guarantee.
+
+Commits orphaned by a branch rebuild remain in the local object store but are
+unreachable from any ref. Unreachable objects are never transferred on clone,
+and none of those branches were pushed, so they are local-only and are not
+exposure. `git gc` will drop them.
+
 ## Why the scan did not catch it earlier
 
 Two separate failures, and only one of them is the obvious one.
