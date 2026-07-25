@@ -16,11 +16,13 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 | 5 | MHCLG IMD | Index of Multiple Deprivation | MHCLG | Every ~5 years |
 | 7 | ONS Open Geography Portal | LA boundary polygons (LAD Dec 2024) | ONS | On boundary changes |
 | 8 | DWP STAT-Xplore | Housing Benefit asylum seeker caseload | DWP | Monthly/quarterly |
+| 8b | DWP Stat-Xplore HB (accommodation type) | HB claimants by accommodation type (SA, TA, Other, Unknown) per LA | DWP | Monthly |
 | 10 | DLUHC Rough Sleeping Snapshot | Rough sleeping counts | DLUHC | Annual (autumn) |
 | 11 | CQC Care directory with filters | Registered care locations with supported living, personal care and care home flags (supply side) | CQC | Monthly |
 | 12 | MHCLG EFS / published S.114 notices | EFS support flag, S.114 notice flag | MHCLG / LAs | Published as issued |
 | 13 | DLUHC LAHS | Social housing waiting list (register) | DLUHC | Annual |
 | 14 | VOA/DWP LHA rates | LHA weekly rates (SAR, 1–4 bed) by BRMA, mapped to LAs | VOA/DWP | Annual (late January) |
+| 15 | Land Registry UK HPI | Average house prices per LA (all property types), annual % change | HM Land Registry | Monthly |
 | 17 | SafeLives MARAC data | MARAC cases, rate per 10k | SafeLives | Annual |
 | 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | ONS | Monthly |
 | 19 | DWP Stat-Xplore PIP | PIP total claimants and enhanced daily living per LA (demand proxy for supported living) | DWP | Monthly |
@@ -55,6 +57,8 @@ Raw Sources (CSV / API)
   │ nhs_mh_crfd             │ (S9b: MHSDS MHS26 CRFD at LA level)
   │ utla_lad_mapping        │ (S9: UTLA→LAD pop-weighted crosswalk)
   │ la_pip_claimants         │ (S19: PIP claimants by LA/month)
+  │ la_hb_accom_type_caseload│ (S8b: HB accom type by LA/month)
+  │ la_house_prices          │ (S15: Land Registry HPI by LA/period)
   │ la_geography            │ (geography dimension, code validity)
   │ la_succession           │ (predecessor → successor mappings)
   └─────────────────────────┘
