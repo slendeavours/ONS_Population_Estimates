@@ -1,0 +1,58 @@
+# gitleaks configuration for the exempt accommodation intelligence pipeline.
+#
+# Extends the default ruleset. The defaults target high-entropy, structurally
+# recognisable secrets: AWS keys, JWTs, provider tokens. They do NOT catch a
+# short dictionary-word password used as a fallback default in source, which is
+# exactly what was published in this repository in s15_hpi_build.py and stood
+# undetected across 17 commits.
+#
+# Verified: with the default ruleset alone, `gitleaks git .` reports "no leaks
+# found" on the commit that contains that live credential. The rules below are
+# what make it fire.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "hardcoded-credential-default"
+description = "Credential supplied as a fallback default in source (os.getenv/environ.get with a literal second argument)"
+regex = '''(?i)(?:os\.environ\.get|os\.getenv)\(\s*["'][A-Z0-9_]*(?:PASS|PASSWORD|PWD|SECRET|TOKEN|APIKEY|API_KEY|USER|USERNAME)["']\s*,\s*["'][^"']+["']\s*\)'''
+tags = ["credential", "default", "python"]
+
+[[rules]]
+id = "inline-db-credential"
+description = "Database connection with an inline user or password literal"
+regex = '''(?i)\b(?:password|passwd|pwd|user|username)\s*=\s*["'][A-Za-z0-9._!@#$%^&*+-]{3,}["']'''
+tags = ["credential", "database"]
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  # Environment lookups and required-env helpers are the approved pattern.
+  '''=\s*_require_env''',
+  '''=\s*os\.(?:environ\.get|getenv)''',
+  '''=\s*env\.get''',
+  # Placeholders in documentation.
+  '''["'](?:<[^>]+>|\.\.\.|REDACTED|CHANGEME|xxx+|your[_-]?\w*)["']''',
+]
+
+[[rules]]
+id = "connection-uri-with-credentials"
+description = "Connection URI carrying embedded credentials"
+regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|ftp)://[^\s:/"']+:[^\s@"']+@'''
+tags = ["credential", "uri"]
+
+[[rules]]
+id = "local-absolute-path"
+description = "Hardcoded local filesystem path, leaks a username and breaks portability"
+regex = '''(?i)["'][A-Z]:[\\/]Users[\\/][A-Za-z0-9._-]+'''
+tags = ["hygiene", "path"]
+
+# Raw source spreadsheets and exported data carry no secrets and are large.
+[allowlist]
+description = "Data artefacts and vendored assets"
+paths = [
+  '''data/boundaries/.*\.geojson''',
+  '''data/signals/.*\.json''',
+  '''data/processed/.*\.csv''',
+  '''viewers/.*''',
+]
