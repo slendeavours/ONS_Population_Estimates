@@ -40,6 +40,12 @@ id = "connection-uri-with-credentials"
 description = "Connection URI carrying embedded credentials"
 regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|ftp)://[^\s:/"']+:[^\s@"']+@'''
 tags = ["credential", "uri"]
+[rules.allowlist]
+regexTarget = "match"
+regexes = [
+  # Illustrative forms in prose. These name the shape of the risk, not a value.
+  '''://(?:user|username|USER|<[^>]+>)\s*:\s*(?:pass|password|PASSWORD|secret|<[^>]+>)@''',
+]
 
 [[rules]]
 id = "local-absolute-path"
