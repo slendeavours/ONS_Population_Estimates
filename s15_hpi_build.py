@@ -1,4 +1,4 @@
-"""S19 — Land Registry UK HPI ETL: average house prices per English LA into Postgres."""
+"""S15 — Land Registry UK HPI ETL: average house prices per English LA into Postgres."""
 
 import os
 import sys
@@ -26,7 +26,7 @@ DB_CFG = dict(
 )
 
 EDITION = "April 2026"
-_TMP = os.path.join(os.environ.get("TEMP", os.environ.get("TMP", "/tmp")), "s19_hpi")
+_TMP = os.path.join(os.environ.get("TEMP", os.environ.get("TMP", "/tmp")), "s15_hpi")
 FILE1 = os.path.join(_TMP, "avg_prices.csv")
 FILE2 = os.path.join(_TMP, "avg_prices_property_type.csv")
 
@@ -311,8 +311,8 @@ def main():
         VALUES
             (%s, %s, %s, %s, NOW(), %s, %s)
     """, (
-        "Source 19 - Land Registry UK HPI",
-        19,
+        "Source 15 - Land Registry UK HPI",
+        15,
         total,
         started_at,
         "success",
