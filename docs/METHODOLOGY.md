@@ -14,6 +14,7 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 | 3b | Census 2021 TS054 | Tenure | ONS | Decennial |
 | 4 | DfE SEN2 / Children in Need | Care leavers in semi-independent housing | DfE | Annual |
 | 5 | MHCLG IMD | Index of Multiple Deprivation | MHCLG | Every ~5 years |
+| 6 | Home Office Asy_D11 / Reg_02 | Asylum seekers in receipt of Home Office support by support type and accommodation type; immigration groups by pathway (standalone) | Home Office / MHCLG | Quarterly |
 | 7 | ONS Open Geography Portal | LA boundary polygons (LAD Dec 2024) | ONS | On boundary changes |
 | 8 | DWP STAT-Xplore | Housing Benefit asylum seeker caseload | DWP | Monthly/quarterly |
 | 8b | DWP Stat-Xplore HB (accommodation type) | HB claimants by accommodation type (SA, TA, Other, Unknown) per LA | DWP | Monthly |
@@ -30,6 +31,14 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 | 9b | MHSDS MHS26 | CRFD delayed discharge days — combined MH+LD/autism (direct LA level) | NHS Digital | Monthly |
 
 S11 is the pipeline's only supply-side source: every other source measures need, S11 records existing CQC-registered provision. It is stored agnostically like everything else; the pipeline does not score or rank markets.
+
+**Standalone sources.** S6 and S19 are loaded but not wired into Workflow 1: they add no `staging_la_signals` column, no tenant type and no map layer. They are queried directly from their own tables.
+
+**S6 caveats.** Asylum support figures are based on the person's registered address, which is not necessarily where they regularly reside, and **exclude unaccompanied asylum-seeking children**, who are supported by local authority children's services rather than Home Office asylum support. S6 is not a count of all asylum seekers in an area. Two structural breaks make the England series non-comparable before 2025-03-31; they are recorded in the `asylum_series_breaks` table and explained in `docs/s6_asylum_source.md`.
+
+**S6 geography dependency.** S6 resolves three local authority codes through a build-local layer because `la_code_lookup` is wrong or silent on them. Until that is remediated, the database is inconsistent across sources on Cumberland (E06000063) and Westmorland and Furness (E06000064), and **S6 is the only correct one**. See `docs/decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md`.
+
+**Standing rule — unresolved codes are UNEXPLAINED until explained.** Any build encountering codes it cannot resolve reports them as UNEXPLAINED, never as harmless, benign or expected. The explanation is a gate, not a note: an unresolved code is a hard stop, and the reason it is unresolved must be established against an authoritative source before deciding what to do about it. A missing entry in a shared lookup is evidence about the lookup, not only about the source in hand. Classifying a gap without investigating it is what let the `la_code_lookup` Cumbria error stand for two weeks after it was visible.
 
 ---
 
