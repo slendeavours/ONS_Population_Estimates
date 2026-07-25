@@ -5,16 +5,6 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [Unreleased]
 
-### Fixed
-- **Source 15 renumbering completed.** `s15_hpi_build.py` still wrote `source_number = 19` to `pipeline_run_log`, so the collision with S19 (DWP PIP) that the renumbering was meant to resolve was still live under a filename that said otherwise. The script's docstring, temp directory, run-log `agent_name` and `source_number` now all read 15, and `s15_hpi_source.md` names the correct refresh script. `index.html` carries a one-line comment change only — no layer definition, legend rule, field name or data source URL is affected, so nothing the map renders changes.
-
-### Added
-- `docs/METHODOLOGY.md`: source register rows for **S8b** (DWP Stat-Xplore HB accommodation type, built 2026-07-22) and **S15** (Land Registry UK HPI, built 2026-07-14), neither of which had been added when those sources landed. Their tables `la_hb_accom_type_caseload` and `la_house_prices` added to the architecture listing.
-- `docs/README.md`: `s15_hpi_build.py` and `s15_hpi_source.md` added to the repository structure.
-
-### Notes
-- The S8 register row still reads "Housing Benefit asylum seeker caseload" and is deliberately unchanged here. Correcting it belongs with the map layer relabel, not with the renumbering.
-
 ### Security
 - **A database credential was supplied as a fallback default in `s15_hpi_build.py` and has been removed. The credential has been rotated.** The value is not restated here or anywhere else in the repository. It had been present across 25 commits under two filenames, and the account it belonged to is a Postgres superuser owning four databases, so the exposure was cluster-wide rather than limited to `exempt_pipeline`.
 - Every build script now resolves `PG_USER` and `PG_PASSWORD` through a `_require_env` helper that stops with a clear error rather than falling back to a literal. Host, port and database name keep defaults; they are addressing, not credentials. `scripts/s11_cqc_load.py` and `scripts/s18_pipr_load.py` already behaved this way and are unchanged.
@@ -22,6 +12,35 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 - `.gitleaks.toml` added. **The default gitleaks ruleset does not catch this class of leak** — verified, it reports "no leaks found" against the history containing the live credential, because its rules target high-entropy secrets and this was a short dictionary word. Four custom rules close the gap: credential defaults in `os.getenv`/`environ.get`, inline database credential literals, connection URIs with embedded credentials, and hardcoded local paths.
 - History has **not** been rewritten. Rotation makes the exposed value inert, and rewriting published history would break every existing clone and fork without recovering a secret that must be assumed compromised regardless.
 - Decision record: `docs/decisions/2026-07-25-credential-default-exposure.md`.
+
+### Added
+- Source 6 (Home Office asylum support by local authority). Two tables from the quarterly immigration system statistics release: `Asy_D11` as a time series and `Reg_02` as a single snapshot. Loaded into `la_asylum_support` (20,926 rows, 33 quarters from 2018 Q1), `la_asylum_support_unallocated` (84 rows), `asylum_support_non_england` (2,374 rows) and `la_immigration_groups` (3,552 rows, 296 LAs × 12 pathway rows).
+- `vw_la_asylum_support_totals` — one row per (period, LA) with the accommodation and support-type split, including `accommodation_not_stated` so the breakdown columns sum to the total.
+- `asylum_series_breaks` — machine-readable record of the two structural breaks, so consumers of the view see them without reading documentation.
+- Build script `s6_asylum_build.py` and verification suite `s6_asylum_verify.py`: landing-page discovery, download, parse, code-first geography resolution, SUM aggregation on the natural key, single-transaction upsert, 13 halting checks, run logging.
+- Node documentation `docs/nodes/s6_node1..9*.md`, source summary `docs/s6_asylum_source.md`, build summary `docs/S6_BUILD_SUMMARY.md`, and generated anomalies record `docs/s6_source_anomalies.md`.
+- Decision record `docs/decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md`.
+- `docs/METHODOLOGY.md`: source register rows for **S8b** (DWP Stat-Xplore HB accommodation type, built 2026-07-22) and **S15** (Land Registry UK HPI, built 2026-07-14), neither of which had been added when those sources landed. Their tables `la_hb_accom_type_caseload` and `la_house_prices` added to the architecture listing.
+- `docs/README.md`: `s15_hpi_build.py` and `s15_hpi_source.md` added to the repository structure.
+
+### Changed
+- `docs/METHODOLOGY.md`: S6 added to the source register in source-number order, marked standalone; S6 caveats and geography dependency recorded; pipeline-wide standing rule on unresolved codes added.
+- `docs/README.md`: S6 scripts and documents added to the repository structure; review stamp updated to 2026-07-25.
+
+### Fixed
+- **`la_code_lookup` contains a confirmed error.** `E07000027` (Barrow-in-Furness) maps to `E06000063` Cumberland; the correct successor is `E06000064` Westmorland and Furness. `E07000028` (Carlisle) and `E07000189` (South Somerset) have no row at all. Verified against the ONS area pages for E06000063, E06000064 and E06000066 plus the Cumbria and Somerset (Structural Changes) Orders 2022. S6 works around this in a build-local resolution layer and does **not** write to the shared table; the repair is tracked as a separate remediation task.
+- This supersedes the note in the 2026-07-22 entry below, which recorded `E07000028` and `E07000189` as "extinct LAs with no successor in `la_code_lookup`" and treated them as harmless. They are not extinct: both have successors, and the reason they were missing was a transcription error that also misrouted a third code. That mis-classification is why the pipeline now has a standing rule that unresolved codes are reported as UNEXPLAINED, never as harmless, benign or expected.
+- **Source 15 renumbering completed.** `s15_hpi_build.py` still wrote `source_number = 19` to `pipeline_run_log`, so the collision with S19 (DWP PIP) that the renumbering was meant to resolve was still live under a filename that said otherwise. The script's docstring, temp directory, run-log `agent_name` and `source_number` now all read 15, and `s15_hpi_source.md` names the correct refresh script. `index.html` carries a one-line comment change only — no layer definition, legend rule, field name or data source URL is affected, so nothing the map renders changes.
+
+### Notes
+- **S6 is standalone.** No Workflow 1 integration, no `staging_la_signals` column, no tenant type, no map layer, no composite index — the same pattern as S19 PIP. Its data is not exported to this repository; it lives only in Postgres.
+- **Loaded from 2018 Q1, not the full 2014 series.** Section 4 carries no LA geography before 2018, so earlier quarters cannot be aggregated consistently across support types.
+- **Two structural breaks make England totals non-comparable before 2025-03-31.** Section 98 gained LA geography at 2022-12-31, so England rises from 53,749 to 98,375 as a reporting change rather than arrivals. Subsistence Only lost LA geography for five quarters to 2024-12-31, which accounts for most of the apparent swing in LA coverage.
+- **Zeros are never published**, so an absent LA means "not published" rather than "none". Confirmed independently by the distribution check: 344 present − 164 under 100 = 180 at or above, against a published 181 of 361 under 100 implying 180.
+- Figures use the person's registered address, not necessarily where they reside, and exclude unaccompanied asylum-seeking children. S6 is not a count of all asylum seekers in an area.
+- `Asy_D09` is downloaded at verification time as an independent per-period reference and is never loaded into a table.
+- **Until the `la_code_lookup` remediation lands, the database is inconsistent across sources on Cumberland (E06000063) and Westmorland and Furness (E06000064), and S6 is the only correct one.**
+- The S8 register row still reads "Housing Benefit asylum seeker caseload" and is deliberately unchanged here. Correcting it belongs with the map layer relabel, not with the renumbering.
 
 ## [2026-07-22]
 ### Added

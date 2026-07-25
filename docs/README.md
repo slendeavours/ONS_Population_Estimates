@@ -42,6 +42,8 @@ Legacy Kepler.gl viewers are retained in `/viewers/` for reference but are no lo
 | PIP Claimants (S19) | Total PIP caseload and enhanced daily living claimants per LA (DWP Stat-Xplore, monthly) |
 | HB Accommodation Type (S8b) | HB claimants by accommodation type: SA, TA, Other, Unknown (DWP Stat-Xplore, monthly) |
 
+Source 6 (Home Office asylum support) is **deliberately absent from this table**. It is loaded into Postgres but not wired into Workflow 1, so it appears in neither the signals JSON nor the map, and nothing in this repository exports it. Adding a row here would imply a coverage this repository does not have. See `docs/s6_asylum_source.md`.
+
 ## How Often Is It Updated?
 
 After each **Workflow 1 pipeline run**. The run ID and timestamp are displayed in the map, and `data/signals/latest.json` contains the current run metadata. LHA rates refresh annually when DWP publishes new rates (late January).
@@ -59,6 +61,8 @@ After each **Workflow 1 pipeline run**. The run ID and timestamp are displayed i
 ```
 index.html                                  Live Demand Map (Mapbox GL JS) — map.slendeavours.org
 CNAME                                       Custom domain config for GitHub Pages
+s6_asylum_build.py                          Source 6 (Home Office asylum support) ETL — standalone, not in W1
+s6_asylum_verify.py                         Source 6 verification suite (13 halting checks)
 s15_hpi_build.py                            Source 15 (Land Registry UK HPI) ETL
 s15_hpi_source.md                           Source 15 register entry
 /data/
@@ -75,8 +79,11 @@ s15_hpi_source.md                           Source 15 register entry
   s18_pipr_workbook_structure.md            PIPR workbook spec (n8n S18 build reference)
   s19_pip_source.md                        Source 19 (DWP PIP claimants) register entry
   s19_pip_w1_integration.md               S19 PIP W1 integration summary (run 11)
+  s6_asylum_source.md                       Source 6 (Home Office asylum support) register entry
+  s6_source_anomalies.md                    S6 source anomalies, regenerated on every run
   geography_dimension.md                    la_geography / la_succession dimension tables
   S9_BUILD_SUMMARY.md                      S9 sources build summary (UCES project knowledge)
+  S6_BUILD_SUMMARY.md                      S6 asylum support build summary (UCES project knowledge)
   /nodes/                                   Pipeline node documentation
   /decisions/                               Decision records (dated, one per non-obvious decision)
 /scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC; S19 PIP; S8b HB accommodation type)
