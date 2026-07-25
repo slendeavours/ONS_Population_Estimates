@@ -40,12 +40,16 @@ id = "connection-uri-with-credentials"
 description = "Connection URI carrying embedded credentials"
 regex = '''(?i)\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|ftp)://[^\s:/"']+:[^\s@"']+@'''
 tags = ["credential", "uri"]
-[rules.allowlist]
-regexTarget = "match"
-regexes = [
-  # Illustrative forms in prose. These name the shape of the risk, not a value.
-  '''://(?:user|username|USER|<[^>]+>)\s*:\s*(?:pass|password|PASSWORD|secret|<[^>]+>)@''',
-]
+  # Path-scoped AND pattern-scoped. Both must hold, so a real connection
+  # string outside docs/ is never exempted, and a real one inside docs/ is
+  # only exempted if its user and password are literal placeholders.
+  [rules.allowlist]
+  condition = "AND"
+  paths = ['''^docs/''']
+  regexTarget = "match"
+  regexes = [
+    '''://(?:user|username|USER|<[^>]+>)\s*:\s*(?:pass|password|PASSWORD|secret|<[^>]+>)@''',
+  ]
 
 [[rules]]
 id = "local-absolute-path"

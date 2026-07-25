@@ -11,7 +11,7 @@ defaults — host, port, database name, and literals for both `PG_USER` and
 `PG_PASSWORD`. The password literal is the live credential, not a stale
 placeholder: it matches the value in `.env`.
 
-It has been in the public repository across **17 commits under two filenames**
+It has been in the public repository across **25 commits under two filenames**
 (`s19_hpi_build.py` before the renumbering, `s15_hpi_build.py` after), and is
 present on `main`.
 
@@ -50,6 +50,21 @@ environment file.
 3. **Do not rewrite history.** Rotation makes the exposed value inert. A
    rewrite would break every existing clone and fork and cannot recover a
    secret that must be assumed already harvested from a public repository.
+
+## Exposure window (assumption, not a finding)
+
+**Assume public from 2026-07-14**, the date the credential was first committed.
+
+The repository was created on GitHub on 2026-03-25 and is public now. Whether
+it was ever private cannot be established: GitHub exposes visibility-change
+history only through the *organisation* audit log, and `slendeavours` is a user
+account, so no such log exists. This is recorded as an assumption so nobody
+later mistakes it for a verified timeline.
+
+Zero forks and zero stars are **not** evidence that nothing was cloned. Clone
+counts are not public, automated scrapers index public repositories
+continuously, and a credential in a public repository must be treated as
+harvested from the moment it lands.
 
 ## Why the scan did not catch it earlier
 
@@ -91,6 +106,42 @@ them. Low entropy is what made the password weak *and* what made it invisible.
 With that config the same full-history scan returns **8 findings across four
 files**, including two in the S6 commits authored during this build.
 
+### The clone was shallow
+
+The first "full history" scan ran against a **shallow clone**: 22 commits of an
+actual 78. `git rev-parse --is-shallow-repository` returned true. The count of
+affected commits was revised from 17 to **25** after `git fetch --unshallow`.
+
+Publishing gates must assert `--is-shallow-repository` is false before treating
+any history scan as complete. A shallow clone will report clean on history it
+has never seen.
+
+### Scan counts are not coverage guarantees
+
+`gitleaks git` reports fewer commits scanned than the repository contains, and
+the shortfall is not fully attributable:
+
+| Scope | `git rev-list --count` | gitleaks reports |
+|---|---:|---:|
+| `--all` | 78 | 65 |
+| `--branches` | 73 | 62 |
+| `--remotes` | 62 | 51 |
+| `HEAD` | 67 | 56 |
+
+Established by testing: `--log-opts` is honoured (`-n 3` scans 3, `-n 20` scans
+20); the default scope behaves as `--all`, verified by checking out `main`
+(62 reachable) and still seeing 65 scanned; merge commits are skipped, since
+`X` and `X --no-merges` return identical counts, and `git log -p` emits no
+patch for a merge. Only one commit in this repository has an empty diff, so
+merges account for one of the missing thirteen. **The remaining twelve are
+unattributed.** Treat "N commits scanned" as telemetry, not as proof that N
+commits were examined.
+
+Separately, commits orphaned by a branch rebuild remain in the object store but
+are unreachable from any ref, so neither `--all` nor gitleaks sees them. They
+are equally invisible to anyone cloning, and `git gc` will eventually drop
+them, but they are not covered by any scan.
+
 ### A third trap worth recording
 
 `gitleaks git` scans **commit diffs**, not trees. A secret introduced once and
@@ -115,6 +166,21 @@ with `gitleaks git .`.** Neither alone is sufficient.
      through the n8n interface or API
   Steps 1–3 without step 4 break every n8n workflow that touches Postgres,
   including Workflow 1.
+- **Follow-up, not this window: `N8N_ENCRYPTION_KEY` is weak.** 16 characters,
+  lowercase letters plus two punctuation marks, only 10 distinct characters,
+  Shannon entropy 3.12 bits per character. That is a **human-chosen passphrase,
+  not a random key** — roughly 50 bits of real entropy against a naive attacker
+  and materially less against a dictionary attack.
+  `N8N_USER_MANAGEMENT_JWT_SECRET` has the same profile. Verified they are not
+  equal to each other and share no four-character substring with the database
+  password, so there is no credential reuse.
+  It was never published (searched by literal value across all 78 commits), so
+  this is hardening rather than incident response.
+  **Consequence of rotating it: all 24 stored n8n credentials become
+  undecryptable and every one must be re-entered by hand** — Airtable,
+  Anthropic, HubSpot, Microsoft Outlook, OpenAI, Pinecone, Stat-Xplore and the
+  rest. That is a scheduled maintenance task with the credential values to hand,
+  not something to fold into a database password rotation.
 - Consider a scoped, non-superuser role for the pipeline. `pipeline_user`
   already exists and is not a superuser; the build scripts connect as the
   superuser only because that is what the `.env` supplies.
