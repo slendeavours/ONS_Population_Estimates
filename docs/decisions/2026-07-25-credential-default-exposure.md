@@ -125,8 +125,28 @@ With the port on loopback, an exposed credential is no longer an exposed
 database. The password becomes one control among several rather than the only
 one — which is what it was, given `pg_hba` ends `host all all all`.
 
-**The same applies to the rest of the stack.** `qdrant` (6333) and `ollama`
-(11434) are also published on `0.0.0.0`. Same exposure class, same fix.
+### Ollama was the wider exposure throughout
+
+Every published port on this host binds `0.0.0.0`: Postgres 5432, n8n 5678,
+Qdrant 6333, Ollama 11434.
+
+**Postgres was gated by a weak published password. Ollama is gated by
+nothing.** Ollama has no authentication of any kind — no password, no token,
+no allowlist. Anyone who could reach `192.168.1.203:11434` had full use of the
+model runtime: enumerate and pull models, run inference, consume the host's
+CPU and memory. Qdrant likewise runs without an API key here, so its
+collections were readable and writable.
+
+The credential exposure is what prompted the review, but it was not the widest
+hole it found. That is worth stating plainly: a scan for secrets finds
+secrets, and says nothing about services that never needed one because they
+have no auth to leak.
+
+All four ports move to loopback in a single compose edit. Nothing off-box
+needs any of them: n8n reaches Postgres, Qdrant and Ollama over the
+`self-hosted-ai-starter-kit_demo` bridge by service name, `cloudflared`
+reaches n8n the same way, and the Python build scripts run on the Windows host
+and connect to `localhost`.
 
 ## Process finding: redaction must be default, not selective
 
@@ -281,6 +301,15 @@ with `gitleaks git .`.** Neither alone is sufficient.
   Anthropic, HubSpot, Microsoft Outlook, OpenAI, Pinecone, Stat-Xplore and the
   rest. That is a scheduled maintenance task with the credential values to hand,
   not something to fold into a database password rotation.
+- **Follow-up: `N8N_SECURE_COOKIE=false`.** Left alone during the rotation
+  window, because it is what makes the n8n UI usable over plain
+  `http://localhost:5678` while the Cloudflare tunnel is down — and step 5 of
+  the rotation needs exactly that. But it means session cookies carry no
+  `Secure` flag, and with 5678 published on `0.0.0.0` those cookies have been
+  interceptable on the LAN. Once 5678 is bound to loopback the practical risk
+  is largely gone; flip it back to `true` after that. **Doing so requires
+  HTTPS access and will break `http://localhost:5678` login**, so it must not
+  be done while local UI access is the fallback path.
 - **Follow-up, defence in depth, not open exposure — only after the loopback
   binding lands.** Neither of these is urgent once nothing off-box can reach
   the port, and both are worth doing anyway:
