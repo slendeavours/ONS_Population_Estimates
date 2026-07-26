@@ -19,3 +19,11 @@ s19_cache/
 .claude/
 .vscode/
 SKILLS/
+
+# Database dumps - never commit, even accidentally
+*.sql
+*.dump
+*.sql.gz
+*.backup
+db-backups/
+backups/

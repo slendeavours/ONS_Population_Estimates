@@ -301,6 +301,18 @@ with `gitleaks git .`.** Neither alone is sufficient.
   Anthropic, HubSpot, Microsoft Outlook, OpenAI, Pinecone, Stat-Xplore and the
   rest. That is a scheduled maintenance task with the credential values to hand,
   not something to fold into a database password rotation.
+- **TOP FOLLOW-UP, ahead of everything else here: there is no backup.**
+  `exempt_pipeline` (126 MB) and `n8ndb` (30 MB) exist as single Docker
+  volumes on one machine. Nothing in this repository or the stack mentions a
+  backup, and none was found. That is twenty sources and twenty workflows
+  whose only reconstruction path is re-running builds against upstream sources
+  that have since been revised — several of which are documented in this very
+  repository as being revised retrospectively by their publishers. Some of it
+  would not come back the same, and some would not come back at all.
+  This outranks `ssl`, `pg_hba` and `N8N_SECURE_COOKIE`. Those reduce the
+  chance of a bad day; this determines whether a bad day is recoverable.
+  What is wanted is a **scheduled dump with retention and an off-machine
+  copy**, not a manual habit that depends on somebody remembering.
 - **Follow-up: `N8N_SECURE_COOKIE=false`.** Left alone during the rotation
   window, because it is what makes the n8n UI usable over plain
   `http://localhost:5678` while the Cloudflare tunnel is down — and step 5 of
