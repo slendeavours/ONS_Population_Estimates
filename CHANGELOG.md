@@ -5,6 +5,16 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [Unreleased]
 
+### Fixed
+- **Source 15 renumbering completed.** `s15_hpi_build.py` still wrote `source_number = 19` to `pipeline_run_log`, so the collision with S19 (DWP PIP) that the renumbering was meant to resolve was still live under a filename that said otherwise. The script's docstring, temp directory, run-log `agent_name` and `source_number` now all read 15, and `s15_hpi_source.md` names the correct refresh script. `index.html` carries a one-line comment change only — no layer definition, legend rule, field name or data source URL is affected, so nothing the map renders changes.
+
+### Added
+- `docs/METHODOLOGY.md`: source register rows for **S8b** (DWP Stat-Xplore HB accommodation type, built 2026-07-22) and **S15** (Land Registry UK HPI, built 2026-07-14), neither of which had been added when those sources landed. Their tables `la_hb_accom_type_caseload` and `la_house_prices` added to the architecture listing.
+- `docs/README.md`: `s15_hpi_build.py` and `s15_hpi_source.md` added to the repository structure.
+
+### Notes
+- The S8 register row still reads "Housing Benefit asylum seeker caseload" and is deliberately unchanged here. Correcting it belongs with the map layer relabel, not with the renumbering.
+
 ### Security
 - **A database credential was supplied as a fallback default in `s15_hpi_build.py` and has been removed. The credential has been rotated.** The value is not restated here or anywhere else in the repository. It had been present across 25 commits under two filenames, and the account it belonged to is a Postgres superuser owning four databases, so the exposure was cluster-wide rather than limited to `exempt_pipeline`.
 - Every build script now resolves `PG_USER` and `PG_PASSWORD` through a `_require_env` helper that stops with a clear error rather than falling back to a literal. Host, port and database name keep defaults; they are addressing, not credentials. `scripts/s11_cqc_load.py` and `scripts/s18_pipr_load.py` already behaved this way and are unchanged.

@@ -59,6 +59,8 @@ After each **Workflow 1 pipeline run**. The run ID and timestamp are displayed i
 ```
 index.html                                  Live Demand Map (Mapbox GL JS) — map.slendeavours.org
 CNAME                                       Custom domain config for GitHub Pages
+s15_hpi_build.py                            Source 15 (Land Registry UK HPI) ETL
+s15_hpi_source.md                           Source 15 register entry
 /data/
   /boundaries/la_boundaries.geojson         LA boundary polygons + signals
   /signals/staging_la_signals_latest.json   Signal data, no geometries
