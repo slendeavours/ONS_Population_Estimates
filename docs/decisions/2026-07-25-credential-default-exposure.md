@@ -169,6 +169,51 @@ one is possible, and lifted only for a named field known to be safe.
 The token is being refreshed. The exposure is bounded to this session's
 transcript, but the process error would have recurred.
 
+## Second process finding: a hash is only safe when the input is
+
+During the mid-rotation verification, a check was run to confirm the
+`N8N_ENCRYPTION_KEY` and `N8N_USER_MANAGEMENT_JWT_SECRET` literals in
+`docker-compose.yml` matched the values in `.env`, so that switching those
+lines to `${...}` interpolation would not break the 24 stored credentials.
+The check reported the length and an **unsalted SHA-256** of each value.
+
+That was the wrong instrument.
+
+**What is established, and stands:** neither key was ever printed in
+cleartext. The command that leaked the database password filtered on the
+literal string `PASSWORD`; neither key name contains it, so neither was ever
+selected or printed. The cleartext disclosure was `DB_POSTGRESDB_PASSWORD`
+alone.
+
+**What was nevertheless disclosed:** a crackable hash of both. These are
+16-character, lowercase-plus-punctuation, 10-distinct-character passphrases —
+about 50 bits of real entropy, and materially less against a dictionary
+attack. An unsalted SHA-256 of an input like that is brute-forceable on
+commodity hardware in hours to days. The hashes are in a working transcript.
+
+**Exploitation requires the transcript *and* a copy of `n8ndb`.** That is a
+materially narrower path than the GitHub exposure, which required neither and
+was public. Nothing here is published.
+
+**Consequence:** rotating `N8N_ENCRYPTION_KEY` moves from open-ended
+hardening to a **dated follow-up**. Not urgent, not this window — n8n is down
+mid-rotation and rotating the key means re-entering all 24 credentials
+including a full Microsoft Outlook OAuth re-authorisation — but it should now
+carry a date rather than sitting on a list.
+
+**Rule: to compare two secrets, report a boolean and nothing else.** Never a
+hash of a low-entropy value; a hash is only as safe as its input. Length is
+usually safe to report and was useful here. The correct output for that check
+was `MATCH: YES`.
+
+Worth recording plainly: the assistant had already characterised both values
+as low-entropy human-chosen passphrases earlier in the same session, and so
+was in a position to know that hashing them was unsafe, but produced the
+hashes as instructed without flagging it. A verification step intended to
+protect a secret weakened it. **An instruction to disclose a derived value is
+still a disclosure decision, and it should be challenged on the same grounds
+as any other.**
+
 ## Scan coverage
 
 gitleaks reports commits processed, not commits examined; the two differ by 13
