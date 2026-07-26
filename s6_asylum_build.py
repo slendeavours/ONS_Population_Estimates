@@ -73,13 +73,6 @@ COUNTRY_BY_PREFIX = {"S12": "Scotland", "W06": "Wales", "N09": "Northern Ireland
 NOT_STATED = "not_stated"
 COLLISION_HALT_THRESHOLD = 5
 
-# Held here pending the la_code_lookup remediation task. Verified against the
-# ONS area pages for each successor and the 2022 structural changes orders.
-BUILD_LOCAL_RECODES = {
-    "E07000028": "E06000063",  # Carlisle           -> Cumberland
-    "E07000189": "E06000066",  # South Somerset     -> Somerset
-    "E07000027": "E06000064",  # Barrow-in-Furness  -> Westmorland and Furness
-}
 
 _TMP = os.path.join(os.environ.get("TEMP", os.environ.get("TMP", "/tmp")), "s6_asylum")
 
@@ -318,8 +311,6 @@ class Geography:
         code = (code or "").strip()
         if code in self.boundaries:
             return code, "code_direct"
-        if code in BUILD_LOCAL_RECODES:
-            return BUILD_LOCAL_RECODES[code], "build_local_pending_remediation"
         target = self.lookup.get(code)
         if target and target in self.boundaries:
             return target, "code_historical_forward"

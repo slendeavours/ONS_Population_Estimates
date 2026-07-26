@@ -16,7 +16,7 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 | 5 | MHCLG IMD | Index of Multiple Deprivation | MHCLG | Every ~5 years |
 | 6 | Home Office Asy_D11 / Reg_02 | Asylum seekers in receipt of Home Office support by support type and accommodation type; immigration groups by pathway (standalone) | Home Office / MHCLG | Quarterly |
 | 7 | ONS Open Geography Portal | LA boundary polygons (LAD Dec 2024) | ONS | On boundary changes |
-| 8 | DWP STAT-Xplore | Housing Benefit asylum seeker caseload | DWP | Monthly/quarterly |
+| 8 | DWP STAT-Xplore | Housing Benefit claimants in specified accommodation | DWP | Monthly |
 | 8b | DWP Stat-Xplore HB (accommodation type) | HB claimants by accommodation type (SA, TA, Other, Unknown) per LA | DWP | Monthly |
 | 10 | DLUHC Rough Sleeping Snapshot | Rough sleeping counts | DLUHC | Annual (autumn) |
 | 11 | CQC Care directory with filters | Registered care locations with supported living, personal care and care home flags (supply side) | CQC | Monthly |

@@ -263,7 +263,7 @@
       </div>
       <div class="sources-body">
         MHCLG Statutory Homelessness · MHCLG RO4 Expenditure · ONS Mid-Year Population ·
-        DfE Care Leavers · MHCLG IMD 2025 · Home Office Asylum · DWP Stat-Xplore ·
+        DfE Care Leavers · MHCLG IMD 2025 · DWP Stat-Xplore ·
         MHCLG Rough Sleeping · SafeLives MARAC · MHCLG LAHS · VOA LHA Rates ·
         MoJ Offender Stats · OHID Substance Misuse · CQC Providers · NHS Discharge ·
         Land Registry HPI · ONS Boundaries · ONS Census 2021
@@ -325,7 +325,6 @@ var LAYER_COLOR_SCALES = {
   marac_cases: ['#fdf4ff', '#f0abfc', '#e879f9', '#d946ef', '#c026d3', '#a21caf', '#701a75'],
   rough_sleeping_current: ['#ecfeff', '#a5f3fc', '#22d3ee', '#06b6d4', '#0891b2', '#0e7490', '#164e63'],
   imd_rank_of_average_rank: ['#166534', '#15803d', '#16a34a', '#4ade80', '#bbf7d0', '#dcfce7', '#f0fdf4'],
-  hb_sa_caseload: ['#eef2ff', '#c7d2fe', '#a5b4fc', '#818cf8', '#6366f1', '#4f46e5', '#312e81'],
   hb_sa_claimants_latest: ['#DBEAFE', '#93C5FD', '#60A5FA', '#3B82F6', '#2563EB', '#1D4ED8', '#1E40AF'],
   lha_sar_weekly: ['#f7fee7', '#d9f99d', '#bef264', '#a3e635', '#84cc16', '#65a30d', '#3f6212'],
   lha_1bed_weekly: ['#fefce8', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04', '#854d0e'],
@@ -343,7 +342,6 @@ var LAYERS = [
   { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing cases',              field: 'marac_cases',                 reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
   { key: 'rs',    dot: '#06b6d4', name: 'Rough Sleeping',             desc: 'Single-night snapshot',               field: 'rough_sleeping_current',      reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
   { key: 'imd',   dot: '#a3e635', name: 'Deprivation (IMD)',          desc: 'Index of Multiple Deprivation 2025', field: 'imd_rank_of_average_rank',    reversed: true, minLabel: 'More deprived', maxLabel: 'Less deprived' },
-  { key: 'hb',    dot: '#818cf8', name: 'HB Asylum Seekers',          desc: 'Supported accommodation caseload',    field: 'hb_sa_caseload',              reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
   { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate (£/week)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
   { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate (£/week)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
   // S11 — the pipeline's only supply-side layer, visually separated in the sidebar
@@ -646,7 +644,6 @@ function openPanel(p) {
     '<div class="pn-section">Housing Pressure</div>' +
     row('Housing Register', esc(fmtNum(p.housing_register))) +
     row('Rough Sleeping', esc(fmtNum(p.rough_sleeping_current))) +
-    row('HB Asylum Seekers', esc(fmtNum(p.hb_sa_caseload))) +
     row('HB Specified Accom', esc(fmtNum(p.hb_sa_claimants_latest))) +
 
     '<div class="pn-section">Cohort Demand</div>' +
