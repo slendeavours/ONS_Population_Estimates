@@ -152,6 +152,15 @@ def main():
                 (EXPECTED_CONSTRAINTS,))
     present = {r[0] for r in cur.fetchall()}
     absent = [c for c in EXPECTED_CONSTRAINTS if c not in present]
+    # The outcome vocabulary was widened for revising sources. Assert the
+    # widening actually reached the constraint, not just the code.
+    cur.execute("""SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                   WHERE conname = 'source_check_log_outcome_chk'""")
+    defn = (cur.fetchone() or [""])[0]
+    for token in ('no_change', 'new_edition', 'url_changed', 'check_failed',
+                  'revision_detected'):
+        if token not in defn:
+            absent.append(f"source_check_log outcome missing {token!r}")
     gate(4, "controlled vocabularies hold, and the CHECK constraints exist",
          not bad and not absent,
          f"out-of-vocabulary values: {bad or 'none'}; "

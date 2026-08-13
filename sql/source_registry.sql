@@ -154,6 +154,58 @@ BEGIN
     END IF;
 END $$;
 
+-- Revision tracking. vw_source_due answers "has a newer period appeared". It
+-- cannot answer "has an already-loaded period been republished", and for a
+-- revising source that second question is the one that silently corrupts
+-- analysis: the row count stays complete, every gate still passes, and the
+-- numbers are simply no longer what the publisher says they are.
+--
+-- S18 is immune by accident, because every edition republishes the full back
+-- series and loading the latest edition finalises prior months. S9a is not:
+-- monthly files, revised in place, no signal in the row count.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'source_registry'
+          AND column_name = 'revises_back_series'
+    ) THEN
+        ALTER TABLE source_registry ADD COLUMN revises_back_series boolean;
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'source_registry'
+          AND column_name = 'revision_note'
+    ) THEN
+        ALTER TABLE source_registry ADD COLUMN revision_note text;
+    END IF;
+END $$;
+
+COMMENT ON COLUMN source_registry.revises_back_series IS
+    'True where the publisher is documented to revise already-published '
+    'periods. Deliberately nullable and left NULL where not established: '
+    'false would assert that a source does not revise, which is a stronger '
+    'claim than the documentation supports.';
+
+COMMENT ON COLUMN source_registry.revision_note IS
+    'Where the publisher announces revisions, and what the most recent one '
+    'covered.';
+
+-- source_check_log gains revision_detected. A republished period is neither
+-- a new edition nor no change, and collapsing it into either loses the one
+-- signal that matters for a revising source.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint
+               WHERE conname = 'source_check_log_outcome_chk') THEN
+        ALTER TABLE source_check_log DROP CONSTRAINT source_check_log_outcome_chk;
+    END IF;
+    ALTER TABLE source_check_log ADD CONSTRAINT source_check_log_outcome_chk
+        CHECK (outcome IN ('no_change','new_edition','url_changed',
+                           'check_failed','revision_detected'));
+END $$;
+
 COMMENT ON COLUMN source_registry.metrics IS
     'What the source actually gives you, one element per metric. Backfilled '
     'from the Metric(s) column of the hand-written METHODOLOGY register so '

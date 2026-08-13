@@ -202,6 +202,11 @@ SOURCES = [
     ),
     dict(
         source_code="6",
+        revises_back_series=True,
+        revision_note=("The Home Office has revised these tables historically: "
+            "accommodation type in June 2024, geographic distribution in "
+            "August 2024, accommodation types again in November 2025. "
+            "Each load is a full replace of the periods it covers."),
         source_name="Home Office Asy_D11 / Reg_02",
         publisher="Home Office / MHCLG",
         series_name=("Immigration system statistics, quarterly release "
@@ -308,6 +313,10 @@ SOURCES = [
     ),
     dict(
         source_code="8b",
+        revises_back_series=True,
+        revision_note=("DWP applies retrospective revisions to the HB caseload: "
+            "Birmingham differs by 9.6% from la_hb_sa_caseload for "
+            "Nov-25 for that reason."),
         source_name="DWP Stat-Xplore HB (accommodation type)",
         publisher="DWP",
         series_name=("Housing Benefit caseload (str:database:hb_new), "
@@ -342,18 +351,36 @@ SOURCES = [
     ),
     dict(
         source_code="9a",
+        revises_back_series=True,
+        revision_note=("NHS England revises DRD in annual waves and announces them on "
+            "the publication page. April 2025 to March 2026 inclusive "
+            "were revised and republished on 9 July 2026; April 2024 to "
+            "April 2025 on 10 July 2025. Revised files carry a -Revised "
+            "filename suffix, so a revision is detectable from the link "
+            "list without downloading anything."),
         source_name="NHS DRD monthly",
         publisher="NHSE",
         series_name="Discharge Ready Date (DRD) monthly data, acute",
         landing_page_url=("https://www.england.nhs.uk/statistics/"
                           "statistical-work-areas/discharge-delays/"
-                          "discharge-delays-acute-data/"),
+                          "discharge-ready-date/"),
+        api_endpoint="https://www.gov.uk/api/search.json",
         acquisition_method="landing_page",
         known_gotchas=(
             "File URLs follow the pattern .../Discharge-Ready-Date-monthly-"
             "data-webfile-MonthName-YYYY[-Revised].xlsx but must be "
             "discovered from the live page, never constructed — URLs include "
-            "a publication-date path component that varies."),
+            "a publication-date path component that varies. "
+            "Corrected 2026-08-14: this was registered against the acute "
+            "discharge sitrep page, which is a different publication and "
+            "stops at September 2024. DRD has its own page. The 2026-07-13 "
+            "load used the correct files despite the node documentation "
+            "naming the sitrep page, so this was a documentation defect, "
+            "not a data defect. Detection now runs through the GOV.UK "
+            "search API — each month is published as an official statistic "
+            "titled 'Timeliness of Acute Hospital Discharges (Discharge "
+            "Ready Date) for {Month} {Year}' — while the NHS England page "
+            "remains the file source."),
         cadence="monthly", cadence_months=1,
         target_table="nhs_drd_discharge_delays", geography_level="UTLA",
         join_path=("utla_lad_mapping, a population-weighted UTLA to LAD "
@@ -512,6 +539,9 @@ SOURCES = [
     ),
     dict(
         source_code="15",
+        revises_back_series=True,
+        revision_note=("Every edition republishes the full back series and the monthly "
+            "upsert revises any previously provisional values."),
         source_name="Land Registry UK HPI",
         publisher="HM Land Registry",
         series_name=("UK House Price Index: average prices and property type "
@@ -580,6 +610,10 @@ SOURCES = [
     ),
     dict(
         source_code="18",
+        revises_back_series=True,
+        revision_note=("Every edition republishes the full back series from January "
+            "2015 and revises the prior provisional month, so loading "
+            "the latest edition finalises earlier months automatically."),
         source_name="ONS PIPR",
         publisher="ONS",
         series_name=("Price Index of Private Rents, UK: monthly price "
@@ -720,6 +754,10 @@ SOURCES = [
     ),
     dict(
         source_code="22",
+        revises_back_series=True,
+        revision_note=("Tables 1, 2, 3a, 3b and 4 of the 2025 taxbase were revised on "
+            "21 January 2026 after corrections from 22 authorities. The "
+            "release page carries the revision date."),
         source_name="MHCLG Council Taxbase (CTB form) + Live Table 615",
         publisher="MHCLG",
         series_name=("Local authority Council Taxbase in England; Live Table "
@@ -803,6 +841,7 @@ COLUMNS = [
     "confidential", "publish_github", "publish_map",
     "refresh_tier", "status", "superseded_by",
     "latest_period_loaded", "metrics",
+    "revises_back_series", "revision_note",
 ]
 # Columns that must never be nulled out by a re-run, but are also never
 # overwritten from this script once set by the check job.
@@ -902,6 +941,33 @@ def rejoin_metrics(parts, seps):
         if i < len(seps):
             out += seps[i] + " "
     return out
+
+
+# Key columns that carry a period. Anything else in a primary key is
+# geography or a category. Ordered by preference where a table has more
+# than one.
+PERIOD_COLUMNS = (
+    "reporting_period", "period_ending", "period", "month",
+    "taxbase_year", "snapshot_year", "reference_year", "financial_year",
+    "reporting_year", "rate_card_date", "year",
+)
+
+
+def derive_latest_period(cur, table, pk_cols):
+    """MAX of the target table's period key, as loaded.
+
+    Derived from the live table rather than from documentation, because this
+    is the one field where the database is the authority: it records what is
+    actually loaded, not what a source document said was loaded at the time
+    it was written. That is also what turns a check from "a newer edition
+    exists somewhere" into a comparison against what this pipeline holds.
+    """
+    period_col = next((c for c in PERIOD_COLUMNS if c in (pk_cols or [])), None)
+    if not period_col:
+        return None
+    cur.execute(f'SELECT MAX("{period_col}")::text FROM "{table}"')
+    value = cur.fetchone()[0]
+    return value
 
 
 def live_primary_keys(cur):
@@ -1013,6 +1079,11 @@ def upsert_sources(cur, pks, register):
                 halt(f"S{record['source_code']}: target_table {target!r} does "
                      f"not exist in the database")
             record["natural_key"] = pks[target]
+            # The live table overrides any documented value: it is the only
+            # authority on what is actually loaded right now.
+            derived = derive_latest_period(cur, target, pks[target])
+            if derived:
+                record["latest_period_loaded"] = derived
 
         vc = record.get("verification_checks")
         if vc is not None:

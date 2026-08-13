@@ -20,9 +20,11 @@ Usage:
 import argparse
 import datetime
 import hashlib
+import json
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -57,11 +59,17 @@ DETECTORS = {
         note="first (newest) xlsx link on the dataset page; "
              "docs/s18_pipr_source.md",
     ),
+    # S9a detects through GOV.UK and takes files from NHS England. Each month
+    # is published as an official statistic, so the release page is a cleaner
+    # signal than the file list — and it is the one GOV.UK route among the
+    # sources that are currently due.
     "9a": dict(
-        method="landing_page",
-        pattern=r'href="([^"]*Discharge-Ready-Date[^"]*\.xlsx)"',
-        note="Discharge-Ready-Date monthly webfile links; "
-             "docs/nodes/s9a_node1_fetch_drd_monthly.md",
+        method="govuk_content_api",
+        govuk_query="Timeliness of Acute Hospital Discharges Discharge Ready Date",
+        govuk_title=r"discharge ready date\)? for ([a-z]+) (\d{4})",
+        file_pattern=r'href="([^"]*Discharge-Ready-Date[^"]*\.xlsx)"',
+        note="GOV.UK official statistics releases for detection; "
+             "NHS England discharge-ready-date page for files",
     ),
     "9b": dict(
         method="landing_page",
@@ -139,6 +147,171 @@ def fetch(url):
         return r.status, r.read().decode("utf-8", errors="replace")
 
 
+def govuk_releases(query, title_pattern):
+    """Published GOV.UK statistics releases matching a query.
+
+    Returns [(period, title, link, published)], newest first. Detection here
+    is on the release, not the file: GOV.UK announces the statistic and NHS
+    England hosts the workbook, so the release page is the earlier and more
+    reliable signal of a new month.
+    """
+    url = ("https://www.gov.uk/api/search.json?q="
+           + urllib.parse.quote(query)
+           + "&count=30&filter_format=official_statistics"
+           + "&fields=title,link,public_timestamp")
+    status, body = fetch(url)
+    out = []
+    for r in json.loads(body).get("results", []):
+        title = r.get("title") or ""
+        m = re.search(title_pattern, title.lower())
+        if not m or m.group(1) not in MONTHS:
+            continue
+        out.append(((int(m.group(2)), MONTHS.index(m.group(1)) + 1, 0),
+                    title, r.get("link"), (r.get("public_timestamp") or "")[:10]))
+    out.sort(key=lambda t: t[0], reverse=True)
+    return status, out
+
+
+def loaded_provenance(cur, table):
+    """Per-period source filenames already loaded, where the table records them.
+
+    Only some target tables carry a source column. Where one exists it is the
+    strongest revision check available: it says which file each loaded period
+    actually came from, so a republished file is visible without downloading
+    anything or trusting a fingerprint.
+    """
+    cur.execute("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema='public' AND table_name=%s AND column_name='source'
+    """, (table,))
+    if not cur.fetchone():
+        return None
+    cur.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema='public' AND table_name=%s
+          AND column_name = ANY(%s)
+        LIMIT 1
+    """, (table, list(PERIOD_COLUMNS)))
+    row = cur.fetchone()
+    if not row:
+        return None
+    col = row[0]
+    cur.execute(f'SELECT "{col}"::text, MIN(source) FROM "{table}" GROUP BY 1')
+    return {p: (s or "").rsplit("/", 1)[-1] for p, s in cur.fetchall()}
+
+
+PERIOD_COLUMNS = ("reporting_period", "period_ending", "period", "month",
+                  "taxbase_year", "snapshot_year", "reference_year",
+                  "financial_year", "reporting_year", "year")
+
+
+def check_govuk(row, det, reg):
+    """Detect via the GOV.UK release list rather than the publisher's files."""
+    try:
+        status, rels = govuk_releases(det["govuk_query"], det["govuk_title"])
+        row["http_status"] = status
+    except Exception as e:
+        row.update(outcome="check_failed",
+                   error_detail=f"{type(e).__name__}: {str(e)[:200]}")
+        return row
+
+    today = datetime.date.today().timetuple()[:3]
+    rels = [r for r in rels if (r[0][0], r[0][1]) <= (today[0], today[1])]
+    if not rels:
+        row.update(outcome="check_failed",
+                   error_detail="the GOV.UK search returned no release whose "
+                                "title matched the documented pattern")
+        return row
+
+    period, title, link, published = rels[0]
+    row["detected_period"] = format_period(period)
+    row["fingerprint_after"] = hashlib.sha256(
+        (link or title).encode()).hexdigest()[:32]
+    row["notes"] = (f"{det['note']}; {len(rels)} release(s) matched; newest "
+                    f"'{title}' published {published}")
+
+    loaded = (reg["latest_period_loaded"] or "").strip()
+    loaded_ym = loaded[:7]
+    if loaded_ym and row["detected_period"]:
+        row["outcome"] = ("new_edition"
+                          if row["detected_period"][:7] > loaded_ym
+                          else "no_change")
+    else:
+        row.update(outcome="check_failed",
+                   error_detail="release found but latest_period_loaded is "
+                                "not set, so there was nothing to compare "
+                                "against")
+
+    # A revising source needs the second question asked as well: not only
+    # "is there a newer period" but "has a period already loaded been
+    # republished". A new edition does not mask an outstanding revision, so
+    # the revision finding is appended to the notes either way, and it takes
+    # the outcome when nothing newer has appeared.
+    if reg.get("revises_back_series") and det.get("file_pattern"):
+        superseded, checked = revision_check(det, reg)
+        if checked is None:
+            row["notes"] += "; revision check not possible"
+        elif superseded:
+            row["notes"] += (f"; {len(superseded)} loaded period(s) "
+                             f"superseded: {', '.join(superseded[:6])}"
+                             + (" ..." if len(superseded) > 6 else ""))
+            if row["outcome"] == "no_change":
+                row["outcome"] = "revision_detected"
+            row["error_detail"] = (
+                f"{len(superseded)} already-loaded period(s) have been "
+                f"republished since they were loaded. Row counts and gates "
+                f"are unaffected; the values are simply no longer what the "
+                f"publisher says they are.")
+        else:
+            row["notes"] += (f"; revision check clean across {checked} "
+                             f"loaded period(s)")
+    return row
+
+
+def revision_check(det, reg):
+    """Loaded periods whose published filename no longer matches what was loaded.
+
+    Uses the per-period source column the target table already records, so a
+    republished file is detectable from the link list alone — the -Revised
+    suffix on the DRD filenames is the whole signal, and nothing is
+    downloaded.
+
+    Returns (superseded_periods, periods_checked). (None, None) where the
+    comparison cannot be made at all.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        loaded = loaded_provenance(cur, reg["target_table"])
+    finally:
+        cur.close()
+        conn.close()
+    if not loaded:
+        return None, None
+
+    try:
+        _, body = fetch(reg["landing_page_url"])
+    except Exception:
+        return None, None
+
+    published = {}
+    for link in re.findall(det["file_pattern"], body, re.I):
+        p = format_period(parse_period(link))
+        if p:
+            published[p[:7]] = link.rsplit("/", 1)[-1]
+
+    superseded, checked = [], 0
+    for period, loaded_file in sorted(loaded.items()):
+        current = published.get(period[:7])
+        if not current or not loaded_file:
+            continue
+        checked += 1
+        if current != loaded_file:
+            superseded.append(f"{period[:7]} ({loaded_file[-28:]} -> "
+                              f"{current[-28:]})")
+    return superseded, checked
+
+
 def check_one(code, reg):
     """Returns the source_check_log row fields for one source."""
     det = DETECTORS.get(code)
@@ -158,6 +331,9 @@ def check_one(code, reg):
         row.update(outcome="check_failed",
                    error_detail="no landing_page_url in the registry")
         return row
+
+    if det.get("govuk_query"):
+        return check_govuk(row, det, reg)
 
     try:
         status, body = fetch(reg["landing_page_url"])
@@ -191,17 +367,26 @@ def check_one(code, reg):
     loaded = (reg["latest_period_loaded"] or "").strip()
     period = row["detected_period"]
 
-    if before and before == after:
+    # The load gap is asked first, and the fingerprint second. They answer
+    # different questions: the fingerprint says whether the publisher has
+    # changed anything since the last look, the gap says whether what is
+    # published is ahead of what is loaded.
+    #
+    # Fingerprint-first is wrong and was wrong here. Once an edition has been
+    # detected the fingerprint matches on every later check, so a genuinely
+    # pending edition reports no_change forever and disappears from the due
+    # list without ever being loaded. That is the exact silent failure this
+    # log exists to prevent.
+    if period and loaded and period[:7] > loaded[:7]:
+        row["outcome"] = "new_edition"
+    elif before and before == after:
         row["outcome"] = "no_change"
     elif before and before != after:
-        # The URL moved. Whether that is a new edition depends on the period.
-        row["outcome"] = "new_edition" if (period and period != loaded) \
-            else "url_changed"
+        # Publisher moved the file but the period is not ahead of what is
+        # loaded — a re-cut of an edition already held.
+        row["outcome"] = "url_changed"
     elif period and loaded:
-        # No prior fingerprint. This is still a real comparison, because the
-        # detected edition can be checked against what is loaded.
-        row["outcome"] = "new_edition" if not loaded.startswith(period) \
-            and not period.startswith(loaded) else "no_change"
+        row["outcome"] = "no_change"
     else:
         row.update(
             outcome="check_failed",
@@ -231,14 +416,15 @@ def main():
     if args.codes:
         cur.execute("""
             SELECT source_code, landing_page_url, latest_period_loaded,
-                   last_seen_fingerprint
+                   last_seen_fingerprint, revises_back_series, target_table
             FROM source_registry WHERE source_code = ANY(%s)
             ORDER BY source_code
         """, (args.codes,))
     else:
         cur.execute("""
             SELECT r.source_code, r.landing_page_url, r.latest_period_loaded,
-                   r.last_seen_fingerprint
+                   r.last_seen_fingerprint, r.revises_back_series,
+                   r.target_table
             FROM source_registry r
             JOIN vw_source_due d ON d.source_code = r.source_code
             WHERE r.refresh_tier IN ('A','B')

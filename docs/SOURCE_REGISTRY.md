@@ -199,6 +199,48 @@ a fingerprint against the stored one, or a detected edition against
 `check_failed` with the reason, because reaching a page proves the page
 exists, not that the data behind it is the data already loaded.
 
+**The load gap is asked before the fingerprint, and the order matters.** They
+answer different questions: the fingerprint says whether the publisher has
+changed anything since the last look, the gap says whether what is published
+is ahead of what is loaded. Checking the fingerprint first — which this script
+did until 2026-08-14 — means that once an edition has been detected the
+fingerprint matches on every later check, so a genuinely pending edition
+reports `no_change` forever and drops off the due list without ever being
+loaded. That bug was masking three pending editions on its second run.
+
+`latest_period_loaded` is derived from the target table's own period key
+rather than from documentation. It is the one field where the database is the
+authority: it records what is actually loaded, not what a source document said
+was loaded when it was written.
+
+## Revisions
+
+`vw_source_due` asks whether a newer period has appeared. It cannot ask
+whether an already-loaded period has been republished, and for a revising
+source that second question is the one that silently corrupts analysis — the
+row count stays complete, every gate still passes, and the numbers are simply
+no longer what the publisher says they are.
+
+| Column | Meaning |
+| --- | --- |
+| `revises_back_series` | True where the publisher is documented to revise already-published periods. Left NULL where not established: `false` asserts more than the documentation supports. |
+| `revision_note` | Where the publisher announces revisions, and what the most recent one covered. |
+
+`source_check_log.outcome` carries `revision_detected` for this. A republished
+period is neither a new edition nor no change, and collapsing it into either
+loses the only signal that matters.
+
+Detection uses the per-period `source` column the target table already
+records, where it has one. That column says which file each loaded period
+actually came from, so a republished file is visible from the link list alone
+— the `-Revised` suffix on the DRD filenames is the whole signal, and nothing
+is downloaded. Six sources are currently flagged as revising: S6, S8b, S9a,
+S15, S18 and S22.
+
+S18 is immune by accident: every edition republishes the full back series, so
+loading the latest edition finalises prior months automatically. S9a is not —
+monthly files, revised in place, no signal in the row count.
+
 ## How a new source build writes its own row
 
 A build is expected to register itself, in the same transaction that loads its
