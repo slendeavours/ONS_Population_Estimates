@@ -6,6 +6,15 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 ## [Unreleased]
 
 ### Added
+- **S3 population refreshed to mid-2025**, closing the denominator lag that gated external use of the HSS material. From *Estimates of the population for England and Wales*, edition "Mid-2025: 2023 local authority boundaries", released 29 July 2026, resolved from the landing page at run time. `pip_rate_per_1000` moves from a mid-2024 base to mid-2025: England 58,620,101 → 58,834,812, Birmingham 78.74 → 79.18 per 1,000, Kingston upon Hull 87.85 → 88.54. Six hard gates, all pass; the England total reconciles exactly to the publisher's own England row. Build script `scripts/s3_mye_refresh.py`.
+- `la_population` is now **multi-year** — key widened from `(lad24cd)` to `(lad24cd, reference_year)`, mid-2024 retained rather than overwritten, 592 rows.
+- **A weekly scheduled source register audit** (`UCWS\Source register audit`, Mondays 08:17). It exits non-zero on any finding and keeps the previous report so drift is one diff away, and treats "could not run" as distinct from "clean". Verified end to end.
+
+### Fixed
+- **Adding a second population vintage fanned out everywhere `la_population` is joined, not only in the obvious place.** Both node 5 and the `la_population` join inside `v_la_pip_rates` needed pinning to `MAX(reference_year)`. Unpinned it did not silently double-count — it killed the statement with `ON CONFLICT ... cannot affect row a second time` — but W1 was genuinely broken between the load and the pin. Anything joining `la_population` in future must pin the vintage.
+- **The Barnsley/Sheffield expectation was wrong for S3, and the reason is now a refinement to the geography standing rule.** The release postdates the April 2025 recode by sixteen months but is built on *2023 local authority boundaries*, so it uses E08000016/E08000019 and matched `la_boundaries` with zero orphans in either direction. Where a release declares its boundary vintage that is the predictor, not the publication date.
+
+### Added
 - **Source 22 (MHCLG Council Taxbase empty homes).** Two MHCLG publishers, both resolved from their landing pages at run time with no stored file URL: *Council Taxbase 2025 in England* (first published 6 November 2025, **revised 21 January 2026** after corrections from 22 authorities) and *Live Table 615: vacant dwellings by local authority district, England, from 2004*.
 - Four tables: `la_council_taxbase_empties` (296 rows, one per LA per taxbase year), `la_ctb_exemption_classes` (3,256 rows, the eleven unoccupied exemption classes at LA level), `la_vacant_dwellings_615` (7,170 district-year rows, 2004 to 2025) and `ctb_series_breaks` (2 rows).
 - `v_la_empty_homes_rates` — long-term empty rate, long-term share of empties, premium coverage and second homes rate over the latest taxbase year. Every denominator guarded with `NULLIF`. Rates are derived here and never stored.

@@ -10,7 +10,7 @@
 |---|---|---|---|---|
 | 1 | DLUHC H-CLIC | TA households (current + prev year), trend label | DLUHC | Quarterly |
 | 2 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | MHCLG | Annual |
-| 3 | ONS Mid-Year Estimates | Population by LA | ONS | Annual |
+| 3 | ONS Mid-Year Estimates | Population by LA (mid-2025, 2023 LA boundaries edition; mid-2024 retained) | ONS | Annual |
 | 3b | Census 2021 TS054 | Tenure | ONS | Decennial |
 | 4 | DfE SEN2 / Children in Need | Care leavers in semi-independent housing | DfE | Annual |
 | 5 | MHCLG IMD | Index of Multiple Deprivation | MHCLG | Every ~5 years |
@@ -42,6 +42,22 @@ S11 is the pipeline's only supply-side source: every other source measures need,
 **S6 caveats.** Asylum support figures are based on the person's registered address, which is not necessarily where they regularly reside, and **exclude unaccompanied asylum-seeking children**, who are supported by local authority children's services rather than Home Office asylum support. S6 is not a count of all asylum seekers in an area. Two structural breaks make the England series non-comparable before 2025-03-31; they are recorded in the `asylum_series_breaks` table and explained in `docs/s6_asylum_source.md`.
 
 **S6 geography.** Resolved entirely through `la_code_lookup`. The build-local workaround S6 carried for three codes was retired on 2026-07-26 once the lookup was corrected; the reload reproduced the prior checksum byte-identically, confirming the workaround and the corrected lookup agree. See `docs/decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md` and `docs/decisions/2026-07-26-la-code-lookup-full-audit.md`.
+
+### S3 — ONS mid-year population estimates
+
+Refreshed to **mid-2025** on 2026-08-13, from *Estimates of the population for England and Wales*, edition **"Mid-2025: 2023 local authority boundaries"**, released 29 July 2026. Resolved from the dataset landing page at run time; no file URL is stored. Sheet `MYE2 - Persons`, header row 8, `All ages` column.
+
+`la_population` is now **multi-year**. Its key was widened from `(lad24cd)` to `(lad24cd, reference_year)`, and the mid-2024 vintage is retained rather than overwritten: 592 rows, 296 per year. England total 58,834,812, reconciling exactly to the publisher's own England row.
+
+**Two consequences that bit immediately, both worth knowing before the next vintage lands.**
+
+Adding a vintage to a shared dimension table fans out **everywhere that dimension is joined**, not only in the obvious place. Node 5's `la_population` join and the `la_population` join inside `v_la_pip_rates` both had to be pinned to `MAX(reference_year)`. Unpinned, the fan-out did not silently double-count — it killed the statement with an `ON CONFLICT ... cannot affect row a second time` cardinality violation, which is the good failure mode, but W1 was genuinely broken between the load and the pin. Anything joining `la_population` in future must pin the vintage.
+
+The Barnsley and Sheffield expectation was **wrong, and the reason matters**. The geography standing rule says to assume a source published after 1 April 2025 uses the recoded E08000038 and E08000039. This release postdates that by sixteen months and does *not* use them: the edition is explicitly built on **2023 local authority boundaries**, so it publishes E08000016 and E08000019, matching `la_boundaries` directly with no recode resolution needed. All 296 codes matched with zero orphans in either direction.
+
+> **Refinement to the geography standing rule.** Where a release states its boundary vintage, that is the predictor — not the publication date. Publication date is the fallback for releases that do not declare one. Check the file either way; both codes were verified present or absent in the workbook rather than inferred.
+
+The release covers 318 England-and-Wales local authorities. England is filtered on the code prefix (`E06`/`E07`/`E08`/`E09`), never assumed to be the whole file; 23 Welsh rows including the Wales country row are skipped, and `E10`/`E11` counties, `E12` regions and the `E92` country row are excluded as aggregates that would double count.
 
 ### S22 — MHCLG Council Taxbase empty homes
 
@@ -90,21 +106,13 @@ Only one path is uncovered: editing node 5 by hand in the n8n editor without re-
 
 **Standing rule — resolve geography before the orphan gate, not after it fails.** Every build resolves published codes through `la_code_lookup` as part of extraction, and only then checks for orphans against `la_boundaries`. Running the gate first wastes a gate on a known, predictable condition.
 
-Assume any source published **after 1 April 2025** uses the recoded Barnsley and Sheffield codes E08000038 and E08000039, because `la_boundaries` is May 2024 and carries E08000016 and E08000019. This pair has now appeared in S9b, S18, S21 and S22. It is predictable, not surprising. Resolution is `change_type = 'recode'` only: a recode renumbers the same area and resolves, while `new_unitary` and `merger` are abolitions and must stay unmapped, because folding predecessor districts onto a successor makes every downstream sum count that successor once per predecessor.
+**Where a release declares its boundary vintage, that is the predictor — not the publication date.** Otherwise, assume any source published **after 1 April 2025** uses the recoded Barnsley and Sheffield codes E08000038 and E08000039, because `la_boundaries` is May 2024 and carries E08000016 and E08000019. This pair has appeared in S9b, S18, S21 and S22 and is predictable, not surprising. But the S3 mid-2025 refresh on 2026-08-13 published on **2023 local authority boundaries** despite postdating the recode by sixteen months, and so used the *old* codes. Verify against the file in either direction; do not infer from the date alone when a vintage is stated. Resolution is `change_type = 'recode'` only: a recode renumbers the same area and resolves, while `new_unitary` and `merger` are abolitions and must stay unmapped, because folding predecessor districts onto a successor makes every downstream sum count that successor once per predecessor.
 
 **Standing rule — derived rates live in views, and `staging_la_signals` is the one documented exception.** Source tables never store a rate. `staging_la_signals` is a point-in-time snapshot, so it does carry derived columns, but every one of them must take its definition from a view rather than from an expression written inline in node 5. Otherwise the definition exists only in the node and cannot be audited or reused. `ctb_lte_rate_pct` comes from `v_la_empty_homes_rates`; `pip_rate_per_1000` was inline in node 5 until 2026-08-13 and now comes from `v_la_pip_rates`.
 
 `v_la_pip_rates` also exposes `population_reference_year` next to the rate, because the numerator refreshes monthly and the denominator annually. A rate whose inputs refresh on different cadences can go stale against its own denominator without any row-level check noticing, so the denominator's vintage is published as data rather than left to documentation. The remaining inline derivations in node 5 — `ta_yoy_pct`, `ta_trend_label`, `data_quality` — are per-row transformations of columns already in the same SELECT, not cross-source rates, and are left as they are.
 
-> **Open dependency — the S3 population refresh gates external use of the HSS material.**
->
-> `pip_rate_per_1000` is currently **Apr-26 claimants over a mid-2024 population base**: two years of drift in the denominator of a rate that would be put in front of a council or an NHS commissioner. Exposing `population_reference_year` makes the mismatch visible; it does not fix it.
->
-> The fix is available now. ONS published *Population estimates for England and Wales: mid-2025* on **29 July 2026**, with local authority breakdowns. `la_population` holds `reference_year` 2024 for all 296 rows, loaded 2026-03-26.
->
-> Two things to carry into that refresh. The release postdates 1 April 2025, so it will use the recoded Barnsley and Sheffield codes E08000038 and E08000039 — the geography standing rule above applies. And the bulletin covers 318 local authority areas across England and Wales, so England must be filtered rather than assumed.
->
-> Until it lands, the three-layer HSS package (S11 supply, S19 PIP demand, S9 flow — 296/296 on all three at run 12) is assemblable internally but should not go out externally on the current denominator.
+**Closed 2026-08-13 — the S3 refresh landed.** `pip_rate_per_1000` was Apr-26 claimants over a mid-2024 base; it is now over **mid-2025**. See the S3 section below. The three-layer HSS package (S11 supply, S19 PIP demand, S9 flow — 296/296 on all three at run 12) no longer carries a two-year denominator lag.
 
 **Standing rule — anything that enumerates tables, columns or schema is scanned for counterparty names before it is staged.** Not before it is pushed: before `git add`. This repository is public.
 
@@ -148,6 +156,7 @@ Raw Sources (CSV / API)
   │ utla_lad_mapping        │ (S9: UTLA→LAD pop-weighted crosswalk)
   │ la_pip_claimants         │ (S19: PIP claimants by LA/month)
   │ la_hb_accom_type_caseload│ (S8b: HB accom type by LA/month)
+  │ la_population           │ (S3: multi-year, key (lad24cd, reference_year))
   │ la_house_prices          │ (S15: Land Registry HPI by LA/period)
   │ la_council_taxbase_empties│(S22: CTB empty homes by LA/taxbase year)
   │ la_ctb_exemption_classes │ (S22: unoccupied exemption classes by LA)

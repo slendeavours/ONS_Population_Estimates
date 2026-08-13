@@ -1,8 +1,8 @@
-# W1 Node 5 — revised SQL (S22)
+# W1 Node 5 — revised SQL
 
 The full `LA Signals` query as stored in the n8n workflow. Held as markdown because `*.sql` is gitignored repo-wide to keep database dumps out; the canonical build artefact is `build_reports/s22_w1_node5_revised.sql` on the pipeline host.
 
-Divergence between this query and `staging_la_signals` is enforced in three places: the `Signal Column Pre-flight` node inside W1, `scripts/w1_contract_check.py` on the scripted path, and a backstop in `scripts/export_map_data.py`. All three fail on a missing `EXCLUDED` clause as well as on a column or positional mismatch.
+Divergence between this query and `staging_la_signals` is enforced in three places: the `Signal Column Pre-flight` node inside W1, `scripts/w1_contract_check.py` on the scripted path, and a backstop in `scripts/export_map_data.py`.
 
 ```sql
 -- ===========================================================================
@@ -157,8 +157,15 @@ LEFT JOIN la_statutory_homelessness ta_prev
     ON ta_prev.lad24cd = b.lad24cd
     AND ta_prev.period = '2024Q2'
 
--- Population
-LEFT JOIN la_population p ON p.lad24cd = b.lad24cd
+-- Population (S3). Pinned to the latest vintage. la_population became
+-- multi-year on 2026-08-13 when the mid-2025 estimates were loaded
+-- alongside mid-2024; without this pin the join returns one row per LA per
+-- vintage and the statement dies on ON CONFLICT with a cardinality
+-- violation. It fails loudly rather than silently double-counting, but it
+-- does fail.
+LEFT JOIN la_population p
+    ON p.lad24cd = b.lad24cd
+    AND p.reference_year = (SELECT MAX(reference_year) FROM la_population)
 
 -- Rough sleeping
 LEFT JOIN la_rough_sleeping rs

@@ -38,7 +38,7 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | --- | --- | --- | --- | --- |
 | 1 | DLUHC H-CLIC | TA households (current + prev year), trend label | yes | yes |
 | 2 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | yes | yes |
-| 3 | ONS Mid-Year Estimates | Population by LA | yes | no |
+| 3 | ONS Mid-Year Estimates | Population by LA (mid-2025, 2023 LA boundaries edition; mid-2024 retained) | yes | no |
 | 3b | Census 2021 TS054 | Tenure | no | no |
 | 4 | DfE SEN2 / Children in Need | Care leavers in semi-independent housing | yes | yes |
 | 5 | MHCLG IMD | Index of Multiple Deprivation | yes | yes |
