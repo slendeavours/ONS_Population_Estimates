@@ -4,7 +4,7 @@
 
 ## Data Sources
 
-Source numbers follow `pipeline_run_log.source_number`, the pipeline's authoritative numbering (gaps intentional). An earlier version of this table used its own row numbers, which had drifted from the pipeline's.
+**This table is the source register.** Numbers are assigned from here (gaps intentional). `pipeline_run_log.source_number` is an execution record, not the register — it has been the wrong authority to ask twice, and was backfilled on 2026-08-13 to agree with this table. See the standing rule below.
 
 | S# | Source | Metric(s) | Publisher | Frequency |
 |---|---|---|---|---|
@@ -15,7 +15,7 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 | 4 | DfE SEN2 / Children in Need | Care leavers in semi-independent housing | DfE | Annual |
 | 5 | MHCLG IMD | Index of Multiple Deprivation | MHCLG | Every ~5 years |
 | 6 | Home Office Asy_D11 / Reg_02 | Asylum seekers in receipt of Home Office support by support type and accommodation type; immigration groups by pathway (standalone) | Home Office / MHCLG | Quarterly |
-| 7 | ONS Open Geography Portal | LA boundary polygons (LAD Dec 2024) | ONS | On boundary changes |
+| 7 | ONS Open Geography Portal | LA boundary polygons (LAD **May 2024** BGC) | ONS | On boundary changes |
 | 8 | DWP STAT-Xplore | Housing Benefit claimants in specified accommodation | DWP | Monthly |
 | 8b | DWP Stat-Xplore HB (accommodation type) | HB claimants by accommodation type (SA, TA, Other, Unknown) per LA | DWP | Monthly |
 | 10 | DLUHC Rough Sleeping Snapshot | Rough sleeping counts | DLUHC | Annual (autumn) |
@@ -33,7 +33,9 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 
 S11 is the pipeline's only supply-side source: every other source measures need, S11 records existing CQC-registered provision. It is stored agnostically like everything else; the pipeline does not score or rank markets.
 
-**Standalone sources.** S6 and S19 are loaded but not wired into Workflow 1: they add no `staging_la_signals` column, no tenant type and no map layer. They are queried directly from their own tables.
+**Standalone sources.** S6 and S15 are loaded but not wired into Workflow 1: they add no `staging_la_signals` column and no tenant type. S6 is queried directly from its own tables; S15 reaches the map through its own `hpi_la_prices.json` rather than through the signals JSON.
+
+**S19 is wired, not standalone.** This document previously listed S19 as standalone. That was wrong. `staging_la_signals` has carried `pip_total_claimants`, `pip_enhanced_daily_living` and `pip_rate_per_1000` since run 11, verified against `la_pip_claimants` at Apr-26 — Birmingham 93,196 / 50,002, Kingston upon Hull 24,195 / 12,078, Kensington and Chelsea 7,166 / 4,039, all exact. They are PIP columns, not a tail left by the S15 renumbering; S15's house prices live in `la_house_prices` and have no staging column at all. Corrected 2026-08-13 during the S22 build. `docs/README.md` had it right throughout.
 
 **S6 caveats.** Asylum support figures are based on the person's registered address, which is not necessarily where they regularly reside, and **exclude unaccompanied asylum-seeking children**, who are supported by local authority children's services rather than Home Office asylum support. S6 is not a count of all asylum seekers in an area. Two structural breaks make the England series non-comparable before 2025-03-31; they are recorded in the `asylum_series_breaks` table and explained in `docs/s6_asylum_source.md`.
 
@@ -68,7 +70,15 @@ Two MHCLG publishers, both resolved from their landing pages at run time. No fil
 
 **Map layer.** One layer only, Long-Term Empty Rate, driven by `ctb_lte_rate_pct`. Total empties is held in the database and not mapped: it bundles second homes and short-term turnover, so a choropleth of it would misrepresent the picture. Premium application is likewise held and not mapped.
 
-**Geography.** MHCLG publishes Barnsley and Sheffield under the codes recoded on 1 April 2025 (SI 1328/2024), E08000038 and E08000039, while `la_boundaries` is LAD December 2024 and carries E08000016 and E08000019. Both resolve through `la_code_lookup` as `change_type = 'recode'` — the same area under a new number. Nothing was written back to the lookup.
+**Geography.** MHCLG publishes Barnsley and Sheffield under the codes recoded on 1 April 2025 (SI 1328/2024), E08000038 and E08000039, while `la_boundaries` is LAD May 2024 and carries E08000016 and E08000019. Both resolve through `la_code_lookup` as `change_type = 'recode'` — the same area under a new number. Nothing was written back to the lookup.
+
+**Standing rule — direct SQL against `staging_la_signals` updates the stored node in the same session, or it is not applied.** Any change to the columns of `staging_la_signals` must be written back to W1 node 5 in `n8ndb` before the session ends. Applying it to the data alone leaves the stored node behind, and the next genuine workflow run silently drops every column the node does not know about. This is not hypothetical: runs 10 and 11 added the S9 and S19 columns by direct SQL and never wrote them back, so the stored node was two builds stale until the S22 build in August 2026 found it. The same rule covers anything that creates a `staging_runs` row outside the workflow — the row must be created through the Create Run node's query so the sequence stays ahead of the data. Runs 10 and 11 skipped that too, leaving the sequence trailing by two and the next `nextval()` set to collide with an existing run.
+
+**Standing rule — resolve geography before the orphan gate, not after it fails.** Every build resolves published codes through `la_code_lookup` as part of extraction, and only then checks for orphans against `la_boundaries`. Running the gate first wastes a gate on a known, predictable condition.
+
+Assume any source published **after 1 April 2025** uses the recoded Barnsley and Sheffield codes E08000038 and E08000039, because `la_boundaries` is May 2024 and carries E08000016 and E08000019. This pair has now appeared in S9b, S18, S21 and S22. It is predictable, not surprising. Resolution is `change_type = 'recode'` only: a recode renumbers the same area and resolves, while `new_unitary` and `merger` are abolitions and must stay unmapped, because folding predecessor districts onto a successor makes every downstream sum count that successor once per predecessor.
+
+**Standing rule — this document is the source register; `pipeline_run_log` is not.** Source numbers are assigned from the register table above. The run log is an execution record and has twice been the wrong authority to ask: S15 was built in July 2026 and never logged at all, and S9a, S9b and S8b were logged under keys (`s9a`, `s9b`, `8`) that did not match their register entries, so 9, 15 and 16 all read as free when only 16 was. The log was backfilled and normalised on 2026-08-13 and now agrees with this table. A new build reads the register for the number and checks the log only as a contradiction test — if they disagree, that disagreement is the finding, and neither number is used until it is explained.
 
 **Standing rule — unresolved codes are UNEXPLAINED until explained.** Any build encountering codes it cannot resolve reports them as UNEXPLAINED, never as harmless, benign or expected. The explanation is a gate, not a note: an unresolved code is a hard stop, and the reason it is unresolved must be established against an authoritative source before deciding what to do about it. A missing entry in a shared lookup is evidence about the lookup, not only about the source in hand. Classifying a gap without investigating it is what let the `la_code_lookup` Cumbria error stand for two weeks after it was visible.
 
@@ -218,10 +228,14 @@ Always uses `MAX(run_id)` to ensure the latest data is exported. Never hardcodes
 ## Boundary Data
 
 Boundaries are sourced from the ONS Open Geography Portal:
-- Dataset: Local Authority Districts (December 2024) Boundaries UK BUC
+- Dataset: Local Authority Districts (**May 2024**) Boundaries UK **BGC**
 - Format: GeoJSON, WGS84 (EPSG:4326)
 - Simplified to approximately 20% of original vertex count for web performance
 - Only English LAs included (296 districts, unitary authorities, metropolitan boroughs)
+
+This section previously read "December 2024 ... BUC". Both were wrong. Two independent artefacts agree on May 2024 BGC: `la_boundaries.source_date` is `2024-05-01` for all 296 rows, and the S7 run log note reads "LA boundaries loaded — May 2024 BGC — England only". The code list is identical across LAD24 vintages, so the loaded data cannot adjudicate this on its own — it was settled from the load provenance, not inferred. Corrected 2026-08-13.
+
+**The boundary vintage predates the codes some publishers now use.** `la_boundaries` is May 2024 and carries E08000016 and E08000019 for Barnsley and Sheffield. The 1 April 2025 recode (SI 1328/2024) means any source published after that date will use E08000038 and E08000039 instead. See the standing rule below.
 
 ---
 

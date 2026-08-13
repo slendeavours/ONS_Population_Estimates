@@ -88,7 +88,7 @@ Only the current taxbase year is published in the release workbook — there are
 
 Resolution runs through `la_code_lookup`. A pure recode resolves; an abolition into a successor unitary does not.
 
-MHCLG publishes Barnsley and Sheffield under the codes recoded on 1 April 2025 (SI 1328/2024) — E08000038 and E08000039 — while `la_boundaries` is LAD December 2024 and carries E08000016 and E08000019. Both resolve as `change_type = 'recode'`: same area, new number. The same two codes appear in Table 615 and are resolved the same way there.
+MHCLG publishes Barnsley and Sheffield under the codes recoded on 1 April 2025 (SI 1328/2024) — E08000038 and E08000039 — while `la_boundaries` is LAD May 2024 and carries E08000016 and E08000019. Both resolve as `change_type = 'recode'`: same area, new number. The same two codes appear in Table 615 and are resolved the same way there.
 
 ## W1 Integration
 
