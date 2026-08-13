@@ -2,7 +2,7 @@
 
 <!-- repo-meta
 status: active
-last-reviewed: 2026-07-25
+last-reviewed: 2026-08-13
 type: tool
 consumed-by: map.slendeavours.org, n8n exempt_pipeline workflows
 -->
@@ -41,6 +41,7 @@ Legacy Kepler.gl viewers are retained in `/viewers/` for reference but are no lo
 | CRFD (S9b) | MHS26 clinically ready for discharge days — combined MH+LD/autism (MHSDS monthly, direct LA level) |
 | PIP Claimants (S19) | Total PIP caseload and enhanced daily living claimants per LA (DWP Stat-Xplore, monthly) |
 | HB Accommodation Type (S8b) | HB claimants by accommodation type: SA, TA, Other, Unknown (DWP Stat-Xplore, monthly) |
+| Empty Homes (S22) | Long-term empty rate, dwellings empty 6+ months, empty homes premium count, second homes, total dwellings (MHCLG Council Taxbase, annual) |
 
 Source 6 (Home Office asylum support) is **deliberately absent from this table**. It is loaded into Postgres but not wired into Workflow 1, so it appears in neither the signals JSON nor the map, and nothing in this repository exports it. Adding a row here would imply a coverage this repository does not have. See `docs/s6_asylum_source.md`.
 
@@ -84,9 +85,14 @@ s15_hpi_source.md                           Source 15 register entry
   geography_dimension.md                    la_geography / la_succession dimension tables
   S9_BUILD_SUMMARY.md                      S9 sources build summary (UCES project knowledge)
   S6_BUILD_SUMMARY.md                      S6 asylum support build summary (UCES project knowledge)
+  S22_BUILD_SUMMARY.md                     S22 Council Taxbase empty homes build summary
+  s22_source_structure.md                  Source 22 register entry: discovered file structure, dates, release-page figures
+  s22_verification.md                      S22 verification suite results
+  s22_w1_node5_revised.md                  W1 node 5 SQL as revised for S22
   /nodes/                                   Pipeline node documentation
   /decisions/                               Decision records (dated, one per non-obvious decision)
-/scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC; S19 PIP; S8b HB accommodation type)
+/scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC; S19 PIP; S8b HB accommodation type; S22 Council Taxbase)
+  export_map_data.py                        Builds the three published data files from the pipeline database
 /viewers/                                   Legacy Kepler.gl viewers (retained, unmaintained)
 /n8n/                                       n8n workflow exports
 ```

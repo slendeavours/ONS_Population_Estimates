@@ -5,6 +5,32 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 
 ## [Unreleased]
 
+### Added
+- **Source 22 (MHCLG Council Taxbase empty homes).** Two MHCLG publishers, both resolved from their landing pages at run time with no stored file URL: *Council Taxbase 2025 in England* (first published 6 November 2025, **revised 21 January 2026** after corrections from 22 authorities) and *Live Table 615: vacant dwellings by local authority district, England, from 2004*.
+- Four tables: `la_council_taxbase_empties` (296 rows, one per LA per taxbase year), `la_ctb_exemption_classes` (3,256 rows, the eleven unoccupied exemption classes at LA level), `la_vacant_dwellings_615` (7,170 district-year rows, 2004 to 2025) and `ctb_series_breaks` (2 rows).
+- `v_la_empty_homes_rates` — long-term empty rate, long-term share of empties, premium coverage and second homes rate over the latest taxbase year. Every denominator guarded with `NULLIF`. Rates are derived here and never stored.
+- Five `staging_la_signals` columns via an additive `DO $$ ... IF NOT EXISTS` migration: `ctb_total_dwellings`, `ctb_empty_6m_plus`, `ctb_empty_homes_premium`, `ctb_second_homes`, `ctb_lte_rate_pct`. The table was not dropped or recreated. W1 run 12, 296/296 on all five.
+- Map layer **Long-Term Empty Rate**, driven by `ctb_lte_rate_pct`. One layer only — total empties bundles second homes and short-term turnover and is held in the database rather than mapped, as is premium application. The detail panel gains an Empty Homes section.
+- Build scripts `scripts/s22_ctb_discover.py`, `s22_ctb_empties_build.py`, `s22_run.py`, `s22_w1_wire.py`, `s22_verify.py`, and the shared connection helper `scripts/_db.py`.
+- Documentation: `docs/S22_BUILD_SUMMARY.md`, `docs/s22_source_structure.md`, `docs/s22_verification.md`, `docs/s22_w1_node5_revised.md`, and `docs/nodes/s22_node1..10*.md`.
+- `docs/METHODOLOGY.md`: S22 source register row, the four S22 tables in the architecture listing, and a full S22 section covering both publishers, coverage caveats, structural breaks and geography.
+
+### Changed
+- `docs/METHODOLOGY.md` and `docs/README.md`: S22 recorded; review stamp updated to 2026-08-13.
+- `scripts/export_map_data.py`: the five `ctb_*` columns added to the post-export presence check, so a future export that silently drops them fails loudly.
+- **W1 node 5 revised in the stored n8n workflow.** The revision also folds in the S9 (`drd_*`, `crfd_days`) and S19 (`pip_*`) columns, which were present in the database but absent from the stored node because runs 10 and 11 had been applied by direct SQL. Without that the next workflow run would have silently dropped six columns. Full SQL at `docs/s22_w1_node5_revised.md`.
+
+### Fixed
+- `scripts/_db.py` resolves `PG_USER` and `PG_PASSWORD` through a `_require` helper that stops with a clear error rather than falling back to a literal, and tolerates a missing `.env` instead of raising on import.
+- The `staging_runs` sequence trailed the data. Runs 10 and 11 exist in `staging_la_signals` with no matching `staging_runs` row, so `nextval()` would have returned 10 and collided with an existing run. The sequence is now advanced past the highest run id in either table before a run is created.
+
+### Notes
+- **Two structural breaks**, recorded machine-readably in `ctb_series_breaks` and cited to the MHCLG technical notes. 1 April 2024: the Empty Homes Premium threshold moved from 2 years to 1 year, so `empty_homes_premium_count` is not comparable across that date — the England rise of 27.9% is a widened eligible population, not more empty homes. 1 April 2025: the Second Homes Premium was introduced, so `second_homes` is affected by reclassification.
+- **`premium_coverage_pct` can never reach 100** and is directional only: long-term empty starts at six months, the premium at twelve. Carried as a column comment on the view, not only in prose.
+- **No national figure is published for six-month-plus empties.** That is NOT FOUND on the release page, not unchecked. Those two measures reconcile against the publisher's own England total row in the same workbook, and the substitution is stated wherever the figure appears.
+- Abolished districts in Table 615 keep a null `lad24cd` and are **not** aggregated into successor unitaries; folding six Somerset districts onto E06000066 would make any downstream sum count Somerset six times. `la_code_lookup` was read, never written.
+- The "Gov Sources" badge is unchanged. It is publisher-count framing and MHCLG is already counted.
+
 ### Security
 - **A database credential was supplied as a fallback default in `s15_hpi_build.py` and has been removed. The credential has been rotated.** The value is not restated here or anywhere else in the repository. It had been present across 25 commits under two filenames, and the account it belonged to is a Postgres superuser owning four databases, so the exposure was cluster-wide rather than limited to `exempt_pipeline`.
 - Every build script now resolves `PG_USER` and `PG_PASSWORD` through a `_require_env` helper that stops with a clear error rather than falling back to a literal. Host, port and database name keep defaults; they are addressing, not credentials. `scripts/s11_cqc_load.py` and `scripts/s18_pipr_load.py` already behaved this way and are unchanged.
