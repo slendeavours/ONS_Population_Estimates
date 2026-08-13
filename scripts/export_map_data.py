@@ -147,11 +147,15 @@ def main():
     missing = [c for c in ("drd_bed_days_lost", "drd_pct_delayed_1plus_days",
                            "crfd_days", "pip_total_claimants",
                            "pip_enhanced_daily_living", "pip_rate_per_1000",
-                           "hb_sa_claimants_latest")
+                           "hb_sa_claimants_latest",
+                           "ctb_total_dwellings", "ctb_empty_6m_plus",
+                           "ctb_empty_homes_premium", "ctb_second_homes",
+                           "ctb_lte_rate_pct")
                if c not in features[0]["properties"]]
     if missing:
         sys.exit(f"HARD STOP: expected columns absent from export: {missing}")
-    print("\nAll S9, PIP and HB columns present in both files.")
+    print("\nAll S9, PIP, HB and S22 Council Taxbase columns present in "
+          "both files.")
 
     cur.close()
     conn.close()

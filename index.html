@@ -329,7 +329,8 @@ var LAYER_COLOR_SCALES = {
   lha_sar_weekly: ['#f7fee7', '#d9f99d', '#bef264', '#a3e635', '#84cc16', '#65a30d', '#3f6212'],
   lha_1bed_weekly: ['#fefce8', '#fef08a', '#fde047', '#facc15', '#eab308', '#ca8a04', '#854d0e'],
   supported_living_locations: ['#f0ece4', '#e8d9bb', '#dcc79a', '#d4b87a', '#c9a96e', '#b08040', '#a07840'],
-  avg_price_all: ['#C9A96E', '#D4B483', '#DFC69A', '#E8D8BA', '#C8C0B0', '#8C8880']
+  avg_price_all: ['#C9A96E', '#D4B483', '#DFC69A', '#E8D8BA', '#C8C0B0', '#8C8880'],
+  ctb_lte_rate_pct: ['#f5f3ff', '#ddd6fe', '#c4b5fd', '#a78bfa', '#8b5cf6', '#7c3aed', '#4c1d95']
 };
 var NO_DATA_COLOR = '#333333';
 
@@ -347,7 +348,11 @@ var LAYERS = [
   // S11 — the pipeline's only supply-side layer, visually separated in the sidebar
   { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, minLabel: 'Fewer', maxLabel: 'More' },
   // S15 — house prices (supply-side context)
-  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI (all property)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' }
+  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI (all property)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' },
+  // S22 — long-term empty rate. The only empty homes layer: total empties
+  // bundles second homes and short-term turnover, so it is held in the
+  // database and not mapped.
+  { key: 'lte',    dot: '#8b5cf6', name: 'Long-Term Empty Rate',      desc: 'Dwellings empty 6+ months (CTB 2025)', field: 'ctb_lte_rate_pct',          reversed: false, ratePct: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' }
 ];
 
 var map, geojson, laIndex = {}, activeLayer = LAYERS[0];
@@ -373,6 +378,10 @@ function fmtMoneyPrice(v) {
 function fmtPct(v) {
   if (v === null || v === undefined || typeof v !== 'number') return '—';
   return (v > 0 ? '+' : '') + v.toFixed(1) + '%';
+}
+function fmtRatePct(v) {
+  if (v === null || v === undefined || typeof v !== 'number') return '—';
+  return v.toFixed(2) + '%';
 }
 function fmtTrend(v) {
   if (!v) return '—';
@@ -667,6 +676,12 @@ function openPanel(p) {
     '<div class="pn-section">House Prices (LR HPI)</div>' +
     row('Avg Price (All)', esc(fmtMoneyPrice(p.avg_price_all))) +
     row('Annual Change', typeof p.annual_change_pct === 'number' ? esc(fmtPct(p.annual_change_pct)) : '—', typeof p.annual_change_pct === 'number' ? (p.annual_change_pct >= 0 ? 'pos' : 'neg') : '') +
+
+    '<div class="pn-section">Empty Homes (Council Taxbase 2025)</div>' +
+    row('Long-Term Empty Rate', esc(fmtRatePct(p.ctb_lte_rate_pct))) +
+    row('Empty 6+ Months', esc(fmtNum(p.ctb_empty_6m_plus))) +
+    row('Charged Empty Homes Premium', esc(fmtNum(p.ctb_empty_homes_premium))) +
+    row('Second Homes', esc(fmtNum(p.ctb_second_homes))) +
 
     '<div class="pn-section">Context</div>' +
     row('Population', esc(fmtNum(p.population))) +
