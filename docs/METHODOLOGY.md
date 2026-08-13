@@ -94,7 +94,28 @@ Assume any source published **after 1 April 2025** uses the recoded Barnsley and
 
 **Standing rule — derived rates live in views, and `staging_la_signals` is the one documented exception.** Source tables never store a rate. `staging_la_signals` is a point-in-time snapshot, so it does carry derived columns, but every one of them must take its definition from a view rather than from an expression written inline in node 5. Otherwise the definition exists only in the node and cannot be audited or reused. `ctb_lte_rate_pct` comes from `v_la_empty_homes_rates`; `pip_rate_per_1000` was inline in node 5 until 2026-08-13 and now comes from `v_la_pip_rates`.
 
-`v_la_pip_rates` also exposes `population_reference_year` next to the rate, because the numerator refreshes monthly and the denominator annually. At the time of writing that is Apr-26 claimants over a **2024** mid-year population estimate. A rate whose inputs refresh on different cadences can go stale against its own denominator without any row-level check noticing, so the denominator's vintage is published as data rather than left to documentation. The remaining inline derivations in node 5 — `ta_yoy_pct`, `ta_trend_label`, `data_quality` — are per-row transformations of columns already in the same SELECT, not cross-source rates, and are left as they are.
+`v_la_pip_rates` also exposes `population_reference_year` next to the rate, because the numerator refreshes monthly and the denominator annually. A rate whose inputs refresh on different cadences can go stale against its own denominator without any row-level check noticing, so the denominator's vintage is published as data rather than left to documentation. The remaining inline derivations in node 5 — `ta_yoy_pct`, `ta_trend_label`, `data_quality` — are per-row transformations of columns already in the same SELECT, not cross-source rates, and are left as they are.
+
+> **Open dependency — the S3 population refresh gates external use of the HSS material.**
+>
+> `pip_rate_per_1000` is currently **Apr-26 claimants over a mid-2024 population base**: two years of drift in the denominator of a rate that would be put in front of a council or an NHS commissioner. Exposing `population_reference_year` makes the mismatch visible; it does not fix it.
+>
+> The fix is available now. ONS published *Population estimates for England and Wales: mid-2025* on **29 July 2026**, with local authority breakdowns. `la_population` holds `reference_year` 2024 for all 296 rows, loaded 2026-03-26.
+>
+> Two things to carry into that refresh. The release postdates 1 April 2025, so it will use the recoded Barnsley and Sheffield codes E08000038 and E08000039 — the geography standing rule above applies. And the bulletin covers 318 local authority areas across England and Wales, so England must be filtered rather than assumed.
+>
+> Until it lands, the three-layer HSS package (S11 supply, S19 PIP demand, S9 flow — 296/296 on all three at run 12) is assemblable internally but should not go out externally on the current denominator.
+
+**Standing rule — anything that enumerates tables, columns or schema is scanned for counterparty names before it is staged.** Not before it is pushed: before `git add`. This repository is public.
+
+S20 is the reason. It is a commercial rate card held in confidence, and **the counterparty's name is in the table names themselves**, so any artefact that lists the schema discloses it without ever mentioning the source. On 2026-08-13 a source register audit — a governance document with nothing to do with the map — was staged for this repository carrying exactly that. It was caught before the push, but after `git add`, and only because someone thought to look.
+
+Two controls, because the rule alone is what failed:
+
+- `confidentiality_scan.py` scans staged files, or all tracked files with `--all`, against a term list. It lives outside every git working tree, because a list of names you must not publish is itself a thing you must not publish. Verified: 135 tracked files clean, and it fires on the audit report.
+- Artefacts that cannot be sanitised live **outside every git working tree**, not behind a `.gitignore` entry. An ignore rule can be overridden with `git add -f`; a different directory cannot. `source_register_audit.py` and its report were moved there on 2026-08-13 after it turned out that "kept local" meant "untracked inside a working copy of this repository", which is one `git add -A` from publication.
+
+The publishable half of the audit's logic was split into `scripts/register_lib.py`, which names no tables, so `sync_readme_sources.py` can still use it.
 
 **Standing rule — this document is the source register; `pipeline_run_log` is not.** Source numbers are assigned from the register table above. The run log is an execution record and has twice been the wrong authority to ask: S15 was built in July 2026 and never logged at all, and S9a, S9b and S8b were logged under keys (`s9a`, `s9b`, `8`) that did not match their register entries, so 9, 15 and 16 all read as free when only 16 was. The log was backfilled and normalised on 2026-08-13 and now agrees with this table. A new build reads the register for the number and checks the log only as a contradiction test — if they disagree, that disagreement is the finding, and neither number is used until it is explained.
 

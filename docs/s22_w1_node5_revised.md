@@ -2,7 +2,7 @@
 
 The full `LA Signals` query as stored in the n8n workflow. Held as markdown because `*.sql` is gitignored repo-wide to keep database dumps out; the canonical build artefact is `build_reports/s22_w1_node5_revised.sql` on the pipeline host.
 
-Divergence between this query and `staging_la_signals` is enforced in three places: the `Signal Column Pre-flight` node inside W1, `scripts/w1_contract_check.py` on the scripted path, and a backstop in `scripts/export_map_data.py`.
+Divergence between this query and `staging_la_signals` is enforced in three places: the `Signal Column Pre-flight` node inside W1, `scripts/w1_contract_check.py` on the scripted path, and a backstop in `scripts/export_map_data.py`. All three fail on a missing `EXCLUDED` clause as well as on a column or positional mismatch.
 
 ```sql
 -- ===========================================================================
@@ -249,15 +249,31 @@ LEFT JOIN la_council_taxbase_empties ctb
 LEFT JOIN v_la_empty_homes_rates ctbr
     ON ctbr.lad24cd = b.lad24cd
 
+-- Every inserted column except the key is refreshed. Eight of these were
+-- missing until 2026-08-13: la_name, population, rough_sleeping_prev_year,
+-- marac_rate_per_10k, housing_register and the three ro4_* columns. That
+-- was latent rather than harmless — it only slept because every run takes a
+-- fresh run_id, and the one time anyone re-runs into an existing run_id to
+-- recover from a failed pre-flight is exactly when those eight would have
+-- gone stale without a word. scripts/w1_contract_check.py now fails on a
+-- missing EXCLUDED clause rather than warning.
 ON CONFLICT (run_id, lad24cd) DO UPDATE SET
+    la_name                    = EXCLUDED.la_name,
+    population                 = EXCLUDED.population,
     ta_households_current      = EXCLUDED.ta_households_current,
     ta_households_prev_year    = EXCLUDED.ta_households_prev_year,
     ta_yoy_pct                 = EXCLUDED.ta_yoy_pct,
     ta_trend_label             = EXCLUDED.ta_trend_label,
     rough_sleeping_current     = EXCLUDED.rough_sleeping_current,
+    rough_sleeping_prev_year   = EXCLUDED.rough_sleeping_prev_year,
     care_leavers_semi_indep    = EXCLUDED.care_leavers_semi_indep,
     marac_cases                = EXCLUDED.marac_cases,
+    marac_rate_per_10k         = EXCLUDED.marac_rate_per_10k,
     hb_sa_caseload             = EXCLUDED.hb_sa_caseload,
+    housing_register           = EXCLUDED.housing_register,
+    ro4_bb_spend_000           = EXCLUDED.ro4_bb_spend_000,
+    ro4_nightly_spend_000      = EXCLUDED.ro4_nightly_spend_000,
+    ro4_total_homelessness_000 = EXCLUDED.ro4_total_homelessness_000,
     efs_flag                   = EXCLUDED.efs_flag,
     s114_flag                  = EXCLUDED.s114_flag,
     imd_rank_of_average_rank   = EXCLUDED.imd_rank_of_average_rank,

@@ -228,14 +228,18 @@ def check(refresh_contract=True):
                     "— it would silently populate the column from the wrong "
                     "expression.")
 
+    # An ERROR, not a warning. This only sleeps because every run takes a
+    # fresh run_id; the moment anyone re-runs into an existing run_id to
+    # recover from a failed pre-flight, an unrefreshed column goes stale
+    # with no signal at all.
     for c in insert_cols:
         if c.lower() in KEY_COLUMNS:
             continue
         if c.lower() not in set_cols:
-            warnings.append(
-                f"`{c}` is inserted but has no `{c} = EXCLUDED.{c}` on "
-                "conflict, so re-running the same run_id leaves the old "
-                "value in place.")
+            errors.append(
+                f"`{c}` is inserted but has no `{c} = EXCLUDED.{c}` in the "
+                "ON CONFLICT clause. Re-running into an existing run_id "
+                "would leave the old value in place and say nothing.")
 
     contract = []
     if len(insert_cols) == len(select_items):

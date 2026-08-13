@@ -115,6 +115,7 @@ s15_hpi_source.md                           Source 15 register entry
   /decisions/                               Decision records (dated, one per non-obvious decision)
 /scripts/                                   Per-source ETL scripts (S18 PIPR; S11 CQC; S19 PIP; S8b HB accommodation type; S22 Council Taxbase)
   w1_contract_check.py                      Node 5 to staging_la_signals column contract, both directions
+  register_lib.py                           Shared register helpers (names no tables, safe to publish)
   w1_add_preflight_node.py                  Installs the in-workflow pre-flight node
   sync_readme_sources.py                    Regenerates the README source table (--check fails if stale)
   export_map_data.py                        Builds the three published data files from the pipeline database
