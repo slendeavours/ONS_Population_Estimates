@@ -27,6 +27,7 @@ Source numbers follow `pipeline_run_log.source_number`, the pipeline's authorita
 | 17 | SafeLives MARAC data | MARAC cases, rate per 10k | SafeLives | Annual |
 | 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | ONS | Monthly |
 | 19 | DWP Stat-Xplore PIP | PIP total claimants and enhanced daily living per LA (demand proxy for supported living) | DWP | Monthly |
+| 22 | MHCLG Council Taxbase (CTB form) + Live Table 615 | Dwellings empty six months or more, all empties, empty homes premium counts, second homes, unoccupied exemptions by class per LA; vacant and long-term vacant dwellings by district from 2004 | MHCLG | Annual (November, revised the following January); Table 615 updated with the dwelling stock live tables |
 | 9a | NHS DRD monthly | Bed days lost to delayed discharge, % delayed 1+ days (UTLA→LAD apportioned) | NHSE | Monthly |
 | 9b | MHSDS MHS26 | CRFD delayed discharge days — combined MH+LD/autism (direct LA level) | NHS Digital | Monthly |
 
@@ -37,6 +38,37 @@ S11 is the pipeline's only supply-side source: every other source measures need,
 **S6 caveats.** Asylum support figures are based on the person's registered address, which is not necessarily where they regularly reside, and **exclude unaccompanied asylum-seeking children**, who are supported by local authority children's services rather than Home Office asylum support. S6 is not a count of all asylum seekers in an area. Two structural breaks make the England series non-comparable before 2025-03-31; they are recorded in the `asylum_series_breaks` table and explained in `docs/s6_asylum_source.md`.
 
 **S6 geography.** Resolved entirely through `la_code_lookup`. The build-local workaround S6 carried for three codes was retired on 2026-07-26 once the lookup was corrected; the reload reproduced the prior checksum byte-identically, confirming the workaround and the corrected lookup agree. See `docs/decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md` and `docs/decisions/2026-07-26-la-code-lookup-full-audit.md`.
+
+### S22 — MHCLG Council Taxbase empty homes
+
+Two MHCLG publishers, both resolved from their landing pages at run time. No file URL is stored in the build.
+
+| | Source A | Source B |
+|---|---|---|
+| Publication | Local authority Council Taxbase in England 2025 | Live Table 615: vacant dwellings by local authority district, England, from 2004 |
+| Landing page | [Council Taxbase statistics collection](https://www.gov.uk/government/collections/council-taxbase-statistics) | [Live tables on dwelling stock including vacants](https://www.gov.uk/government/statistical-data-sets/live-tables-on-dwelling-stock-including-vacants) |
+| Release date | 6 November 2025 | landing page last updated 25 June 2026 |
+| Revision date | **21 January 2026** — Tables 1, 2, 3a, 3b and 4 revised after corrections from 22 authorities | — |
+| Snapshot | Dwelling counts as at 10 September 2025 (VOA council tax list); discounts, exemptions and premiums derived at 6 October 2025 | one snapshot date per year, October |
+| Geography | 296 English billing authorities, published on ONS codes | local authority districts as they existed in each year |
+| Tables used | 1.01, 1.11, 1.17, 1.18, 1.19 (Council Taxbase Data sheet) and 2.01 (Supplementary Data sheet) | All_vacants, All_long_term_vacants |
+
+**Tables.** `la_council_taxbase_empties` (296 rows, one per LA per taxbase year), `la_ctb_exemption_classes` (3,256 rows, the eleven unoccupied exemption classes at LA level), `la_vacant_dwellings_615` (7,170 district-year rows, 2004 to 2025), `ctb_series_breaks` (2 rows). Rates are derived in `v_la_empty_homes_rates` and are never stored.
+
+**Coverage and its caveat.** 296 of 296 authorities for taxbase year 2025, complete. Only the current year is published in the release workbook, so a single year is loaded; the series is built up one release at a time from November each year. Table 615 covers 2004 to 2025, but **that series is not complete for any single geography over the full period**: 891 rows across 80 published codes are districts abolished under local government reorganisation and carry a null `lad24cd`. They are deliberately not aggregated into successor unitaries, because doing so would make any downstream sum count a successor once per predecessor district.
+
+**Long-term empty is not the same as vacant.** The Council Taxbase counts dwellings a billing authority classes as empty for council tax purposes; Table 615 counts vacant dwellings on a different definition and a different snapshot date. They are held in separate tables and are not reconciled to each other.
+
+**Structural breaks.** Both are recorded in `ctb_series_breaks` and cited to the MHCLG technical notes:
+
+- **1 April 2024** — the Empty Homes Premium threshold moved from 2 years to 1 year. `empty_homes_premium_count` is not comparable across this date; the England figure rose 27.9% between the 2024 and 2025 taxbase years, which is a widened eligible population rather than more empty homes.
+- **1 April 2025** — the Second Homes Premium was introduced, applied by 211 of 296 authorities. `second_homes` is affected by reclassification from this date: authorities reported reviewing empty properties and second homes ahead of the new premium, which moves dwellings between the two categories independently of anything changing on the ground.
+
+**`premium_coverage_pct` is directional only.** It can never reach 100, because long-term empty starts at six months while the premium starts at twelve, so the numerator is drawn from a strictly narrower population than the denominator. It is not a compliance rate. The caveat is carried as a column comment on the view, not only in this document.
+
+**Map layer.** One layer only, Long-Term Empty Rate, driven by `ctb_lte_rate_pct`. Total empties is held in the database and not mapped: it bundles second homes and short-term turnover, so a choropleth of it would misrepresent the picture. Premium application is likewise held and not mapped.
+
+**Geography.** MHCLG publishes Barnsley and Sheffield under the codes recoded on 1 April 2025 (SI 1328/2024), E08000038 and E08000039, while `la_boundaries` is LAD December 2024 and carries E08000016 and E08000019. Both resolve through `la_code_lookup` as `change_type = 'recode'` — the same area under a new number. Nothing was written back to the lookup.
 
 **Standing rule — unresolved codes are UNEXPLAINED until explained.** Any build encountering codes it cannot resolve reports them as UNEXPLAINED, never as harmless, benign or expected. The explanation is a gate, not a note: an unresolved code is a hard stop, and the reason it is unresolved must be established against an authoritative source before deciding what to do about it. A missing entry in a shared lookup is evidence about the lookup, not only about the source in hand. Classifying a gap without investigating it is what let the `la_code_lookup` Cumbria error stand for two weeks after it was visible.
 
@@ -68,6 +100,10 @@ Raw Sources (CSV / API)
   │ la_pip_claimants         │ (S19: PIP claimants by LA/month)
   │ la_hb_accom_type_caseload│ (S8b: HB accom type by LA/month)
   │ la_house_prices          │ (S15: Land Registry HPI by LA/period)
+  │ la_council_taxbase_empties│(S22: CTB empty homes by LA/taxbase year)
+  │ la_ctb_exemption_classes │ (S22: unoccupied exemption classes by LA)
+  │ la_vacant_dwellings_615  │ (S22: Table 615 vacants by district/year)
+  │ ctb_series_breaks        │ (S22: documented structural breaks)
   │ la_geography            │ (geography dimension, code validity)
   │ la_succession           │ (predecessor → successor mappings)
   └─────────────────────────┘
