@@ -105,7 +105,11 @@ UPSERT_COLS = [
 def pg_conn():
     """Connect using PG_* values from the repo .env (never hardcoded)."""
     env = {}
-    env_file = ROOT / ".env"
+    # .env sits at the working-copy root: this repository root in the
+    # outer checkout, one level up inside the published one. Same
+    # two-location lookup as scripts/_db.py.
+    env_file = next((p for p in (ROOT / ".env", ROOT.parent / ".env")
+                     if p.exists()), ROOT / ".env")
     if env_file.exists():
         for line in env_file.read_text().splitlines():
             if "=" in line and not line.strip().startswith("#"):

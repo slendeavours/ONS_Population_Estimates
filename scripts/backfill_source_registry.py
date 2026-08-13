@@ -952,6 +952,11 @@ PERIOD_COLUMNS = (
     "reporting_year", "rate_card_date", "year",
 )
 
+# Non-key columns that record which edition a row came from, for tables keyed
+# on an entity rather than a period.
+EDITION_COLUMNS = ("source_file_date", "file_date", "edition_date",
+                   "snapshot_date")
+
 
 def derive_latest_period(cur, table, pk_cols):
     """MAX of the target table's period key, as loaded.
@@ -964,7 +969,22 @@ def derive_latest_period(cur, table, pk_cols):
     """
     period_col = next((c for c in PERIOD_COLUMNS if c in (pk_cols or [])), None)
     if not period_col:
-        return None
+        # Some tables key on an entity rather than a period and carry the
+        # edition as an ordinary column — cqc_locations is keyed on
+        # location_id and records source_file_date. Without this fallback
+        # those sources keep a documented value that goes stale the moment a
+        # new edition is loaded.
+        cur.execute("""
+            SELECT column_name FROM information_schema.columns
+            WHERE table_schema='public' AND table_name=%s
+              AND column_name = ANY(%s)
+            ORDER BY array_position(%s, column_name)
+            LIMIT 1
+        """, (table, list(EDITION_COLUMNS), list(EDITION_COLUMNS)))
+        row = cur.fetchone()
+        if not row:
+            return None
+        period_col = row[0]
     cur.execute(f'SELECT MAX("{period_col}")::text FROM "{table}"')
     value = cur.fetchone()[0]
     return value
