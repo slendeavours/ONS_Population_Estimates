@@ -1,6 +1,8 @@
 # W1 Node 5 — revised SQL (S22)
 
-The full `LA Signals` query as applied to the stored n8n workflow on 2026-08-13. Held as markdown because `*.sql` is gitignored repo-wide to keep database dumps out; the canonical build artefact is `build_reports/s22_w1_node5_revised.sql` on the pipeline host.
+The full `LA Signals` query as stored in the n8n workflow. Held as markdown because `*.sql` is gitignored repo-wide to keep database dumps out; the canonical build artefact is `build_reports/s22_w1_node5_revised.sql` on the pipeline host.
+
+Divergence between this query and `staging_la_signals` is enforced in three places: the `Signal Column Pre-flight` node inside W1, `scripts/w1_contract_check.py` on the scripted path, and a backstop in `scripts/export_map_data.py`.
 
 ```sql
 -- ===========================================================================
@@ -116,11 +118,14 @@ SELECT
     drd.pct_delayed_1plus_days AS drd_pct_delayed_1plus_days,
     crfd.measure_value AS crfd_days,
 
-    -- S19 PIP claimants
+    -- S19 PIP claimants. Counts from the table; the rate from
+    -- v_la_pip_rates so pip_rate_per_1000 has exactly one definition, the
+    -- same treatment ctb_lte_rate_pct gets below. The view also exposes
+    -- population_reference_year, because the numerator refreshes monthly and
+    -- the denominator annually.
     pip.pip_total_claimants,
     pip.pip_enhanced_daily_living,
-    ROUND(pip.pip_total_claimants::NUMERIC
-          / NULLIF(p.population, 0) * 1000, 2) AS pip_rate_per_1000,
+    pipr.pip_rate_per_1000,
 
     -- S22 MHCLG Council Taxbase empty homes (supply-side indicator).
     -- Counts come from the table; the rate comes from
@@ -232,6 +237,9 @@ LEFT JOIN vw_mh_crfd_lad crfd
 LEFT JOIN la_pip_claimants pip
     ON pip.lad24cd = b.lad24cd
     AND pip.month = (SELECT MAX(month) FROM la_pip_claimants)
+LEFT JOIN v_la_pip_rates pipr
+    ON pipr.lad24cd = b.lad24cd
+    AND pipr.month = (SELECT MAX(month) FROM la_pip_claimants)
 
 -- S22 Council Taxbase empty homes (latest taxbase year)
 LEFT JOIN la_council_taxbase_empties ctb

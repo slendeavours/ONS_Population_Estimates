@@ -195,6 +195,23 @@ def main():
     nc.close()
     by_name = {n["name"]: n["parameters"].get("query") for n in nodes}
 
+    # The contract is refreshed from the stored node and checked in both
+    # directions before any run happens. The W1 pre-flight node enforces the
+    # table half inside the workflow; this enforces the node half, which
+    # needs the workflow JSON and so cannot be done in SQL.
+    import w1_contract_check
+    errors, contract_warnings, contract = w1_contract_check.check()
+    for w in contract_warnings:
+        log(f"  contract WARN {w}")
+    if errors:
+        for e in errors:
+            log(f"  contract ERROR {e}")
+        conn.close()
+        sys.exit("HALT: W1 node 5 and staging_la_signals diverge. Fix the "
+                 "node before running the workflow.")
+    log(f"step 2: contract check OK, {len(contract)} columns, "
+        f"{len(contract_warnings)} warning(s)")
+
     warnings = []
     run_id = step3_rerun_w1(conn, sql, by_name, warnings)
 

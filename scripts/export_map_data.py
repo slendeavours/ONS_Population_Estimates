@@ -56,7 +56,41 @@ DB_CFG = dict(
 NON_SIGNAL = {"run_id"}
 
 
+def _contract_backstop():
+    """Backstop copy of the W1 node 5 column contract check.
+
+    The primary check is the pre-flight node inside Workflow 1, which fires
+    on every run. This one fires on every export, so a divergence introduced
+    between a run and a publish still cannot reach the map. Both directions,
+    because a node naming an existing column but populating it from the
+    wrong expression would not throw on its own.
+    """
+    sys.path.insert(0, str(_HERE))
+    try:
+        from w1_contract_check import check
+    except ImportError:
+        print("WARNING: w1_contract_check not importable — export proceeding "
+              "without the node contract backstop.")
+        return
+    try:
+        errors, warnings, contract = check(refresh_contract=False)
+    except Exception as e:                      # n8ndb unreachable, etc.
+        print(f"WARNING: node contract backstop could not run ({e}). "
+              "Export proceeding; the W1 pre-flight node remains the "
+              "primary check.")
+        return
+    if errors:
+        for e in errors:
+            print(f"  ERROR {e}")
+        sys.exit("HARD STOP: W1 node 5 and staging_la_signals have diverged. "
+                 "Exporting now would publish columns the workflow cannot "
+                 "reproduce. Fix node 5 first.")
+    print(f"node contract backstop: OK, {len(contract)} columns, "
+          f"{len(warnings)} warning(s)")
+
+
 def main():
+    _contract_backstop()
     conn = psycopg2.connect(**DB_CFG)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
