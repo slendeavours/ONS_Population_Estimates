@@ -27,3 +27,8 @@ SKILLS/
 *.backup
 db-backups/
 backups/
+
+# Narrow exception: sql/ holds schema DDL, which is source and belongs in
+# version control. The rule above exists to stop dumps, not definitions.
+# Nothing else is un-ignored, and a dump must never be written to sql/.
+!sql/*.sql
