@@ -12,7 +12,34 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-PUBLISH = REPO / "ONS_Population_Estimates"
+
+
+def _publish_root(repo):
+    """Locate the published tree, whichever checkout this is running in.
+
+    This module is published, so it runs in two layouts. In the outer working
+    copy the published tree is a subdirectory; inside the published checkout
+    itself it is the repository root. Resolving to the subdirectory
+    unconditionally pointed METHODOLOGY at a path that does not exist there,
+    which broke every caller in that tree.
+
+    The nested tree is tested first, and that order is load-bearing. The outer
+    working copy carries its own docs/METHODOLOGY.md as well, so a check of
+    "does REPO/docs/METHODOLOGY.md exist" answers yes in both layouts and
+    would resolve the outer tree to its own stale copy instead of the
+    published one.
+    """
+    nested = repo / "ONS_Population_Estimates"
+    if (nested / "docs" / "METHODOLOGY.md").exists():
+        return nested
+    if (repo / "docs" / "METHODOLOGY.md").exists():
+        return repo
+    raise SystemExit(
+        f"HALT: docs/METHODOLOGY.md not found under {repo} or {nested}. "
+        f"It is the source register and nothing here works without it.")
+
+
+PUBLISH = _publish_root(REPO)
 METHODOLOGY = PUBLISH / "docs" / "METHODOLOGY.md"
 INDEX_HTML = PUBLISH / "index.html"
 

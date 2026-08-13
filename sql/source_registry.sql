@@ -46,6 +46,31 @@ END $$;
 
 
 -- ---------------------------------------------------------------------------
+-- 1b. pipeline_run_log.status: constrain new writes, do not normalise history
+--
+-- The log holds 'success' (83) and 'complete' (2). Both mean success. The two
+-- 'complete' rows are an accurate record of what those builds wrote and are
+-- left exactly as they are — rewriting an audit table to tidy a vocabulary is
+-- the wrong trade.
+--
+-- NOT VALID is the whole point: existing rows are never re-checked, new
+-- inserts and updates are. This codifies the convention already in force
+-- rather than narrowing it — no failure has ever been logged, because a build
+-- that fails rolls its transaction back and exits non-zero without writing a
+-- row at all.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conname = 'pipeline_run_log_status_new_writes_chk') THEN
+        ALTER TABLE pipeline_run_log ADD CONSTRAINT
+            pipeline_run_log_status_new_writes_chk
+            CHECK (status = 'success') NOT VALID;
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------------------------
 -- 2. source_registry
 --
 -- last_success_at is deliberately absent. Success is derived from
@@ -113,6 +138,27 @@ CREATE TABLE IF NOT EXISTS source_registry (
     created_at              timestamptz NOT NULL DEFAULT now(),
     updated_at              timestamptz NOT NULL DEFAULT now()
 );
+
+-- metrics arrived after the first build, so it is added by guarded ALTER
+-- rather than folded into the CREATE above: the CREATE is IF NOT EXISTS and
+-- would be skipped on an existing table, leaving the column absent.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'source_registry'
+          AND column_name = 'metrics'
+    ) THEN
+        ALTER TABLE source_registry ADD COLUMN metrics text[];
+    END IF;
+END $$;
+
+COMMENT ON COLUMN source_registry.metrics IS
+    'What the source actually gives you, one element per metric. Backfilled '
+    'from the Metric(s) column of the hand-written METHODOLOGY register so '
+    'the generated inventory is a superset of the table it replaces, not a '
+    'reduction of it.';
 
 COMMENT ON TABLE source_registry IS
     'One row per registered source. docs/METHODOLOGY.md is the authority for '

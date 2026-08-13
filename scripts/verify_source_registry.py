@@ -47,6 +47,9 @@ EXPECTED_CONSTRAINTS = [
     "source_registry_superseded_by_not_self_chk",
     "source_check_log_check_method_chk",
     "source_check_log_outcome_chk",
+    # New pipeline_run_log writes are constrained to 'success'.
+    # NOT VALID, so the two historical 'complete' rows stand.
+    "pipeline_run_log_status_new_writes_chk",
 ]
 NOT_NULL_COLS = ["source_code", "source_name", "publisher",
                  "acquisition_method", "cadence", "refresh_tier", "status"]

@@ -404,7 +404,7 @@ SOURCES = [
         publisher="DLUHC",
         acquisition_method="manual",
         cadence="annual", cadence_months=12,
-        publication_window="Autumn",
+        publication_window="autumn",
         target_table="la_rough_sleeping", geography_level="LAD24",
         n8n_workflow_name="Workflow 1",
         caveats=["The rough sleeping count is a single-night snapshot. Actual "
@@ -490,7 +490,7 @@ SOURCES = [
             "than discovered. The file has no separate title row: treating "
             "row 1 as headers silently drops the first BRMA (Ashford)."),
         cadence="annual", cadence_months=12,
-        publication_window="Late January",
+        publication_window="late January",
         target_table="brma_lha_rates", geography_level="BRMA",
         join_path=("la_brma_mapping, a lad24cd to brma_name crosswalk built "
                    "from BRMA boundary polygons."),
@@ -628,18 +628,19 @@ SOURCES = [
                      "(str:database:PIP_Monthly_new)"),
         api_endpoint="https://stat-xplore.dwp.gov.uk/webapi/rest/v1",
         acquisition_method="api",
-        auth_required=True, auth_env_var="Stat-Xplore_Token",
+        auth_required=True, auth_env_var="StatXplore_API_Key",
         known_gotchas=(
             "Table queries use the recodes pattern: explicit member URI maps "
             "in the recodes object, with dimensions referencing field IDs "
             "only. Including valueset URIs in dimensions causes a "
             "DUPLICATE_RECODES error. Batched at 15 LAs per API call to avoid "
             "504 timeouts. To force a full re-discovery, delete "
-            "s19_cache/discovery.json before running. Credential mismatch: "
-            "scripts/s19_pip_build.py reads the environment variable "
-            "Stat-Xplore_Token, while .env defines StatXplore_API_Key (the "
-            "name scripts/s8b_hb_accom_type_build.py reads). S19 hard-stops "
-            "unless Stat-Xplore_Token is exported separately."),
+            "s19_cache/discovery.json before running. Until 2026-08-14 this "
+            "build read an environment variable named Stat-Xplore_Token, "
+            "which nothing defines, so it hard-stopped before reaching the "
+            "API; it now reads StatXplore_API_Key, the same name "
+            "scripts/s8b_hb_accom_type_build.py uses against the same "
+            "Stat-Xplore account."),
         cadence="monthly", cadence_months=1, expected_lag_days=60,
         publication_window="Caseload snapshot, ~2 months lag",
         target_table="la_pip_claimants", geography_level="LAD24",
@@ -706,7 +707,7 @@ SOURCES = [
             "directly in the build script rather than through "
             "la_code_lookup, which is deliberately unchanged."),
         cadence="periodic",
-        publication_window="Irregular — Mar 2026 edition",
+        publication_window="Irregular (Mar 2026 edition)",
         target_table="la_statistical_neighbours", geography_level="LAD24",
         completeness_note=(
             "Free download, no login required. The build script "
@@ -737,7 +738,9 @@ SOURCES = [
             "landing page: https://www.gov.uk/government/statistical-data-"
             "sets/live-tables-on-dwelling-stock-including-vacants."),
         cadence="annual", cadence_months=12,
-        publication_window="November, revised the following January",
+        publication_window=("November, revised the following January; "
+                            "Table 615 updated with the dwelling "
+                            "stock live tables"),
         target_table="la_council_taxbase_empties", geography_level="LAD24",
         join_path=("MHCLG publishes Barnsley and Sheffield as E08000038 and "
                    "E08000039; both resolve through la_code_lookup as "
@@ -799,7 +802,7 @@ COLUMNS = [
     "ucws_lens", "hss_lens",
     "confidential", "publish_github", "publish_map",
     "refresh_tier", "status", "superseded_by",
-    "latest_period_loaded",
+    "latest_period_loaded", "metrics",
 ]
 # Columns that must never be nulled out by a re-run, but are also never
 # overwritten from this script once set by the check job.
@@ -852,6 +855,55 @@ def register_sort_key(s):
     return (int(re.match(r"\d+", s).group()), s)
 
 
+def split_metrics(cell):
+    """Split a Metric(s) cell into its parts, and report the separators used.
+
+    Splits only at parenthesis depth zero. 'LHA weekly rates (SAR, 1-4 bed) by
+    BRMA, mapped to LAs' has to break at the second comma and not the first,
+    and a naive split would cut the bracket in half.
+
+    Where the cell uses semicolons at top level, only semicolons separate -
+    the commas inside those clauses are prose, not list items. S22's cell is
+    two semicolon-separated clauses, the first of which is itself a
+    comma-separated list; splitting on both would flatten a structure the
+    author put there on purpose, and the rejoin would come back with the
+    wrong punctuation.
+
+    Returns (parts, separators) so the caller can reconstruct the original
+    text exactly and prove nothing was lost.
+    """
+    def top_level(text, chars):
+        found, depth = [], 0
+        for i, ch in enumerate(text):
+            if ch in "([":
+                depth += 1
+            elif ch in ")]":
+                depth = max(0, depth - 1)
+            elif depth == 0 and ch in chars:
+                found.append(i)
+        return found
+
+    delims = ";" if top_level(cell, ";") else ","
+    cuts = top_level(cell, delims)
+    parts, seps, prev = [], [], 0
+    for i in cuts:
+        parts.append(cell[prev:i].strip())
+        seps.append(cell[i])
+        prev = i + 1
+    parts.append(cell[prev:].strip())
+    return [p for p in parts if p], seps
+
+
+def rejoin_metrics(parts, seps):
+    """Reconstruct the original cell from a split, for the round-trip check."""
+    out = ""
+    for i, part in enumerate(parts):
+        out += part
+        if i < len(seps):
+            out += seps[i] + " "
+    return out
+
+
 def live_primary_keys(cur):
     """Primary key column lists, read from the live catalogue."""
     cur.execute("""
@@ -883,14 +935,20 @@ def backfill_run_log_source_code(cur, register_codes):
     number and the agent name disagree, the row keeps a null and is reported.
     """
     cur.execute("""
-        SELECT id, source_number, agent_name, notes
+        SELECT id, source_number, agent_name, notes, source_code
         FROM pipeline_run_log
         ORDER BY id
     """)
     rows = cur.fetchall()
 
-    resolved, unresolved = [], []
-    for run_id, number, agent, notes in rows:
+    resolved, unresolved, already = [], [], 0
+    for run_id, number, agent, notes, existing in rows:
+        # A writer that set its own source_code has already resolved the row.
+        # Counting it as unresolved misreports the build's own run entry,
+        # whose source_number is deliberately outside the register.
+        if existing is not None:
+            already += 1
+            continue
         if number in NON_SOURCE_RUN_KEYS:
             unresolved.append((run_id, number, agent,
                                "not a source — agent/orchestration run key"))
@@ -921,14 +979,27 @@ def backfill_run_log_source_code(cur, register_codes):
         cur,
         "UPDATE pipeline_run_log SET source_code = %s WHERE id = %s",
         resolved)
-    return resolved, unresolved
+    return resolved, unresolved, already
 
 
-def upsert_sources(cur, pks):
+def upsert_sources(cur, pks, register):
     """Upsert every registry row. Never overwrites a non-null with a null."""
     rows = []
+    lossy = []
     for src in SOURCES:
         record = dict(src)
+
+        # metrics is backfilled from the register's own Metric(s) cell, and
+        # the split is proved reversible before it is stored. A split that
+        # does not round-trip is kept whole rather than silently reshaped.
+        cell = (register.get(record["source_code"], {}).get("metrics") or "").strip()
+        if cell:
+            parts, seps = split_metrics(cell)
+            if rejoin_metrics(parts, seps) != cell:
+                lossy.append((record["source_code"], cell,
+                              rejoin_metrics(parts, seps)))
+                parts = [cell]
+            record["metrics"] = parts
         record.setdefault("auth_required", False)
         record.setdefault("confidential", False)
         record.setdefault("publish_github", True)
@@ -957,7 +1028,7 @@ def upsert_sources(cur, pks):
            f"VALUES ({placeholders}) "
            f"ON CONFLICT (source_code) DO UPDATE SET {updates}")
     psycopg2.extras.execute_batch(cur, sql, rows)
-    return len(rows)
+    return len(rows), lossy
 
 
 def collect_gaps(cur):
@@ -1132,8 +1203,9 @@ def main():
         apply_ddl(cur)
         pks = live_primary_keys(cur)
 
-        resolved, unresolved = backfill_run_log_source_code(cur, register_codes)
-        n_rows = upsert_sources(cur, pks)
+        resolved, unresolved, already = backfill_run_log_source_code(
+            cur, register_codes)
+        n_rows, lossy = upsert_sources(cur, pks, register)
 
         cols, gaps = collect_gaps(cur)
         gap_count, ranked = write_gap_report(cols, gaps, unresolved)
@@ -1153,7 +1225,11 @@ def main():
     print(f"source_registry rows upserted : {n_rows}")
     print(f"run-log source_code populated : {len(resolved)}")
     print(f"run-log source_code left null : {len(unresolved)}")
+    print(f"run-log already carried a code: {already}")
     print(f"null fields (published only)  : {gap_count}")
+    if lossy:
+        print(f"metrics kept whole (no split) : {len(lossy)} "
+              f"-> {[c for c, _, _ in lossy]}")
     print(f"gap report                    : {GAP_REPORT.relative_to(REPO)}")
     if run_log_id:
         print(f"pipeline_run_log id           : {run_log_id}")

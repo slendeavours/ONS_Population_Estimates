@@ -505,5 +505,4 @@ A null here means the source could not be established from `source_number`, `age
 | 65 | `0` | SPB Report Build | not a source — agent/orchestration run key |
 | 67 | `0` | Council Briefing Generator | not a source — agent/orchestration run key |
 | 68 | `0` | Council Briefing Generator | not a source — agent/orchestration run key |
-| 87 | `REG` | Source Registry Build | source_number is not in the METHODOLOGY register |
 

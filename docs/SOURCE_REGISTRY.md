@@ -68,8 +68,15 @@ carries.
 | --- | --- |
 | `source_code` | The register number from METHODOLOGY, including letters: `3b`, `8b`, `9a`, `9b`. Primary key. |
 | `source_name` | The register's own name for the source. |
+| `metrics` | What the source actually gives you, one element per metric. |
 | `publisher` | Recorded even where every other field is null — the map badge is a publisher count. `Withheld` for confidential sources. |
 | `series_name` | The publisher's title for the dataset, table or measure. |
+
+`metrics` was backfilled from the `Metric(s)` column of the hand-written
+register, splitting each cell only at parenthesis depth zero and only on
+semicolons where the cell uses them at top level. The split is proved
+reversible before it is stored: a cell that does not rejoin to its original
+text exactly is kept whole rather than silently reshaped. All 24 round-trip.
 
 ### Acquisition
 
@@ -165,6 +172,33 @@ and both mean success. Gate 6b fails if a status outside that vocabulary
 appears, so a new value cannot silently turn a loaded source into
 `never_loaded`.
 
+History is not normalised. The two `complete` rows are an accurate record of
+what those builds wrote and they stand. New writes are constrained to
+`success` by `pipeline_run_log_status_new_writes_chk`, added `NOT VALID` so
+existing rows are never re-checked while inserts and updates are. That
+codifies the convention already in force rather than narrowing it: no failure
+has ever been logged, because a build that fails rolls its transaction back
+and exits non-zero without writing a row.
+
+## Checking for new editions
+
+`scripts/check_sources.py` fetches each source's landing page, finds the
+newest matching link, fingerprints it, and writes one `source_check_log` row
+per source per run — including for checks that failed.
+
+Two things it deliberately does not do. It never picks `links[0]` as the
+newest: NHS England and NHS Digital both list oldest first, so document order
+is not release order, and the newest is chosen by parsed edition instead. And
+it excludes periods after the current month, because NHS Digital publishes
+scheduled publication pages ahead of the data and a page for next month is a
+calendar entry, not an edition.
+
+A check is only recorded as `no_change` when something was actually compared —
+a fingerprint against the stored one, or a detected edition against
+`latest_period_loaded`. Where neither comparison is possible the outcome is
+`check_failed` with the reason, because reaching a page proves the page
+exists, not that the data behind it is the data already loaded.
+
 ## How a new source build writes its own row
 
 A build is expected to register itself, in the same transaction that loads its
@@ -200,11 +234,22 @@ proves this by running the backfill twice and diffing every field.
 default, and asserts that nothing outside the sentinel block changes. It does
 not touch `index.html` or the map badge.
 
-As of 2026-08-14 the sentinels are **not yet placed**. The existing
-hand-written register table carries a `Metric(s)` column that
-`source_registry` has no column for, so replacing it as-is would lose that
-content. Run the script with `--init-sentinels` to see the diff. Resolve the
-column question before writing.
+The generated block keeps the register's column order — `S#`, `Source`,
+`Metric(s)`, `Publisher`, `Frequency` — because `scripts/register_lib.py`
+parses those positionally and `scripts/sync_readme_sources.py` builds the
+README source table from them. Reordering the columns would break README
+generation silently.
+
+As of 2026-08-14 the sentinels are **not yet placed**, and the write has not
+been applied. The `Metric(s)` blocker is closed: `metrics` now carries it and
+nothing is dropped. Run with `--init-sentinels` to review the diff. It reports
+every changed cell, triaged, and currently stands at:
+
+| Class | Count |
+| --- | ---: |
+| LOSS — the register said more than the registry holds | 0 |
+| enrichment — register text retained, detail added | 5 |
+| punctuation only — content identical | 3 |
 
 ## Verification
 
