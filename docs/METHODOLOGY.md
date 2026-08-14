@@ -9,6 +9,7 @@
 | S# | Source | Metric(s) | Publisher | Frequency |
 |---|---|---|---|---|
 | 1 | DLUHC H-CLIC | TA households (current + prev year), trend label | DLUHC | Quarterly |
+| 1b | MHCLG statutory homelessness Table A3 | Households owed a duty by support need — 24 published categories, plus the no/unknown/one/two/three-or-more household breakdown and the support-needs count, per LA per quarter | MHCLG | Quarterly |
 | 2 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | MHCLG | Annual |
 | 3 | ONS Mid-Year Estimates | Population by LA (mid-2025, 2023 LA boundaries edition; mid-2024 retained) | ONS | Annual |
 | 3b | Census 2021 TS054 | Tenure | ONS | Decennial |
@@ -30,6 +31,8 @@
 | 20 | Commercial rate card (private) | Withheld — commercial in confidence. Held in `exempt_pipeline` only and never exported to this repository, the signals JSON or the map | Withheld | As supplied |
 | 21 | ONS Clustering similar local authorities and statistical nearest neighbours in the UK | Five nearest statistical neighbours per LA (Table 7a, LTLA global) | ONS | Irregular (Mar 2026 edition) |
 | 22 | MHCLG Council Taxbase (CTB form) + Live Table 615 | Dwellings empty six months or more, all empties, empty homes premium counts, second homes, unoccupied exemptions by class per LA; vacant and long-term vacant dwellings by district from 2004 | MHCLG | Annual (November, revised the following January); Table 615 updated with the dwelling stock live tables |
+| 23 | RSH registered provider social housing stock (SDR + LADR) | Owned social stock per registered provider per LA: supported housing and housing for older people, general needs self-contained and bedspaces, low cost home ownership | Regulator of Social Housing | Annual (autumn; stock as at 31 March) |
+| 24 | RSH register of registered providers and regulatory judgements | Provider registration number, name, registration date, designation, corporate form; consumer, governance, viability and rent gradings with dates; enforcement notices. Entity-level, no LA geography | Regulator of Social Housing | Monthly register; judgements as issued |
 | 9a | NHS DRD monthly | Bed days lost to delayed discharge, % delayed 1+ days (UTLA→LAD apportioned) | NHSE | Monthly |
 | 9b | MHSDS MHS26 | CRFD delayed discharge days — combined MH+LD/autism (direct LA level) | NHS Digital | Monthly |
 

@@ -837,6 +837,261 @@ SOURCES = [
         refresh_tier="B", status="active",
         publish_github=True, publish_map=True,
     ),
+    dict(
+        source_code="1b",
+        source_name="MHCLG statutory homelessness Table A3",
+        publisher="MHCLG",
+        series_name=("Statutory homelessness in England: detailed local "
+                     "authority-level tables, Table A3"),
+        landing_page_url=("https://www.gov.uk/government/collections/"
+                          "homelessness-statistics"),
+        acquisition_method="landing_page",
+        api_endpoint="https://www.gov.uk/api/content",
+        auth_required=False,
+        known_gotchas=(
+            "Two incompatible sheet layouts. Quarters to October-December 2025 "
+            "use a 37-column merged four-row header; the January-March 2026 "
+            "release rewrote A3 to 34 columns with a single labelled header row "
+            "and [note n] markers, and renamed every category. The build "
+            "matches columns by label and refuses to load if any populated "
+            "column is unmatched, because the alternative - reading by position "
+            "- is what mis-mapped the S1 columns. "
+            "Suppression notation also differs by layout: legacy uses '..' for "
+            "a non-submitting authority and '-' for a suppressed breakdown, "
+            "v2026 uses '[x]' and '[c]'. "
+            "Older quarters carry the pre-2025 Barnsley and Sheffield codes "
+            "E08000016 and E08000019, which must be resolved through "
+            "la_code_lookup or the same authority appears under two codes. "
+            "GOV.UK still serves superseded assets: the _revised files recorded "
+            "in homelessness_quarter_urls for four quarters resolve but are no "
+            "longer linked from any release page, so editions are resolved live "
+            "from the release attachments rather than from that table."),
+        cadence="quarterly", cadence_months=3, expected_lag_days=120,
+        publication_window=("Roughly four months after quarter end; the "
+                            "January-March 2026 edition landed 13 August 2026"),
+        target_table="la_homelessness_support_needs", geography_level="LAD24",
+        join_path="lad24cd resolved through la_code_lookup",
+        build_script_path="scripts/s1b_support_needs_build.py",
+        source_doc_path="docs/s1b_support_needs_source.md",
+        node_docs_path="docs/nodes/s1b_node1_resolve_editions.md",
+        metrics=["Households owed a duty by each of 24 published support needs",
+                 "Households with no, unknown, one, two and three or more "
+                 "support needs",
+                 "Total count of support needs reported"],
+        caveats=[
+            "A3 is multi-response. A household can report several support "
+            "needs, and each need is counted once per household, so the 24 "
+            "category figures do not sum to the household total and must never "
+            "be added together. category_group separates the multi-response "
+            "categories ('support_need') from the mutually exclusive household "
+            "breakdown ('needs_breakdown').",
+            "Suppressed and missing values are stored as NULL with a "
+            "value_flag of 'suppressed' or 'missing', never as zero. A "
+            "breakdown is suppressed where an authority has fewer than five "
+            "households with support needs.",
+            "The publisher's England and regional rows are weighted to impute "
+            "for non-submitting authorities and rounded to the nearest 10, so "
+            "the loaded LA rows sum to less than the published England total. "
+            "They are not loaded as areas.",
+            "'Care leaver aged 21+' was retired on 1 April 2023 and split into "
+            "'21-24' and '25+'. The retired option is still reported and is "
+            "loaded as care_leaver_legacy_combined; the three overlap while "
+            "authorities migrate."],
+        completeness_note=(
+            "296 of 296 authorities for all eleven quarters from July-September "
+            "2023 to January-March 2026, complete. 101,232 rows. "
+            "Built 2026-08-14 as an extension of S1, not a replacement: S1 "
+            "keeps the temporary accommodation series that feeds Workflow 1. "
+            "S1b covers all 24 published support-need categories, including the "
+            "five S1 nominally holds, because those five were found during this "
+            "build to hold the wrong publisher columns - see "
+            "docs/decisions/2026-08-14-s1-support-need-column-misalignment.md. "
+            "S1b is not wired into staging_la_signals; it is queried directly."),
+        latest_period_loaded="2025Q4",
+        revises_back_series=True,
+        revision_note=(
+            "Quarters are revised and republished in place. The currently "
+            "linked attachment differs from the original for July-September "
+            "2023 (_fixed), April-June 2024 (_fix) and April-June 2025 "
+            "(_corrected), and homelessness_quarter_urls additionally records "
+            "_revised assets for four quarters that GOV.UK still serves but no "
+            "longer links. edition_variant and source_url on every row record "
+            "which file that row came from."),
+        detected_period_type="reference_period",
+        # Which cohorts present as homeless is the closest published proxy for
+        # referral mix (HSS); for UCWS it indicates the support profile of the
+        # households an area is placing.
+        hss_lens="primary", ucws_lens="secondary",
+        refresh_tier="B", status="active",
+        confidential=False, publish_github=True, publish_map=False,
+    ),
+    dict(
+        source_code="23",
+        source_name="RSH registered provider social housing stock",
+        publisher="Regulator of Social Housing",
+        series_name=("Registered provider social housing stock and rents in "
+                     "England, registered providers look-up tool"),
+        landing_page_url=(
+            "https://www.gov.uk/government/statistics/registered-provider-"
+            "social-housing-stock-and-rents-in-england-2024-to-2025"),
+        acquisition_method="landing_page",
+        api_endpoint="https://www.gov.uk/api/content",
+        auth_required=False,
+        known_gotchas=(
+            "The local authority breakdown is not published as a data file. It "
+            "is the STOCK_BY_LA sheet inside the look-up tool workbook, which "
+            "exists to drive the workbook's own search box, so it is an "
+            "internal sheet that could be renamed without notice. The build "
+            "asserts the exact header set and stops if it changes. "
+            "The same sheet mixes three grains - provider rows, 296 LA subtotal "
+            "rows (RP_Type = 'LA') and 9 regional rows - and a load that does "
+            "not filter on RP_Type double-counts by roughly three times. "
+            "The release landing page URL carries the edition years, so it "
+            "changes every year and cannot be treated as stable."),
+        cadence="annual", cadence_months=12, expected_lag_days=211,
+        publication_window="Autumn each year",
+        target_table="rsh_rp_stock_by_la", geography_level="LAD24",
+        join_path="lad24cd resolved through la_code_lookup",
+        build_script_path="scripts/s23_rsh_stock_build.py",
+        source_doc_path="docs/s23_rsh_stock_source.md",
+        node_docs_path="docs/nodes/s23_node1_resolve_edition.md",
+        metrics=["Supported housing and housing for older people units per "
+                 "provider per LA",
+                 "General needs self-contained units and bedspaces",
+                 "Low cost home ownership units",
+                 "Total owned social stock"],
+        caveats=[
+            "LA_SHHOP combines supported housing with housing for older "
+            "people and RSH does not split them at local authority level. A "
+            "large share is sheltered and retirement housing, so the figure is "
+            "an upper bound on supported provision of the kind this pipeline "
+            "is about and must not be read as a count of exempt-accommodation "
+            "style units.",
+            "Stock date and publication date are different and both are "
+            "stored. The return is a snapshot at 31 March and publication "
+            "follows roughly seven months later, so the newest available "
+            "figure is up to nineteen months old before the next one lands.",
+            "Loaded rows are unweighted. The publisher's headline national "
+            "figures in the additional tables are weighted to impute for small "
+            "providers filing the short SDR form, so they are slightly higher: "
+            "4,533,055 unweighted against 4,546,653 weighted for total social "
+            "stock at 31 March 2025.",
+            "Stock is recorded where it is owned, not where it is managed. A "
+            "provider owning stock in an area is not evidence that it operates "
+            "there."],
+        completeness_note=(
+            "296 of 296 authorities, 10,171 provider-by-authority rows for the "
+            "2024 to 2025 edition, stock at 31 March 2025. 504,902 supported "
+            "housing and older people units nationally; 295 of 296 authorities "
+            "carry some. Verified against the publisher's own 296 LA subtotal "
+            "rows, which reconcile exactly on all five measures. "
+            "SDR and LADR are held in one table with a provider_type column "
+            "because the publisher already merges them into this sheet with an "
+            "identical column set. The first direct supply-side measure in the "
+            "pipeline: S11 counts CQC locations and S8 counts HB caseload, "
+            "both indirect. Not yet wired into staging_la_signals."),
+        latest_period_loaded="2025-03-31",
+        revises_back_series=True,
+        revision_note=(
+            "Established from the publisher's own technical notes: RSH states "
+            "it will republish the statistics in the April of the year "
+            "following initial publication where aggregate changes made by "
+            "providers require a major revision, and makes non-scheduled "
+            "corrections where a substantial error or methodological issue is "
+            "identified."),
+        detected_period_type="reference_period",
+        # Registered supported provision is the direct comparator for a
+        # supported housing scheme (HSS); for UCWS it is a different model, but
+        # the stock competes for the same referrals.
+        hss_lens="primary", ucws_lens="secondary",
+        refresh_tier="B", status="active",
+        confidential=False, publish_github=True, publish_map=False,
+    ),
+    dict(
+        source_code="24",
+        source_name="RSH register of registered providers",
+        publisher="Regulator of Social Housing",
+        series_name=("Registered providers of social housing (monthly); "
+                     "Regulatory judgements and enforcement notices"),
+        landing_page_url=("https://www.gov.uk/government/publications/"
+                          "registered-providers-of-social-housing"),
+        acquisition_method="landing_page",
+        api_endpoint="https://www.gov.uk/api/content",
+        auth_required=False,
+        known_gotchas=(
+            "Two separate publications, resolved from two pages: the monthly "
+            "register snapshot and the regulatory judgements and notices "
+            "table. "
+            "The register page carries only the current month and there is no "
+            "archive, so history exists only because this table stores one row "
+            "per provider per snapshot. A load that overwrote a current-state "
+            "table would destroy the only record of what changed. "
+            "The snapshot date comes from the attachment title, not from the "
+            "run date - the file is published mid-month and a later run must "
+            "still record the publisher's date. "
+            "Some grade dates arrive as raw Excel serials rather than typed "
+            "dates. "
+            "The register workbook carries a hidden sheet holding a stray "
+            "account token from the publisher's tooling; it is not read and "
+            "nothing from it is stored, and the raw file is not committed."),
+        cadence="monthly", cadence_months=1, expected_lag_days=0,
+        publication_window="Around the middle of each month",
+        target_table="rsh_registered_providers", geography_level="entity",
+        build_script_path="scripts/s24_rsh_register_build.py",
+        source_doc_path="docs/s24_rsh_register_source.md",
+        node_docs_path="docs/nodes/s24_node1_resolve_publications.md",
+        metrics=["Registered provider count by designation and corporate form",
+                 "Consumer, governance, viability and rent gradings per "
+                 "provider with grade dates",
+                 "Enforcement notices",
+                 "Month-on-month registrations and de-registrations"],
+        caveats=[
+            "No geography. RSH does not publish provider addresses or contact "
+            "details, so this source cannot be apportioned to a local "
+            "authority. It is deliberately not wired into staging_la_signals "
+            "and deliberately not a map layer, and the verification suite "
+            "fails if either appears. A provider's registered office is not "
+            "where its stock is.",
+            "De-registration is an absence, not an event. The snapshot lists "
+            "current providers only, so a de-registration is detected by "
+            "comparing two snapshot dates and has no published date of its "
+            "own.",
+            "A registration number can be reused or transferred: L4331 appears "
+            "in the judgements table under two different landlord names. The "
+            "publisher's 'Name and Reg Code Change Details' column is stored "
+            "verbatim rather than resolved.",
+            "Judgements cover only providers that have been assessed - 308 of "
+            "1,579 registered providers. Absence of a judgement is not a "
+            "clean bill of health.",
+            "Local authority providers receive consumer gradings only, so "
+            "governance and viability are legitimately null for them."],
+        completeness_note=(
+            "Register snapshot 24 July 2026: 1,579 providers (1,260 "
+            "non-profit, 232 local authority, 87 profit). Judgements edition "
+            "12 August 2026: 308 judgements, 2 enforcement notices. "
+            "Discovery established that regulatory judgements ARE published in "
+            "a machine-readable table, not only as individual documents, so "
+            "the gradings table was built rather than recorded as a "
+            "limitation. Additional tables: rsh_regulatory_judgements, "
+            "rsh_enforcement_notices. "
+            "Held for risk management rather than analysis: the income route "
+            "runs through a registered provider partner, and a downgrade, an "
+            "enforcement notice or a de-registration is a material event."),
+        latest_period_loaded="2026-07-24",
+        revises_back_series=False,
+        revision_note=(
+            "The register is a snapshot, not a series, so there is no back "
+            "series to revise. Each month is a new snapshot stored alongside "
+            "the previous ones rather than replacing them."),
+        detected_period_type="publication_date",
+        # The RP partner and the competitor set are both on this register and a
+        # downgrade is a material event for the income route (HSS); for UCWS
+        # de-registrations are a business development signal, because the
+        # failed operator's landlords need a new manager.
+        hss_lens="primary", ucws_lens="secondary",
+        refresh_tier="B", status="active",
+        confidential=False, publish_github=True, publish_map=False,
+    ),
 ]
 
 

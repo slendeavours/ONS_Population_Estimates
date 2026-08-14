@@ -10,32 +10,32 @@ The top of this list is the documentation debt.
 
 | Field | Sources missing it | Where the value would come from |
 | --- | ---: | --- |
-| `next_expected_at` | 23 | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `superseded_by` | 23 | only populated when a source is replaced; null is correct for an active source |
+| `next_expected_at` | 26 | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
+| `superseded_by` | 26 | only populated when a source is replaced; null is correct for an active source |
+| `auth_env_var` | 23 | the build script, where the source needs a credential |
 | `hss_lens` | 21 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 21 | an explicit dual-lens note in the source documentation |
-| `auth_env_var` | 20 | the build script, where the source needs a credential |
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
+| `verification_checks` | 19 | the source's verification suite and its documented check count |
 | `source_doc_path` | 17 | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | 16 | the source's verification suite and its documented check count |
 | `node_docs_path` | 15 | the per-node documentation under docs/nodes/ |
 | `revises_back_series` | 15 | — |
 | `revision_note` | 15 | — |
+| `join_path` | 14 | the build script's geography resolution step |
 | `build_script_path` | 13 | the build script, if it is in the published tree |
-| `join_path` | 13 | the build script's geography resolution step |
 | `detected_period_type` | 12 | — |
 | `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
+| `n8n_workflow_name` | 10 | the n8n workflow that runs the source, where one does |
 | `publication_window` | 10 | the publisher's stated release window |
 | `series_name` | 10 | the publisher's dataset or table title, as named in a source documentation file |
 | `known_gotchas` | 9 | a source documentation file — acquisition traps are only known once written down |
-| `n8n_workflow_name` | 7 | the n8n workflow that runs the source, where one does |
 | `caveats` | 6 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `landing_page_url` | 4 | the publisher's landing page, recorded in a source or node documentation file |
 | `cadence_months` | 3 | the publisher's stated cadence, where it is regular enough to express in months |
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 308 null fields across 23 published sources.
+Total: 324 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -58,6 +58,18 @@ Total: 308 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 
 **Note.** Mechanics established 2026-08-14. Quarterly releases titled 'Statutory homelessness in England: {month} to {month} {year}' sit under the Homelessness statistics collection, which resolves through the GOV.UK content API. Detection is automatable; ingestion stays gated because the per-quarter file URLs are still curated by hand. AUDIT 2026-08-14: 2025Q1 (April to June 2025) is marked loaded in homelessness_quarter_urls but has zero rows in la_statutory_homelessness, so a quarter is missing from the TA series; the publisher has also replaced the recorded _revised file with a _corrected one. 2025Q3 is loaded with no row in the URL register, so its provenance is unrecorded. No loaded quarter is superseded. See docs/decisions/2026-08-14-s1-quarter-gap-and-provenance.md.
+
+### S1b
+
+| Field | Where the value would come from |
+| --- | --- |
+| `auth_env_var` | the build script, where the source needs a credential |
+| `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
+| `verification_checks` | the source's verification suite and its documented check count |
+| `superseded_by` | only populated when a source is replaced; null is correct for an active source |
+
+**Note.** 296 of 296 authorities for all eleven quarters from July-September 2023 to January-March 2026, complete. 101,232 rows. Built 2026-08-14 as an extension of S1, not a replacement: S1 keeps the temporary accommodation series that feeds Workflow 1. S1b covers all 24 published support-need categories, including the five S1 nominally holds, because those five were found during this build to hold the wrong publisher columns - see docs/decisions/2026-08-14-s1-support-need-column-misalignment.md. S1b is not wired into staging_la_signals; it is queried directly.
 
 ### S2
 
@@ -503,6 +515,31 @@ Total: 308 null fields across 23 published sources.
 | `detected_period_type` | — |
 
 **Note.** 296 of 296 authorities for taxbase year 2025, complete. Additional tables: la_ctb_exemption_classes, la_vacant_dwellings_615, ctb_series_breaks. Rates are derived in v_la_empty_homes_rates and never stored.
+
+### S23
+
+| Field | Where the value would come from |
+| --- | --- |
+| `auth_env_var` | the build script, where the source needs a credential |
+| `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
+| `verification_checks` | the source's verification suite and its documented check count |
+| `superseded_by` | only populated when a source is replaced; null is correct for an active source |
+
+**Note.** 296 of 296 authorities, 10,171 provider-by-authority rows for the 2024 to 2025 edition, stock at 31 March 2025. 504,902 supported housing and older people units nationally; 295 of 296 authorities carry some. Verified against the publisher's own 296 LA subtotal rows, which reconcile exactly on all five measures. SDR and LADR are held in one table with a provider_type column because the publisher already merges them into this sheet with an identical column set. The first direct supply-side measure in the pipeline: S11 counts CQC locations and S8 counts HB caseload, both indirect. Not yet wired into staging_la_signals.
+
+### S24
+
+| Field | Where the value would come from |
+| --- | --- |
+| `auth_env_var` | the build script, where the source needs a credential |
+| `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
+| `join_path` | the build script's geography resolution step |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
+| `verification_checks` | the source's verification suite and its documented check count |
+| `superseded_by` | only populated when a source is replaced; null is correct for an active source |
+
+**Note.** Register snapshot 24 July 2026: 1,579 providers (1,260 non-profit, 232 local authority, 87 profit). Judgements edition 12 August 2026: 308 judgements, 2 enforcement notices. Discovery established that regulatory judgements ARE published in a machine-readable table, not only as individual documents, so the gradings table was built rather than recorded as a limitation. Additional tables: rsh_regulatory_judgements, rsh_enforcement_notices. Held for risk management rather than analysis: the income route runs through a registered provider partner, and a downgrade, an enforcement notice or a de-registration is a material event.
 
 ## `pipeline_run_log.source_code` rows left null
 
