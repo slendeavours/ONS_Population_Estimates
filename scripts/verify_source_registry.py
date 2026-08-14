@@ -340,6 +340,35 @@ def main():
          f"withheld sources: {[c for c, _ in hidden] or 'none'}; "
          f"any that leaked into the block: {found or 'none'}")
 
+    # ---- Gate 11: every script resolves .env from the published checkout ----
+    # This defect has appeared twice: register_lib.py, then six scripts that
+    # looked for .env only at the repository root. That is correct from the
+    # outer working copy and wrong inside the published one, where .env sits
+    # a level up. Two incidents is a class, and the next script written would
+    # reintroduce it. scripts/_db.py is the reference implementation, so this
+    # gate has something to assert against.
+    script_dir = Path(__file__).resolve().parent
+    offenders, checked = [], 0
+    for path in sorted(script_dir.glob("*.py")):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        needs_env = ("PG_PASSWORD" in text or 'load_dotenv' in text
+                     or '.env' in text)
+        if not needs_env or path.name == "_db.py":
+            continue
+        checked += 1
+        # Either delegate to _db, or look in both locations.
+        delegates = "from _db import" in text
+        two_places = (('ROOT.parent / ".env"' in text)
+                      or ('REPO.parent / ".env"' in text)
+                      or ('_HERE.parent.parent / ".env"' in text))
+        if not (delegates or two_places):
+            offenders.append(path.name)
+    gate(11, "every script resolves .env from the published checkout",
+         not offenders,
+         f"{checked} script(s) touch credentials or .env; "
+         f"reference implementation is scripts/_db.py; "
+         f"offenders: {offenders or 'none'}")
+
     cur.close()
     conn.close()
 

@@ -199,6 +199,23 @@ a fingerprint against the stored one, or a detected edition against
 `check_failed` with the reason, because reaching a page proves the page
 exists, not that the data behind it is the data already loaded.
 
+### The principle
+
+**Due status is decided by comparing the source against the database, never
+against the last observation.** The fingerprint is corroborating evidence, not
+the test. Anything that short-circuits on prior state can go green while being
+wrong, and a monitoring layer that reports `no_change` while sources sit
+unloaded is worse than no monitoring, because it manufactures confidence.
+
+Two bugs in this file have been that same mistake wearing different clothes.
+The fingerprint short-circuit was one. The other was S18, where the detected
+period is the publication date from the URL slug while `latest_period_loaded`
+is the reference period — the 22 July 2026 edition contains data to June 2026
+— so comparing them as though they were the same kind of thing reported a new
+edition forever. Both are now settled against the database: the period against
+the loaded period, or the edition slug against the target table's own `source`
+column.
+
 **The load gap is asked before the fingerprint, and the order matters.** They
 answer different questions: the fingerprint says whether the publisher has
 changed anything since the last look, the gap says whether what is published
@@ -293,14 +310,45 @@ every changed cell, triaged, and currently stands at:
 | enrichment — register text retained, detail added | 5 |
 | punctuation only — content identical | 3 |
 
+## Precedent — widening a CHECK constraint by drop-and-add
+
+`sql/source_registry.sql` is additive-only: every `CREATE` is `IF NOT EXISTS`
+and every `ALTER` is guarded. Adding `revision_detected` to
+`source_check_log.outcome` broke that rule, because Postgres has no `ALTER`
+that widens a `CHECK`. It was dropped and re-added.
+
+This is a **bounded exception, not a precedent for looser DDL**. It is only
+available when all three conditions hold:
+
+1. **Strictly widening.** The new vocabulary is a superset of the old, so no
+   existing row can violate the replacement.
+2. **In the same transaction.** Drop and add are in one `DO` block inside the
+   script's transaction, so there is no window in which the table is
+   unconstrained.
+3. **Asserted afterwards.** Gate 4 reads `pg_get_constraintdef` and fails
+   unless every expected token is present, so a widening that reached the code
+   but not the database is caught.
+
+Anything that narrows a vocabulary, changes a column type, or would let an
+existing row fail the new constraint does not qualify and needs a migration
+with a stated plan for the rows that fail.
+
 ## Verification
 
-`scripts/verify_source_registry.py` runs eleven hard gates: row count against
+`scripts/verify_source_registry.py` runs twelve hard gates: row count against
 METHODOLOGY, two-way agreement between register and registry, empty strings in
 `NOT NULL` columns, controlled vocabularies and the CHECK constraints that
 enforce them, one view row per registry row, run attribution (asserted by run
 id, never by timestamp — runs 57 and 58 share one), the run-log status
 vocabulary, confidential-implies-unpublished, `superseded_by` integrity,
-idempotency, and that no withheld source reaches generated output.
+idempotency, that no withheld source reaches generated output, and that every
+script in `scripts/` resolves `.env` from the published checkout.
+
+That last gate exists because the `.env` defect appeared twice — once in
+`register_lib.py`, then in six scripts at once. Two incidents is a class, and
+the next script written would have reintroduced it. `scripts/_db.py` is the
+reference implementation, so the gate has something concrete to assert
+against. It was proved by injecting the defect: the gate failed and the suite
+exited non-zero.
 
 Any failure aborts. Nothing is published from a red table.

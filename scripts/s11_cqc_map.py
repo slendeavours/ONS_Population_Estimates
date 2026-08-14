@@ -38,6 +38,7 @@ import geopandas as gpd
 import pandas as pd
 import psycopg2
 import requests
+from psycopg2.extras import execute_values
 from shapely.geometry import shape
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -81,6 +82,76 @@ def postcode_lookup(postcodes):
             if res and res.get("codes", {}).get("admin_district"):
                 results[item["query"]] = res["codes"]["admin_district"]
     return results
+
+
+UNRESOLVED_DDL = """
+CREATE TABLE IF NOT EXISTS cqc_unresolved_locations (
+    location_id      TEXT PRIMARY KEY,
+    location_name    TEXT,
+    postcode         TEXT,
+    reason           TEXT NOT NULL,
+    first_seen_edition DATE NOT NULL,
+    last_seen_edition  DATE NOT NULL,
+    editions_seen    INTEGER NOT NULL DEFAULT 1,
+    resolved_at      TIMESTAMPTZ,
+    loaded_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+COMMENT ON TABLE cqc_unresolved_locations IS
+'CQC locations that could not be resolved to a lad24cd and are therefore absent from cqc_locations. S11 is the pipeline''s only supply-side source, so each row here understates provision in some local authority by one location. UNEXPLAINED under the standing rule, never benign: the reason column records what was actually established, not an assumption. resolved_at is set when a location later resolves, so the row survives as a record rather than vanishing.';
+
+COMMENT ON COLUMN cqc_unresolved_locations.reason IS
+'What was established, with evidence. Not a category guess.';
+
+COMMENT ON COLUMN cqc_unresolved_locations.editions_seen IS
+'How many editions this location has been unresolved for. A rising count is a persistent gap, not a transient one.';
+"""
+
+
+def record_unresolved(cur, unmapped, file_date):
+    """Persist unresolved locations, and mark any that have since resolved."""
+    cur.execute(UNRESOLVED_DDL)
+    cur.execute("ALTER TABLE cqc_unresolved_locations OWNER TO pipeline_user")
+
+    still = []
+    for r in unmapped.itertuples(index=False):
+        still.append((r.location_id, r.location_name, r.postcode,
+                      "postcode absent from ONS data (not live, not "
+                      "terminated) and the file carries no coordinates and no "
+                      "LA name; the outward code spans more than one LA, so "
+                      "no resolution is available without a guess",
+                      file_date, file_date))
+    if still:
+        execute_values(cur, """
+            INSERT INTO cqc_unresolved_locations
+                (location_id, location_name, postcode, reason,
+                 first_seen_edition, last_seen_edition)
+            VALUES %s
+            ON CONFLICT (location_id) DO UPDATE SET
+                location_name = EXCLUDED.location_name,
+                postcode      = EXCLUDED.postcode,
+                reason        = EXCLUDED.reason,
+                last_seen_edition = EXCLUDED.last_seen_edition,
+                editions_seen = cqc_unresolved_locations.editions_seen
+                                + (CASE WHEN EXCLUDED.last_seen_edition
+                                             > cqc_unresolved_locations.last_seen_edition
+                                        THEN 1 ELSE 0 END),
+                resolved_at   = NULL,
+                loaded_at     = NOW()
+        """, still)
+
+    # Anything previously unresolved and absent from this edition's list has
+    # either resolved or left the register. Stamped rather than deleted.
+    ids = [s[0] for s in still]
+    cur.execute("""
+        UPDATE cqc_unresolved_locations
+           SET resolved_at = NOW()
+         WHERE resolved_at IS NULL
+           AND NOT (location_id = ANY(%s))
+    """, (ids,))
+    cur.execute("SELECT COUNT(*) FROM cqc_unresolved_locations "
+                "WHERE resolved_at IS NULL")
+    print(f"cqc_unresolved_locations: {cur.fetchone()[0]} open")
 
 
 def main():
@@ -167,6 +238,23 @@ def main():
         print(f"UNMAPPED (excluded from load): {len(unmapped)}")
         print(unmapped[["location_id", "location_name", "postcode"]]
               .to_string(index=False))
+    # Recorded at table level, not only on stdout. These are locations
+    # silently absent from a supply-side source: five of them understate
+    # provision by five, every edition, and a run note nobody reads is how a
+    # small persistent gap ends up in a council briefing as a supply figure.
+    # first_seen against last_seen shows how long each has persisted.
+    # main() closes its connection early, after reading boundaries, so
+    # this write opens its own rather than depending on that order.
+    file_date = (ROOT / "data" / "raw" / "s11_csv" / "FILE_DATE.txt"
+                 ).read_text(encoding="utf-8").strip()
+    wconn = pg_conn()
+    wcur = wconn.cursor()
+    try:
+        record_unresolved(wcur, unmapped, file_date)
+        wconn.commit()
+    finally:
+        wcur.close()
+        wconn.close()
     df = df[df["lad24cd"].notna()].copy()
 
     bad = set(df["lad24cd"]) - valid_codes
