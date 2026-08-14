@@ -12,30 +12,30 @@ The top of this list is the documentation debt.
 | --- | ---: | --- |
 | `next_expected_at` | 23 | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
 | `superseded_by` | 23 | only populated when a source is replaced; null is correct for an active source |
-| `auth_env_var` | 21 | the build script, where the source needs a credential |
 | `hss_lens` | 21 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 21 | an explicit dual-lens note in the source documentation |
+| `auth_env_var` | 20 | the build script, where the source needs a credential |
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
-| `detected_period_type` | 19 | — |
-| `api_endpoint` | 18 | the build script or node documentation, where acquisition is an API |
-| `revises_back_series` | 17 | — |
-| `revision_note` | 17 | — |
 | `source_doc_path` | 17 | a source documentation file — the single largest gap for undocumented sources |
 | `verification_checks` | 16 | the source's verification suite and its documented check count |
 | `node_docs_path` | 15 | the per-node documentation under docs/nodes/ |
-| `landing_page_url` | 14 | the publisher's landing page, recorded in a source or node documentation file |
+| `revises_back_series` | 15 | — |
+| `revision_note` | 15 | — |
 | `build_script_path` | 13 | the build script, if it is in the published tree |
 | `join_path` | 13 | the build script's geography resolution step |
+| `detected_period_type` | 12 | — |
+| `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
 | `publication_window` | 10 | the publisher's stated release window |
 | `series_name` | 10 | the publisher's dataset or table title, as named in a source documentation file |
 | `known_gotchas` | 9 | a source documentation file — acquisition traps are only known once written down |
 | `n8n_workflow_name` | 7 | the n8n workflow that runs the source, where one does |
 | `caveats` | 6 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
+| `landing_page_url` | 4 | the publisher's landing page, recorded in a source or node documentation file |
 | `cadence_months` | 3 | the publisher's stated cadence, where it is regular enough to express in months |
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 338 null fields across 23 published sources.
+Total: 308 null fields across 23 published sources.
 
 ## Null fields by source
 
@@ -44,8 +44,6 @@ Total: 338 null fields across 23 published sources.
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `publication_window` | the publisher's stated release window |
@@ -58,19 +56,14 @@ Total: 338 null fields across 23 published sources.
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
-| `detected_period_type` | — |
 
-**Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14. Quarterly releases titled 'Statutory homelessness in England: {month} to {month} {year}' sit under the Homelessness statistics collection, which resolves through the GOV.UK content API. Detection is automatable; ingestion stays gated because the per-quarter file URLs are still curated by hand.
 
 ### S2
 
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
@@ -85,11 +78,8 @@ Total: 338 null fields across 23 published sources.
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
-| `detected_period_type` | — |
 
-**Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14. The outturn releases are 'Local authority revenue expenditure and financing England: {years} individual local authority data outturn' under a collection that resolves through the GOV.UK content API.
 
 ### S3
 
@@ -117,8 +107,6 @@ Total: 338 null fields across 23 published sources.
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
@@ -136,16 +124,14 @@ Total: 338 null fields across 23 published sources.
 | `latest_period_loaded` | the check job, or the source documentation's 'month loaded' field |
 | `revises_back_series` | — |
 | `revision_note` | — |
-| `detected_period_type` | — |
 
-**Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14. Census 2021 tables are retrievable from the NOMIS API, which responds and is machine-readable. Cadence makes this close to academic: the next census is 2031, so detection will not fire for years.
 
 ### S4
 
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
 | `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
@@ -164,15 +150,13 @@ Total: 338 null fields across 23 published sources.
 | `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics checked 2026-08-14 and not established, which is not the same as unchecked. DfE publishes through Explore Education Statistics rather than GOV.UK; the find-statistics entry point responds but no working content API path was found, and the specific SEN2 / Children in Need release was not pinned down. Tier C stands on that evidence rather than as a default.
 
 ### S5
 
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
@@ -188,9 +172,8 @@ Total: 338 null fields across 23 published sources.
 | `latest_period_loaded` | the check job, or the source documentation's 'month loaded' field |
 | `revises_back_series` | — |
 | `revision_note` | — |
-| `detected_period_type` | — |
 
-**Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14. The English indices of deprivation collection resolves through the GOV.UK content API. Detection is automatable, though a new IMD edition is a deliberate pipeline decision rather than a routine refresh.
 
 ### S6
 
@@ -211,8 +194,6 @@ Total: 338 null fields across 23 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `cadence_months` | the publisher's stated cadence, where it is regular enough to express in months |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
@@ -231,7 +212,7 @@ Total: 338 null fields across 23 published sources.
 | `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** The boundary vintage was settled from load provenance, not inferred: la_boundaries.source_date is 2024-05-01 for all 296 rows and the S7 run log note reads 'LA boundaries loaded — May 2024 BGC — England only'. The code list is identical across LAD24 vintages, so the loaded data cannot adjudicate it alone. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14. The Open Geography Portal exposes an ArcGIS REST service list — 3,906 services, machine-readable, searchable for LAD*BGC vintages. Detection is automatable. Ingestion is heavily gated: changing the boundary vintage re-bases every join in the pipeline and is a deliberate decision, never a routine refresh.
 
 ### S8
 
@@ -239,8 +220,6 @@ Total: 338 null fields across 23 published sources.
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
 | `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
-| `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `publication_window` | the publisher's stated release window |
@@ -256,9 +235,8 @@ Total: 338 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
-| `detected_period_type` | — |
 
-**Note.** No source documentation file and no build script exist for S8. The register names STAT-Xplore as the platform, but how this pipeline acquires the extract is not documented. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14. Same Stat-Xplore API, same account and same credential as S8b, which already runs unattended: the endpoint responds 401 without a key and the schema is discoverable programmatically. Tier A describes the mechanics; no build script exists yet, which build_script_path records separately.
 
 ### S8b
 
@@ -315,8 +293,6 @@ Total: 338 null fields across 23 published sources.
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
@@ -331,9 +307,8 @@ Total: 338 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
-| `detected_period_type` | — |
 
-**Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14. Annual releases titled 'Rough sleeping snapshot in England: autumn {year}' sit under the same Homelessness statistics collection as S1 and resolve through the GOV.UK content API. The autumn snapshot is published the following February.
 
 ### S11
 
@@ -359,7 +334,6 @@ Total: 338 null fields across 23 published sources.
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
 | `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
@@ -378,15 +352,13 @@ Total: 338 null fields across 23 published sources.
 | `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14, and tier C is now evidenced rather than assumed. The EFS half resolves through the GOV.UK content API and could be detected. The S.114 half cannot: notices are issued and published by individual local authorities with no central register, so no endpoint exists to watch. Automating only the detectable half would report the source as checked while the manual half went unwatched, which is worse than reporting it manual. Split the source if the EFS half is ever worth automating on its own.
 
 ### S13
 
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
@@ -403,9 +375,8 @@ Total: 338 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
-| `detected_period_type` | — |
 
-**Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14. LAHS returns are published as statistical data sets, 'Local authority housing statistics data returns for {years}', under the Local authority housing data collection, which resolves through the GOV.UK content API.
 
 ### S14
 
@@ -448,7 +419,6 @@ Total: 338 null fields across 23 published sources.
 | Field | Where the value would come from |
 | --- | --- |
 | `series_name` | the publisher's dataset or table title, as named in a source documentation file |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
 | `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
@@ -465,7 +435,7 @@ Total: 338 null fields across 23 published sources.
 | `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** No source documentation file exists. The 6-9 month lag is a range, so expected_lag_days is null rather than a midpoint. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
+**Note.** Mechanics established 2026-08-14, and tier C is now evidenced. SafeLives is a third-party charity publishing to its own site with no API and no stable file-URL pattern. The page responds, so detection by page fingerprint is possible, but ingestion stays manual and the 6-9 month publication lag makes frequent checking pointless.
 
 ### S18
 

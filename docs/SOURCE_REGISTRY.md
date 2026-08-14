@@ -126,6 +126,21 @@ C. Defaulting to the most cautious tier is correct: the cost of a wrong C is a
 manual refresh that could have been automated, and the cost of a wrong A is an
 unattended job loading a file it does not understand.
 
+That default is a placeholder, not an answer, and it was cleared on
+2026-08-14. Eleven sources sat at C because their mechanics were undocumented;
+establishing them moved seven to B and one to A, and left three at C on
+evidence:
+
+| Source | Why it stays manual |
+| --- | --- |
+| S4 DfE | Publishes through Explore Education Statistics, not GOV.UK. The entry point responds but no working content API path was found and the specific release was not pinned down. Checked and not established — which is not the same as unchecked. |
+| S12 MHCLG EFS / S.114 | The EFS half resolves through the GOV.UK content API. The S.114 half cannot: notices are issued by individual authorities with no central register. Automating only the detectable half would report the source as checked while the manual half went unwatched. |
+| S17 SafeLives | A third-party charity publishing to its own site, no API, no stable file-URL pattern. The 6–9 month lag makes frequent checking pointless anyway. |
+
+`completeness_note` records which of "established" and "checked, not
+established" applies to every row, so a future reader can tell a finding from
+a placeholder.
+
 ## `due_status`
 
 | Value | Condition |
@@ -268,6 +283,29 @@ S15, S18 and S22.
 S18 is immune by accident: every edition republishes the full back series, so
 loading the latest edition finalises prior months automatically. S9a is not —
 monthly files, revised in place, no signal in the row count.
+
+## Build pattern — every target table records its own provenance
+
+**A new target table must store the resolved source URL on every row, not just
+the period.** This is a requirement, not a nicety, and it applies to S1b, S23,
+S24 and everything after them.
+
+It has now paid for itself twice on two unrelated problems:
+
+- **Revision detection.** Comparing the per-row source filename against the
+  published link list establishes whether an already-loaded period has been
+  republished, without downloading anything. That is how S9a was cleared
+  across all 26 loaded periods.
+- **Reconstruction.** When S9a and S9b had to be rebuilt from scratch, the
+  recorded URLs let the rebuild be pointed at the files that produced the live
+  data rather than at whatever the publisher serves today. Exact reproduction
+  would not have been provable otherwise.
+
+Neither use was anticipated when the column was added. The cost is one text
+column; the return is the difference between a table you can audit and a table
+you have to trust. A period alone does not carry it — the period says which
+month the row describes, not which file it came from, and for a revising
+source those are different questions.
 
 ## How a new source build writes its own row
 

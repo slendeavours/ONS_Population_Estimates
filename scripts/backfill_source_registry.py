@@ -839,6 +839,159 @@ SOURCES = [
     ),
 ]
 
+
+GOVUK_API = "https://www.gov.uk/api/content"
+
+# ---------------------------------------------------------------------------
+# Tier-C mechanics pass, 2026-08-14.
+#
+# Eleven sources sat at tier C on the cautious default — acquisition mechanics
+# undocumented, so the most cautious tier was assigned rather than a finding
+# recorded. This block is the result of establishing them, and is merged over
+# the definitions above so the discovery is legible as one pass rather than
+# scattered through eleven dicts.
+#
+# Seven moved to B and one to A. Three stay at C, now on evidence: S4 because
+# no working DfE API path was found, S12 because S.114 notices have no central
+# publication to watch, S17 because SafeLives is a third party with no API.
+# "Checked and not established" is a different statement from "not checked",
+# and completeness_note carries which one applies.
+# ---------------------------------------------------------------------------
+TIER_C_FINDINGS = {
+    "1": dict(
+        tier="B", method="landing_page",
+        url="https://www.gov.uk/government/collections/homelessness-statistics",
+        api=GOVUK_API,
+        ptype="reference_period",
+        revises=True,
+        revision_note=(
+            "Quarters are revised and republished: the curated URLs in "
+            "homelessness_quarter_urls include Detailed_LA_202309_revised.ods "
+            "and Detailed_LA_202312_Revised_No_Dropdowns.ods, so a loaded "
+            "quarter can be superseded in place."),
+        note=("Mechanics established 2026-08-14. Quarterly releases titled "
+              "'Statutory homelessness in England: {month} to {month} {year}' "
+              "sit under the Homelessness statistics collection, which "
+              "resolves through the GOV.UK content API. Detection is "
+              "automatable; ingestion stays gated because the per-quarter "
+              "file URLs are still curated by hand.")),
+    "2": dict(
+        tier="B", method="landing_page",
+        url=("https://www.gov.uk/government/collections/"
+             "local-authority-revenue-expenditure-and-financing"),
+        api=GOVUK_API,
+        ptype="reference_period",
+        revises=True,
+        revision_note=(
+            "Each financial year is published three times — budget, then "
+            "provisional outturn, then final outturn — so a loaded year is "
+            "superseded twice before it settles. RO4 is the outturn return, "
+            "not the budget."),
+        note=("Mechanics established 2026-08-14. The outturn releases are "
+              "'Local authority revenue expenditure and financing England: "
+              "{years} individual local authority data outturn' under a "
+              "collection that resolves through the GOV.UK content API.")),
+    "3b": dict(
+        tier="B", method="api",
+        url=("https://www.nomisweb.co.uk/sources/census_2021_bulk"),
+        api="https://www.nomisweb.co.uk/api/v01",
+        ptype="reference_period",
+        note=("Mechanics established 2026-08-14. Census 2021 tables are "
+              "retrievable from the NOMIS API, which responds and is "
+              "machine-readable. Cadence makes this close to academic: the "
+              "next census is 2031, so detection will not fire for years.")),
+    "4": dict(
+        tier="C", method="manual",
+        url="https://explore-education-statistics.service.gov.uk/find-statistics",
+        ptype=None,
+        note=("Mechanics checked 2026-08-14 and not established, which is not "
+              "the same as unchecked. DfE publishes through Explore Education "
+              "Statistics rather than GOV.UK; the find-statistics entry point "
+              "responds but no working content API path was found, and the "
+              "specific SEN2 / Children in Need release was not pinned down. "
+              "Tier C stands on that evidence rather than as a default.")),
+    "5": dict(
+        tier="B", method="landing_page",
+        url=("https://www.gov.uk/government/collections/"
+             "english-indices-of-deprivation"),
+        api=GOVUK_API,
+        ptype="reference_period",
+        note=("Mechanics established 2026-08-14. The English indices of "
+              "deprivation collection resolves through the GOV.UK content "
+              "API. Detection is automatable, though a new IMD edition is a "
+              "deliberate pipeline decision rather than a routine refresh.")),
+    "7": dict(
+        tier="B", method="api",
+        url="https://geoportal.statistics.gov.uk/",
+        api=("https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/"
+             "services"),
+        ptype=None,
+        note=("Mechanics established 2026-08-14. The Open Geography Portal "
+              "exposes an ArcGIS REST service list — 3,906 services, "
+              "machine-readable, searchable for LAD*BGC vintages. Detection "
+              "is automatable. Ingestion is heavily gated: changing the "
+              "boundary vintage re-bases every join in the pipeline and is a "
+              "deliberate decision, never a routine refresh.")),
+    "8": dict(
+        tier="A", method="api",
+        url=None,
+        api="https://stat-xplore.dwp.gov.uk/webapi/rest/v1",
+        ptype="reference_period",
+        auth=True, auth_var="StatXplore_API_Key",
+        note=("Mechanics established 2026-08-14. Same Stat-Xplore API, same "
+              "account and same credential as S8b, which already runs "
+              "unattended: the endpoint responds 401 without a key and the "
+              "schema is discoverable programmatically. Tier A describes the "
+              "mechanics; no build script exists yet, which build_script_path "
+              "records separately.")),
+    "10": dict(
+        tier="B", method="landing_page",
+        url="https://www.gov.uk/government/collections/homelessness-statistics",
+        api=GOVUK_API,
+        ptype="reference_period",
+        note=("Mechanics established 2026-08-14. Annual releases titled "
+              "'Rough sleeping snapshot in England: autumn {year}' sit under "
+              "the same Homelessness statistics collection as S1 and resolve "
+              "through the GOV.UK content API. The autumn snapshot is "
+              "published the following February.")),
+    "12": dict(
+        tier="C", method="manual",
+        url=("https://www.gov.uk/government/collections/"
+             "exceptional-financial-support-for-local-authorities"),
+        ptype=None,
+        note=("Mechanics established 2026-08-14, and tier C is now evidenced "
+              "rather than assumed. The EFS half resolves through the GOV.UK "
+              "content API and could be detected. The S.114 half cannot: "
+              "notices are issued and published by individual local "
+              "authorities with no central register, so no endpoint exists to "
+              "watch. Automating only the detectable half would report the "
+              "source as checked while the manual half went unwatched, which "
+              "is worse than reporting it manual. Split the source if the EFS "
+              "half is ever worth automating on its own.")),
+    "13": dict(
+        tier="B", method="landing_page",
+        url=("https://www.gov.uk/government/collections/"
+             "local-authority-housing-data"),
+        api=GOVUK_API,
+        ptype="reference_period",
+        note=("Mechanics established 2026-08-14. LAHS returns are published "
+              "as statistical data sets, 'Local authority housing statistics "
+              "data returns for {years}', under the Local authority housing "
+              "data collection, which resolves through the GOV.UK content "
+              "API.")),
+    "17": dict(
+        tier="C", method="manual",
+        url=("https://safelives.org.uk/practice-support/"
+             "resources-marac-meetings/latest-marac-data/"),
+        ptype=None,
+        note=("Mechanics established 2026-08-14, and tier C is now evidenced. "
+              "SafeLives is a third-party charity publishing to its own site "
+              "with no API and no stable file-URL pattern. The page responds, "
+              "so detection by page fingerprint is possible, but ingestion "
+              "stays manual and the 6-9 month publication lag makes frequent "
+              "checking pointless.")),
+}
+
 # Every column the upsert writes, in order. Columns absent from a source dict
 # are written as NULL and preserved by COALESCE on re-run.
 COLUMNS = [
@@ -1089,6 +1242,22 @@ def upsert_sources(cur, pks, register):
     lossy = []
     for src in SOURCES:
         record = dict(src)
+        f = TIER_C_FINDINGS.get(record["source_code"])
+        if f:
+            record["refresh_tier"] = f["tier"]
+            record["acquisition_method"] = f["method"]
+            record["completeness_note"] = f["note"]
+            for key, col in (("url", "landing_page_url"),
+                             ("api", "api_endpoint"),
+                             ("ptype", "detected_period_type"),
+                             ("revision_note", "revision_note")):
+                if f.get(key):
+                    record[col] = f[key]
+            if f.get("auth"):
+                record["auth_required"] = True
+                record["auth_env_var"] = f["auth_var"]
+            if f.get("revises"):
+                record["revises_back_series"] = True
 
         # metrics is backfilled from the register's own Metric(s) cell, and
         # the split is proved reversible before it is stored. A split that
