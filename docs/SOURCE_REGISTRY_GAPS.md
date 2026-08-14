@@ -57,7 +57,7 @@ Total: 308 null fields across 23 published sources.
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 
-**Note.** Mechanics established 2026-08-14. Quarterly releases titled 'Statutory homelessness in England: {month} to {month} {year}' sit under the Homelessness statistics collection, which resolves through the GOV.UK content API. Detection is automatable; ingestion stays gated because the per-quarter file URLs are still curated by hand.
+**Note.** Mechanics established 2026-08-14. Quarterly releases titled 'Statutory homelessness in England: {month} to {month} {year}' sit under the Homelessness statistics collection, which resolves through the GOV.UK content API. Detection is automatable; ingestion stays gated because the per-quarter file URLs are still curated by hand. AUDIT 2026-08-14: 2025Q1 (April to June 2025) is marked loaded in homelessness_quarter_urls but has zero rows in la_statutory_homelessness, so a quarter is missing from the TA series; the publisher has also replaced the recorded _revised file with a _corrected one. 2025Q3 is loaded with no row in the URL register, so its provenance is unrecorded. No loaded quarter is superseded. See docs/decisions/2026-08-14-s1-quarter-gap-and-provenance.md.
 
 ### S2
 

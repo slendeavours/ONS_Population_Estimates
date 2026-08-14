@@ -25,11 +25,12 @@ import re
 import sys
 import urllib.error
 import urllib.parse
+import os
 import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _db import get_conn  # noqa: E402
+from _db import ENV, get_conn  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -77,6 +78,43 @@ DETECTORS = {
         note="GOV.UK official statistics releases for detection; "
              "NHS England discharge-ready-date page for files",
     ),
+    # --- GOV.UK collection detectors, added by the tier-C mechanics pass ---
+    # The collection is the stable object; release pages change per edition.
+    "1": dict(method="govuk_content_api",
+              collection="homelessness-statistics",
+              title_filter=r"^Statutory homelessness in England: \w+ to \w+ \d{4}$",
+              note="Homelessness statistics collection, quarterly statutory "
+                   "homelessness releases"),
+    "2": dict(method="govuk_content_api",
+              collection="local-authority-revenue-expenditure-and-financing",
+              title_filter=r"outturn",
+              note="RO4 outturn releases (not the budget releases) in the "
+                   "revenue expenditure and financing collection"),
+    "5": dict(method="govuk_content_api",
+              collection="english-indices-of-deprivation",
+              title_filter=r"English indices of deprivation \d{4}$",
+              note="English indices of deprivation collection"),
+    "10": dict(method="govuk_content_api",
+               collection="homelessness-statistics",
+               title_filter=r"^Rough sleeping snapshot in England: autumn",
+               note="Rough sleeping snapshot releases in the Homelessness "
+                    "statistics collection"),
+    "13": dict(method="govuk_content_api",
+               collection="local-authority-housing-data",
+               title_filter=r"housing statistics data returns",
+               note="LAHS data returns in the Local authority housing data "
+                    "collection"),
+    # --- Stat-Xplore detectors. The date field's newest member is the
+    # newest published month; no table query and no download needed.
+    "8": dict(method="api_probe",
+              date_field="str:field:hb_new:F_HB_NEW_DATE:NEW_DATE_NAME",
+              note="Stat-Xplore hb_new Month field"),
+    "8b": dict(method="api_probe",
+               date_field="str:field:hb_new:F_HB_NEW_DATE:NEW_DATE_NAME",
+               note="Stat-Xplore hb_new Month field"),
+    "19": dict(method="api_probe",
+               date_field="str:field:PIP_Monthly_new:F_PIP_DATE:DATE2",
+               note="Stat-Xplore PIP_Monthly_new Month field"),
     "9b": dict(
         method="landing_page",
         pattern=r'href="([^"]*/performance-[a-z]+-\d{4}[^"]*)"',
@@ -87,6 +125,64 @@ DETECTORS = {
 
 
 MONTH_RE = "|".join(MONTHS)
+
+# --- GOV.UK collection title parsers -------------------------------------
+# Each returns a period string in the same shape the target table stores, or
+# None. None is a refusal: the checker reports check_failed rather than
+# comparing something it could not normalise.
+#
+# These are per source because publishers label periods their own way, and a
+# generic parser would guess. S1 is the clearest case: "January to March 2026"
+# is financial-year quarter 2025Q4, not 2026Q1, and getting that wrong would
+# report a loaded quarter as missing every month.
+
+FIN_QUARTER = {"april": ("Q1", 0), "july": ("Q2", 0),
+               "october": ("Q3", 0), "january": ("Q4", -1)}
+
+
+def title_period_s1(title):
+    """'Statutory homelessness in England: October to December 2025' -> 2025Q3."""
+    # The second month must be a non-capturing group. Interpolated bare, the
+    # alternation binds looser than the surrounding literals and the pattern
+    # silently becomes "(months) to january" OR "february" OR ... — which
+    # matches nothing useful and reported 40 releases as unparseable.
+    m = re.search(rf"({MONTH_RE}) to (?:{MONTH_RE}) (\d{{4}})", title.lower())
+    if not m or m.group(1) not in FIN_QUARTER:
+        return None
+    q, offset = FIN_QUARTER[m.group(1)]
+    return f"{int(m.group(2)) + offset}{q}"
+
+
+def title_period_s10(title):
+    """'Rough sleeping snapshot in England: autumn 2025' -> 2025."""
+    m = re.search(r"autumn (\d{4})", title.lower())
+    return m.group(1) if m else None
+
+
+def title_period_s2(title):
+    """RO4 outturn: '... England: 2024 to 2025 ... outturn' -> 2024-25."""
+    if "outturn" not in title.lower():
+        return None            # budget releases are not the RO4 outturn
+    m = re.search(r"(\d{4}) to (\d{4})", title)
+    return f"{m.group(1)}-{m.group(2)[2:]}" if m else None
+
+
+def title_period_s5(title):
+    """'English indices of deprivation 2019' -> 2019."""
+    m = re.search(r"english indices of deprivation (\d{4})", title.lower())
+    return m.group(1) if m else None
+
+
+def title_period_s13(title):
+    """'... data returns for 2020 to 2021' -> 2021 (the reporting year)."""
+    m = re.search(r"returns for (\d{4}) to (\d{4})", title.lower())
+    return m.group(2) if m else None
+
+
+TITLE_PARSERS = {
+    "1": title_period_s1, "2": title_period_s2, "5": title_period_s5,
+    "10": title_period_s10, "13": title_period_s13,
+}
 
 
 def parse_period(url):
@@ -176,6 +272,149 @@ def govuk_releases(query, title_pattern):
                     title, r.get("link"), (r.get("public_timestamp") or "")[:10]))
     out.sort(key=lambda t: t[0], reverse=True)
     return status, out
+
+
+def govuk_collection(slug, title_filter):
+    """Releases listed in a GOV.UK collection, newest publication first.
+
+    The collection is the stable thing: individual release pages come and go
+    per edition, the collection does not. links.documents carries the title,
+    path and publication date for every release in it.
+    """
+    url = f"https://www.gov.uk/api/content/government/collections/{slug}"
+    status, body = fetch(url)
+    d = json.loads(body)
+    out = []
+    for doc in (d.get("links", {}) or {}).get("documents", []) or []:
+        title = doc.get("title") or ""
+        if title_filter and not re.search(title_filter, title, re.I):
+            continue
+        out.append((title, doc.get("base_path"),
+                    (doc.get("public_updated_at") or "")[:10]))
+    out.sort(key=lambda t: t[2], reverse=True)
+    return status, out
+
+
+
+def statxplore_latest(date_field_id):
+    """The newest period offered by a Stat-Xplore date field.
+
+    Members come back in chronological order, so the newest is the last one.
+    That ordering is used deliberately instead of comparing labels: S19 stores
+    periods as 'Apr-26', and a string comparison would rank 'Mar-26' above it.
+    Position is the publisher's own ordering; string order is our assumption.
+    """
+    key = (os.environ.get("StatXplore_API_Key")
+           or ENV.get("StatXplore_API_Key")
+           or os.environ.get("STATXPLORE_API_KEY") or "").strip()
+    if not key:
+        return None, None
+    root = "https://stat-xplore.dwp.gov.uk/webapi/rest/v1"
+    hdr = dict(UA)
+    hdr.update({"APIKey": key, "Content-Type": "application/json"})
+
+    def get(sid):
+        req = urllib.request.Request(
+            f"{root}/schema/{sid.replace(':', '%3A')}", headers=hdr)
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            return r.status, json.loads(r.read())
+
+    status, field = get(date_field_id)
+    vs = field.get("children") or []
+    if not vs:
+        return status, None
+    status, valueset = get(vs[0]["id"])
+    members = valueset.get("children") or []
+    return status, (members[-1].get("label") if members else None)
+
+
+def check_statxplore(row, det, reg):
+    try:
+        status, newest = statxplore_latest(det["date_field"])
+        row["http_status"] = status
+    except Exception as e:
+        row.update(outcome="check_failed",
+                   error_detail=f"{type(e).__name__}: {str(e)[:180]}")
+        return row
+    if not newest:
+        row.update(outcome="check_failed",
+                   error_detail=("no credential, or the date field returned "
+                                 "no members. StatXplore_API_Key must be set "
+                                 "for this check to run."))
+        return row
+
+    # '202602 (Feb-26)' -> '202602'; 'Apr-26' stays as it is.
+    m = re.match(r"^(\d{6})", newest)
+    period = m.group(1) if m else newest
+    row["detected_period"] = period
+    row["fingerprint_after"] = hashlib.sha256(period.encode()).hexdigest()[:32]
+    row["notes"] = f"{det['note']}; newest member '{newest}'"
+
+    loaded = (reg["latest_period_loaded"] or "").strip()
+    if not loaded:
+        row.update(outcome="check_failed",
+                   error_detail=("newest period found but "
+                                 "latest_period_loaded is not set"))
+        return row
+    # Equality, not ordering. The API lists chronologically, so anything other
+    # than the newest member means behind; it cannot mean ahead.
+    row["outcome"] = "no_change" if period == loaded else "new_edition"
+    return row
+
+
+def check_govuk_collection(row, det, reg):
+    """Detect a new edition from a GOV.UK collection listing."""
+    code = row["source_code"]
+    try:
+        status, releases = govuk_collection(det["collection"],
+                                            det.get("title_filter"))
+        row["http_status"] = status
+    except Exception as e:
+        row.update(outcome="check_failed",
+                   error_detail=f"{type(e).__name__}: {str(e)[:180]}")
+        return row
+    if not releases:
+        row.update(outcome="check_failed",
+                   error_detail=(f"the collection resolved but no release "
+                                 f"title matched "
+                                 f"{det.get('title_filter')!r}; the "
+                                 f"publisher has probably retitled the "
+                                 f"series"))
+        return row
+
+    parser = TITLE_PARSERS.get(code)
+    dated = [(parser(t), t, p, d) for t, p, d in releases] if parser else []
+    dated = [x for x in dated if x[0]]
+    if not dated:
+        row.update(
+            outcome="check_failed",
+            error_detail=(f"{len(releases)} release(s) found but no period "
+                          f"could be normalised from their titles, so there "
+                          f"is nothing comparable with latest_period_loaded"))
+        return row
+
+    newest = max(dated, key=lambda x: x[0])
+    row["detected_period"] = newest[0]
+    row["fingerprint_after"] = hashlib.sha256(
+        newest[2].encode()).hexdigest()[:32]
+    row["notes"] = (f"{det['note']}; {len(releases)} release(s) matched, "
+                    f"{len(dated)} dated; newest '{newest[1][:70]}' "
+                    f"published {newest[3]}")
+
+    loaded = (reg["latest_period_loaded"] or "").strip()
+    if not loaded:
+        row.update(outcome="check_failed",
+                   error_detail=("release found but latest_period_loaded is "
+                                 "not set, so there was nothing to compare"))
+        return row
+    if reg.get("detected_period_type") != "reference_period":
+        row.update(outcome="check_failed",
+                   error_detail=("detected_period_type is not "
+                                 "reference_period, so the detected period "
+                                 "is not comparable with what is loaded"))
+        return row
+    row["outcome"] = "new_edition" if newest[0] > loaded else "no_change"
+    return row
 
 
 def loaded_provenance(cur, table):
@@ -366,13 +605,20 @@ def check_one(code, reg):
                                 "source; its acquisition mechanics are not "
                                 "documented")
         return row
+    # Routing comes before the landing-page guard: an API-probe or collection
+    # detector needs no landing page, and requiring one would fail a check
+    # that has everything it needs.
+    if det.get("date_field"):
+        return check_statxplore(row, det, reg)
+    if det.get("collection"):
+        return check_govuk_collection(row, det, reg)
+    if det.get("govuk_query"):
+        return check_govuk(row, det, reg)
+
     if not reg["landing_page_url"]:
         row.update(outcome="check_failed",
                    error_detail="no landing_page_url in the registry")
         return row
-
-    if det.get("govuk_query"):
-        return check_govuk(row, det, reg)
 
     try:
         status, body = fetch(reg["landing_page_url"])

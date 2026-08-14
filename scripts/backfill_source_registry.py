@@ -860,6 +860,15 @@ GOVUK_API = "https://www.gov.uk/api/content"
 TIER_C_FINDINGS = {
     "1": dict(
         tier="B", method="landing_page",
+        completeness_extra=(
+            " AUDIT 2026-08-14: 2025Q1 (April to June 2025) is marked loaded "
+            "in homelessness_quarter_urls but has zero rows in "
+            "la_statutory_homelessness, so a quarter is missing from the TA "
+            "series; the publisher has also replaced the recorded _revised "
+            "file with a _corrected one. 2025Q3 is loaded with no row in the "
+            "URL register, so its provenance is unrecorded. No loaded quarter "
+            "is superseded. See "
+            "docs/decisions/2026-08-14-s1-quarter-gap-and-provenance.md."),
         url="https://www.gov.uk/government/collections/homelessness-statistics",
         api=GOVUK_API,
         ptype="reference_period",
@@ -1246,7 +1255,8 @@ def upsert_sources(cur, pks, register):
         if f:
             record["refresh_tier"] = f["tier"]
             record["acquisition_method"] = f["method"]
-            record["completeness_note"] = f["note"]
+            record["completeness_note"] = (
+                f["note"] + f.get("completeness_extra", ""))
             for key, col in (("url", "landing_page_url"),
                              ("api", "api_endpoint"),
                              ("ptype", "detected_period_type"),
