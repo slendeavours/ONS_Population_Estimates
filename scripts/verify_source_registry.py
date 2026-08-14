@@ -415,6 +415,55 @@ def main():
                                 'and no write grant'}; "
          f"committers: {committers or 'none'}")
 
+    # ---- Gate 13: side registers agree with the data they describe --------
+    # A provenance table that can disagree with the target table will
+    # eventually disagree with it, in both directions, and nothing surfaces
+    # that until someone reconciles by hand. homelessness_quarter_urls
+    # disagreed twice and neither was visible for months: 2025Q1 marked
+    # loaded with no rows in la_statutory_homelessness, and 2025Q3 loaded
+    # with no register row.
+    #
+    # Per-row provenance cannot drift, because there is nothing to drift
+    # from. Where a side register exists anyway, it has to agree.
+    SIDE_REGISTERS = [
+        # (register table, period column, loaded flag, target table, target period)
+        ("homelessness_quarter_urls", "period", "loaded",
+         "la_statutory_homelessness", "period"),
+    ]
+    drift = []
+    for reg_t, reg_p, flag, tgt_t, tgt_p in SIDE_REGISTERS:
+        cur.execute("""
+            SELECT to_regclass(%s) IS NOT NULL, to_regclass(%s) IS NOT NULL
+        """, (reg_t, tgt_t))
+        reg_ok, tgt_ok = cur.fetchone()
+        if not (reg_ok and tgt_ok):
+            continue
+        cur.execute(f"""
+            SELECT r.{reg_p} FROM {reg_t} r
+            WHERE r.{flag} IS TRUE
+              AND NOT EXISTS (SELECT 1 FROM {tgt_t} t
+                              WHERE t.{tgt_p} = r.{reg_p})
+            ORDER BY 1
+        """)
+        claimed = [x[0] for x in cur.fetchall()]
+        cur.execute(f"""
+            SELECT DISTINCT t.{tgt_p} FROM {tgt_t} t
+            WHERE NOT EXISTS (SELECT 1 FROM {reg_t} r
+                              WHERE r.{reg_p} = t.{tgt_p})
+            ORDER BY 1
+        """)
+        unrecorded = [x[0] for x in cur.fetchall()]
+        if claimed:
+            drift.append(f"{reg_t}: marked loaded but absent from {tgt_t}: "
+                         f"{claimed}")
+        if unrecorded:
+            drift.append(f"{tgt_t}: loaded but unrecorded in {reg_t}: "
+                         f"{unrecorded}")
+    gate(13, "side registers agree with the data they describe",
+         not drift,
+         f"{len(SIDE_REGISTERS)} side register(s) checked; "
+         f"disagreements: {drift or 'none'}")
+
     cur.close()
     conn.close()
 
