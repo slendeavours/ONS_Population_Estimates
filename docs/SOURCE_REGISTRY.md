@@ -225,6 +225,17 @@ fingerprint matches on every later check, so a genuinely pending edition
 reports `no_change` forever and drops off the due list without ever being
 loaded. That bug was masking three pending editions on its second run.
 
+**`detected_period_type` declares what a detected period means.** A comparison
+against `latest_period_loaded` is only valid when both are reference periods —
+the month the data describes. S18's URL carries the publication date instead,
+so `2026-07-22` against a loaded `2026-06-01` is a category error, not a new
+edition. The column takes `reference_period` or `publication_date`, and the
+checker **refuses to compare** where the type is `publication_date` or
+undeclared, rather than producing a permanent `new_edition`. Undeclared is a
+refusal, not a licence to guess. Sources whose URL carries a publication date
+are matched on their edition identifier against the target table's `source`
+column instead.
+
 `latest_period_loaded` is derived from the target table's own period key
 rather than from documentation. It is the one field where the database is the
 authority: it records what is actually loaded, not what a source document said
@@ -310,6 +321,62 @@ every changed cell, triaged, and currently stands at:
 | enrichment — register text retained, detail added | 5 |
 | punctuation only — content identical | 3 |
 
+## Reproducibility
+
+A `build_script_path` of NULL is not documentation debt. It means the rows in
+that source's table cannot be regenerated, re-verified or audited against
+source, because the code that produced them does not exist. Node
+documentation describes what was done; it is not executable and was not
+written as a specification.
+
+S9a and S9b were in that state until 2026-08-14: 15,226 rows live, wired into
+Workflow 1 and driving the `mental_health` and `learning_disability` tenant
+types, with no code path back to them. Both were reconstructed from their node
+documentation and verified by **exact reproduction** — rebuilt into a staging
+table and diffed cell by cell against the live table.
+
+| | Rows | Periods | Key differences | Cell differences |
+| --- | ---: | ---: | ---: | ---: |
+| S9a `nhs_drd_discharge_delays` | 3,978 | 26 | 0 | 0 |
+| S9b `nhs_mh_crfd` | 11,248 | 38 | 0 | 0 |
+
+Reproduction was possible because both tables record the source URL on every
+row, so the rebuild could be pointed at the files that produced the live data
+rather than at whatever the publisher serves today. **A target table that
+records its own provenance is what makes a source auditable after the fact**,
+and it is worth building in for that reason alone.
+
+The diff uses `IS DISTINCT FROM`, so NULL against NULL counts as equal and
+NULL against zero does not — suppression handling is exactly the thing that
+has to reproduce, and a comparison that treats a suppressed value as a zero
+would have hidden the one class of error most worth catching.
+
+## Verification suites do not write the data under test
+
+A suite that can write is one wrong argument away from corrupting what it
+verifies. On 2026-08-14 `s18_pipr_verify.py` did precisely that: check 6
+tested idempotency by re-upserting and committing, and a run that fell back to
+a stale default edition rewrote 71,442 rows of a freshly loaded edition.
+
+Requiring the argument fixed that instance. Three controls remove the class:
+
+1. **Idempotency is tested without committing.** The re-upsert runs inside a
+   transaction that is always rolled back, with a content checksum compared
+   either side of the rollback.
+2. **`ucws_readonly` holds SELECT on the public schema and no write grant.**
+   Set `PG_READONLY_USER` and `PG_READONLY_PASSWORD` and `get_readonly_conn()`
+   uses it. Without those it falls back to the normal credential but still
+   sets the session read-only, so the barrier exists either way.
+3. **Gate 12** fails the build if any `*verify*.py` commits a write to
+   anything but `pipeline_run_log`. A suite may record that it ran; it may not
+   modify the data under test.
+
+Gate 12 found a fourth suite on its first run: `s22_verify.py` was writing run
+status `complete`/`failed`, which the new `pipeline_run_log` constraint would
+have rejected outright on its next execution. It now logs `success` only and
+reports failure without recording it, matching the convention the log has
+always followed.
+
 ## Precedent — widening a CHECK constraint by drop-and-add
 
 `sql/source_registry.sql` is additive-only: every `CREATE` is `IF NOT EXISTS`
@@ -335,14 +402,15 @@ with a stated plan for the rows that fail.
 
 ## Verification
 
-`scripts/verify_source_registry.py` runs twelve hard gates: row count against
+`scripts/verify_source_registry.py` runs thirteen hard gates: row count against
 METHODOLOGY, two-way agreement between register and registry, empty strings in
 `NOT NULL` columns, controlled vocabularies and the CHECK constraints that
 enforce them, one view row per registry row, run attribution (asserted by run
 id, never by timestamp — runs 57 and 58 share one), the run-log status
 vocabulary, confidential-implies-unpublished, `superseded_by` integrity,
-idempotency, that no withheld source reaches generated output, and that every
-script in `scripts/` resolves `.env` from the published checkout.
+idempotency, that no withheld source reaches generated output, that every
+script in `scripts/` resolves `.env` from the published checkout, and that
+no verification suite writes the data under test.
 
 That last gate exists because the `.env` defect appeared twice — once in
 `register_lib.py`, then in six scripts at once. Two incidents is a class, and

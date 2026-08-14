@@ -17,7 +17,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _db import get_conn  # noqa: E402
+from _db import get_readonly_conn, readonly_identity  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -105,8 +105,11 @@ def main():
     ap.add_argument("--skip-idempotency", action="store_true")
     args = ap.parse_args()
 
-    conn = get_conn()
+    # Read-only. Gate 9 shells out to the backfill, which opens its own
+    # write connection; this suite itself cannot write.
+    conn = get_readonly_conn()
     cur = conn.cursor()
+    ro_user, dedicated = readonly_identity()
 
     reg = register_codes()
 
@@ -297,7 +300,7 @@ def main():
         gate(9, "backfill is idempotent", None, "skipped by flag")
     else:
         cols, before = snapshot(cur)
-        conn.commit()
+        conn.rollback()
         proc = subprocess.run([sys.executable, str(BACKFILL)],
                               capture_output=True, text=True, cwd=str(REPO))
         if proc.returncode != 0:
@@ -368,6 +371,49 @@ def main():
          f"{checked} script(s) touch credentials or .env; "
          f"reference implementation is scripts/_db.py; "
          f"offenders: {offenders or 'none'}")
+
+    # ---- Gate 12: no verification script commits -------------------------
+    # A suite that can write is one wrong argument away from corrupting what
+    # it verifies. That is not theoretical: s18_pipr_verify.py check 6 tested
+    # idempotency by re-upserting and committing, and a run that fell back to
+    # a stale default edition rewrote 71,442 rows of freshly loaded data.
+    # Requiring the argument fixed the instance; this removes the capability.
+    # Idempotency is now tested inside a transaction that is always rolled
+    # back, with a content checksum compared either side.
+    # The precise rule: a suite may record that it ran, and may not write the
+    # data under test. pipeline_run_log is the one permitted target — s22's
+    # node is verify-and-log by design, and forbidding that would be a rule
+    # about tidiness rather than correctness.
+    committers, suites = [], []
+    for path in sorted(script_dir.glob("*verify*.py")):
+        suites.append(path.name)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        stripped = "\n".join(ln for ln in text.splitlines()
+                             if not ln.lstrip().startswith("#"))
+        targets = set()
+        for m in re.finditer(
+                r"(?<!DO )\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|TRUNCATE)\s+"
+                r"([a-z_][a-z0-9_]*)", stripped, re.I):
+            name = m.group(1).lower()
+            if name != "set":          # 'DO UPDATE SET' is not a table
+                targets.add(name)
+        forbidden = sorted(targets - {"pipeline_run_log"})
+        commits = bool(re.search(r"\bconn\.commit\(\)", stripped))
+        # Writing the data under test is allowed only inside a probe that is
+        # never committed. s18_pipr_verify re-upserts to test idempotency and
+        # rolls back; that is fine. Committing such a write is what corrupted
+        # 71,442 rows.
+        if forbidden and commits:
+            committers.append(f"{path.name} commits writes to {forbidden}")
+    gate(12, "no verification script writes the data under test",
+         not committers,
+         f"suites checked: {suites or 'none'}; "
+         f"connection: {ro_user}"
+         f"{' (dedicated read-only role)' if dedicated else ''}"
+         f"{'' if dedicated else ' — set PG_READONLY_USER/PG_READONLY_PASSWORD '
+                                'to use ucws_readonly, which now holds SELECT '
+                                'and no write grant'}; "
+         f"committers: {committers or 'none'}")
 
     cur.close()
     conn.close()

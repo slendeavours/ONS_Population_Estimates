@@ -16,14 +16,15 @@ The top of this list is the documentation debt.
 | `hss_lens` | 21 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 21 | an explicit dual-lens note in the source documentation |
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
+| `detected_period_type` | 19 | — |
 | `api_endpoint` | 18 | the build script or node documentation, where acquisition is an API |
-| `verification_checks` | 18 | the source's verification suite and its documented check count |
 | `revises_back_series` | 17 | — |
 | `revision_note` | 17 | — |
 | `source_doc_path` | 17 | a source documentation file — the single largest gap for undocumented sources |
-| `build_script_path` | 15 | the build script, if it is in the published tree |
+| `verification_checks` | 16 | the source's verification suite and its documented check count |
 | `node_docs_path` | 15 | the per-node documentation under docs/nodes/ |
 | `landing_page_url` | 14 | the publisher's landing page, recorded in a source or node documentation file |
+| `build_script_path` | 13 | the build script, if it is in the published tree |
 | `join_path` | 13 | the build script's geography resolution step |
 | `publication_window` | 10 | the publisher's stated release window |
 | `series_name` | 10 | the publisher's dataset or table title, as named in a source documentation file |
@@ -34,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 323 null fields across 23 published sources.
+Total: 338 null fields across 23 published sources.
 
 ## Null fields by source
 
@@ -59,6 +60,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -85,6 +87,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -105,6 +108,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** Refreshed to mid-2025 on 2026-08-13. 592 rows, 296 per year, England total 58,834,812 reconciling exactly to the publisher's own England row.
 
@@ -132,6 +136,7 @@ Total: 323 null fields across 23 published sources.
 | `latest_period_loaded` | the check job, or the source documentation's 'month loaded' field |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -157,6 +162,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -182,6 +188,7 @@ Total: 323 null fields across 23 published sources.
 | `latest_period_loaded` | the check job, or the source documentation's 'month loaded' field |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -196,6 +203,7 @@ Total: 323 null fields across 23 published sources.
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
+| `detected_period_type` | — |
 
 **Note.** Two structural breaks make the England series non-comparable before 2025-03-31; they are recorded in asylum_series_breaks. Standalone: not wired into Workflow 1, adds no staging_la_signals column, no tenant type and no map layer. Additional tables: la_asylum_support_unallocated, asylum_support_non_england, la_immigration_groups, asylum_series_breaks.
 
@@ -221,6 +229,7 @@ Total: 323 null fields across 23 published sources.
 | `latest_period_loaded` | the check job, or the source documentation's 'month loaded' field |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** The boundary vintage was settled from load provenance, not inferred: la_boundaries.source_date is 2024-05-01 for all 296 rows and the S7 run log note reads 'LA boundaries loaded — May 2024 BGC — England only'. The code list is identical across LAD24 vintages, so the loaded data cannot adjudicate it alone. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -247,6 +256,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file and no build script exist for S8. The register names STAT-Xplore as the platform, but how this pipeline acquires the extract is not documented. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -265,6 +275,7 @@ Total: 323 null fields across 23 published sources.
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
+| `detected_period_type` | — |
 
 **Note.** The source documentation file lives in outputs/, outside the published tree, so it is not available to readers of this repository.
 
@@ -276,9 +287,7 @@ Total: 323 null fields across 23 published sources.
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `publication_window` | the publisher's stated release window |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `build_script_path` | the build script, if it is in the published tree |
 | `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `completeness_note` | the source documentation's coverage statement |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
@@ -293,9 +302,7 @@ Total: 323 null fields across 23 published sources.
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `publication_window` | the publisher's stated release window |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `build_script_path` | the build script, if it is in the published tree |
 | `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `completeness_note` | the source documentation's coverage statement |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
@@ -324,6 +331,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -368,6 +376,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -394,6 +403,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -414,6 +424,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** The build script s14_lha_rates_build.py is not in the published tree, so build_script_path is null here. refresh_tier is C because the edition URL is supplied by hand, not because the source is unimportant.
 
@@ -428,6 +439,7 @@ Total: 323 null fields across 23 published sources.
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
+| `detected_period_type` | — |
 
 **Note.** Standalone: not wired into Workflow 1 and adds no staging_la_signals column. Reaches the map through its own hpi_la_prices.json. Covers 295 of 296 English LAs.
 
@@ -451,6 +463,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** No source documentation file exists. The 6-9 month lag is a range, so expected_lag_days is null rather than a midpoint. Acquisition mechanics are not documented in the repository. acquisition_method 'manual' and refresh_tier 'C' are the cautious defaults, not documented findings.
 
@@ -478,6 +491,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** Wired into Workflow 1 since run 11: staging_la_signals carries pip_total_claimants, pip_enhanced_daily_living and pip_rate_per_1000. The rate is defined in v_la_pip_rates, which also exposes population_reference_year because the numerator refreshes monthly and the denominator annually.
 
@@ -502,6 +516,7 @@ Total: 323 null fields across 23 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
+| `detected_period_type` | — |
 
 **Note.** Free download, no login required. The build script s21_statistical_neighbours_build.py is not in the published tree, so build_script_path is null here. refresh_tier is C because acquisition is a hand download.
 
@@ -515,6 +530,7 @@ Total: 323 null fields across 23 published sources.
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
+| `detected_period_type` | — |
 
 **Note.** 296 of 296 authorities for taxbase year 2025, complete. Additional tables: la_ctb_exemption_classes, la_vacant_dwellings_615, ctb_series_breaks. Rates are derived in v_la_empty_homes_rates and never stored.
 

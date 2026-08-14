@@ -53,3 +53,52 @@ def get_conn():
         user=_require("PG_USER"),
         password=_require("PG_PASSWORD"),
     )
+
+
+def get_readonly_conn():
+    """A connection that cannot commit a write.
+
+    Verification scripts run on this. A suite that can write is one wrong
+    argument away from corrupting what it verifies, which is not theoretical:
+    on 2026-08-14 s18_pipr_verify.py fell back to a stale default edition and
+    its idempotency check rewrote 71,442 rows of a freshly loaded edition.
+    Requiring the argument fixed that instance; this removes the capability.
+
+    Two layers, because the first is not always available:
+
+      1. Connect as PG_READONLY_USER where it is configured. ucws_readonly
+         holds SELECT on the public schema and no write grant at all, so a
+         write fails on privileges.
+      2. Always set the session read-only regardless. Without a readonly
+         credential this is the only barrier, and it still makes writes fail
+         at the database rather than relying on the script behaving.
+
+    A caller that genuinely needs to write inside a verification run must ask
+    for it explicitly and roll back — see read_write_probe().
+    """
+    user = os.environ.get("PG_READONLY_USER") or ENV.get("PG_READONLY_USER")
+    password = (os.environ.get("PG_READONLY_PASSWORD")
+                or ENV.get("PG_READONLY_PASSWORD"))
+    if user and password:
+        conn = psycopg2.connect(
+            host=os.environ.get("PG_HOST_OVERRIDE", "localhost"),
+            port=int(ENV.get("PG_PORT", "5432")),
+            dbname=ENV.get("PG_DATABASE", "exempt_pipeline"),
+            user=user, password=password)
+    else:
+        conn = get_conn()
+    conn.autocommit = True
+    with conn.cursor() as cur:
+        cur.execute("SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY")
+    conn.autocommit = False
+    return conn
+
+
+def readonly_identity():
+    """(user, whether a dedicated readonly role is in use) for reporting."""
+    user = os.environ.get("PG_READONLY_USER") or ENV.get("PG_READONLY_USER")
+    password = (os.environ.get("PG_READONLY_PASSWORD")
+                or ENV.get("PG_READONLY_PASSWORD"))
+    if user and password:
+        return user, True
+    return (os.environ.get("PG_USER") or ENV.get("PG_USER")), False

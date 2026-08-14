@@ -351,6 +351,12 @@ SOURCES = [
     ),
     dict(
         source_code="9a",
+        build_script_path="scripts/s9a_drd_build.py",
+        verification_checks={"method": "exact reproduction",
+                             "rows": 3978,
+                             "reproduced": "2026-08-14",
+                             "cell_differences": 0},
+        detected_period_type="reference_period",
         revises_back_series=True,
         revision_note=("NHS England revises DRD in annual waves and announces them on "
             "the publication page. April 2025 to March 2026 inclusive "
@@ -396,6 +402,12 @@ SOURCES = [
     ),
     dict(
         source_code="9b",
+        build_script_path="scripts/s9b_crfd_build.py",
+        verification_checks={"method": "exact reproduction",
+                             "rows": 11248, "periods": 38,
+                             "reproduced": "2026-08-14",
+                             "cell_differences": 0},
+        detected_period_type="reference_period",
         source_name="MHSDS MHS26",
         publisher="NHS Digital",
         series_name="Mental Health Services Monthly Statistics, measure MHS26",
@@ -442,6 +454,7 @@ SOURCES = [
     ),
     dict(
         source_code="11",
+        detected_period_type="reference_period",
         source_name="CQC Care directory with filters",
         publisher="CQC",
         series_name="HSCA Active Locations",
@@ -610,6 +623,7 @@ SOURCES = [
     ),
     dict(
         source_code="18",
+        detected_period_type="publication_date",
         revises_back_series=True,
         revision_note=("Every edition republishes the full back series from January "
             "2015 and revises the prior provisional month, so loading "
@@ -842,6 +856,7 @@ COLUMNS = [
     "refresh_tier", "status", "superseded_by",
     "latest_period_loaded", "metrics",
     "revises_back_series", "revision_note",
+    "detected_period_type",
 ]
 # Columns that must never be nulled out by a re-run, but are also never
 # overwritten from this script once set by the check job.

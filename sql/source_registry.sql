@@ -206,6 +206,40 @@ BEGIN
                            'check_failed','revision_detected'));
 END $$;
 
+-- detected_period_type. The checker compares what a publisher exposes against
+-- what is loaded, and those are not always the same kind of thing. S18's URL
+-- carries the publication date (the 22 July 2026 edition holds data to June
+-- 2026) while S9a's carries the reference period. Comparing across the two
+-- reports a new edition forever. That mistake happened twice, which makes it a
+-- design gap rather than two slips, so the type is declared and the checker
+-- refuses to compare across types instead of silently producing a wrong answer.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'source_registry'
+          AND column_name = 'detected_period_type'
+    ) THEN
+        ALTER TABLE source_registry ADD COLUMN detected_period_type text;
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                   WHERE conname = 'source_registry_detected_period_type_chk') THEN
+        ALTER TABLE source_registry ADD CONSTRAINT
+            source_registry_detected_period_type_chk
+            CHECK (detected_period_type IS NULL OR detected_period_type IN
+                   ('publication_date', 'reference_period'));
+    END IF;
+END $$;
+
+COMMENT ON COLUMN source_registry.detected_period_type IS
+    'What the period a check detects actually means. reference_period is the '
+    'month the data describes and is comparable with latest_period_loaded. '
+    'publication_date is when the edition was released and is not: comparing '
+    'it against a loaded reference period reports a new edition on every '
+    'check, forever. NULL means undeclared, and the checker refuses to '
+    'compare rather than guess.';
+
 COMMENT ON COLUMN source_registry.metrics IS
     'What the source actually gives you, one element per metric. Backfilled '
     'from the Metric(s) column of the hand-written METHODOLOGY register so '

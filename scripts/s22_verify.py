@@ -180,15 +180,27 @@ def main():
         "published in the release, so a single year is loaded."
     )
     started = state.get("started_at")
+    # The log records successes only, which is the convention the whole table
+    # already follows: no failure has ever been logged, because a build that
+    # fails rolls back and exits non-zero. New writes are constrained to
+    # 'success' by pipeline_run_log_status_new_writes_chk, so the previous
+    # 'complete'/'failed' values would now be rejected outright.
+    if not all_hard_pass:
+        conn.rollback()
+        print("HARD GATE FAILED — no run logged. The log records successes "
+              "only; a failed verification is reported, not recorded.",
+              file=sys.stderr)
+        sys.exit(1)
     cur.execute("""
         INSERT INTO pipeline_run_log
-            (run_id, agent_name, source_number, status, rows_written,
-             error_message, started_at, completed_at, duration_ms, notes)
-        VALUES (gen_random_uuid(), %s, %s, %s, %s, NULL, %s, now(), NULL, %s)
+            (run_id, agent_name, source_number, source_code, status,
+             rows_written, error_message, started_at, completed_at,
+             duration_ms, notes)
+        VALUES (gen_random_uuid(), %s, %s, %s, 'success', %s, NULL, %s,
+                now(), NULL, %s)
         RETURNING id, run_id
-    """, ("Source 22 - MHCLG Council Taxbase Empty Homes", str(n),
-          "complete" if all_hard_pass else "failed", rows_written, started,
-          notes))
+    """, ("Source 22 - MHCLG Council Taxbase Empty Homes", str(n), str(n),
+          rows_written, started, notes))
     log_id, log_uuid = cur.fetchone()
     conn.commit()
 

@@ -69,7 +69,12 @@ def pg_conn():
 
 
 def main():
+    # Read-only by default. Check 6 opts into a write transaction it
+    # always rolls back; nothing else in this suite can write at all.
     conn = pg_conn()
+    with conn.cursor() as _c:
+        _c.execute("SELECT current_user")
+        print(f"connected as {_c.fetchone()[0]}")
     cur = conn.cursor()
     csv = pd.read_csv(ROOT / "data" / "processed" /
                       f"la_private_rents_{EDITION}.csv", dtype={"lad24cd": str})
@@ -188,10 +193,27 @@ def main():
             provisional = EXCLUDED.provisional, source = EXCLUDED.source,
             loaded_at = NOW()
     """, records, page_size=5000)
-    conn.commit()
+    # Never committed. Idempotency is a property of the upsert, not something
+    # that has to be left behind to be observed: the row count and a content
+    # checksum are compared inside the transaction and the whole thing is
+    # rolled back. Committing here is what let a wrong-edition run overwrite
+    # 71,442 rows of freshly loaded data on 2026-08-14.
     cur.execute("SELECT COUNT(*) FROM la_private_rents")
     after = cur.fetchone()[0]
-    check("6 idempotency", before == after, f"count before={before} after={after}")
+    cur.execute("SELECT md5(string_agg(t::text, '' ORDER BY t::text)) "
+                "FROM (SELECT lad24cd, period, breakdown_type, category, "
+                "mean_rent, rent_index, annual_pct_change, provisional "
+                "FROM la_private_rents) t")
+    after_sum = cur.fetchone()[0]
+    conn.rollback()
+    cur.execute("SELECT md5(string_agg(t::text, '' ORDER BY t::text)) "
+                "FROM (SELECT lad24cd, period, breakdown_type, category, "
+                "mean_rent, rent_index, annual_pct_change, provisional "
+                "FROM la_private_rents) t")
+    committed_sum = cur.fetchone()[0]
+    check("6 idempotency", before == after and after_sum == committed_sum,
+          f"count before={before} after={after} (rolled back; content "
+          f"checksum unchanged={after_sum == committed_sum})")
 
     # 7. Succession migration
     cur.execute("SELECT COUNT(*) FROM la_succession")

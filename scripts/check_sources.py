@@ -265,7 +265,13 @@ def check_govuk(row, det, reg):
 
     loaded = (reg["latest_period_loaded"] or "").strip()
     loaded_ym = loaded[:7]
-    if loaded_ym and row["detected_period"]:
+    if reg.get("detected_period_type") != "reference_period":
+        row.update(outcome="check_failed",
+                   error_detail=(
+                       "detected_period_type is not reference_period, so the "
+                       "detected release month cannot be compared with "
+                       "latest_period_loaded"))
+    elif loaded_ym and row["detected_period"]:
         row["outcome"] = ("new_edition"
                           if row["detected_period"][:7] > loaded_ym
                           else "no_change")
@@ -434,6 +440,24 @@ def check_one(code, reg):
                                 "is unestablished")
         return row
 
+    # A period comparison is only valid when the detected period and the
+    # loaded period mean the same thing. latest_period_loaded is always a
+    # reference period, so anything else must not be compared against it —
+    # doing so reports a new edition on every check, forever. Declared type
+    # missing is a refusal, not a licence to guess.
+    ptype = reg.get("detected_period_type")
+    if period and loaded and ptype != "reference_period":
+        row.update(outcome="check_failed",
+                   error_detail=(
+                       f"detected_period_type is "
+                       f"{ptype or 'undeclared'}, so the detected period "
+                       f"({period}) is not comparable with "
+                       f"latest_period_loaded ({loaded}), which is always a "
+                       f"reference period. Declare the type, or give this "
+                       f"source an edition_key so the edition itself can be "
+                       f"looked up in the target table."))
+        return row
+
     if period and loaded and period[:7] > loaded[:7]:
         row["outcome"] = "new_edition"
     elif before and before == after:
@@ -473,7 +497,8 @@ def main():
     if args.codes:
         cur.execute("""
             SELECT source_code, landing_page_url, latest_period_loaded,
-                   last_seen_fingerprint, revises_back_series, target_table
+                   last_seen_fingerprint, revises_back_series, target_table,
+                   detected_period_type
             FROM source_registry WHERE source_code = ANY(%s)
             ORDER BY source_code
         """, (args.codes,))
@@ -481,7 +506,7 @@ def main():
         cur.execute("""
             SELECT r.source_code, r.landing_page_url, r.latest_period_loaded,
                    r.last_seen_fingerprint, r.revises_back_series,
-                   r.target_table
+                   r.target_table, r.detected_period_type
             FROM source_registry r
             JOIN vw_source_due d ON d.source_code = r.source_code
             WHERE r.refresh_tier IN ('A','B')
