@@ -23,7 +23,17 @@ import requests
 from psycopg2.extras import execute_values
 
 ROOT = Path(__file__).resolve().parent.parent
-EDITION = sys.argv[1] if len(sys.argv) > 1 else "17june2026"
+# The edition must be named. This script writes: check 6 tests idempotency by
+# re-upserting, so a stale default silently reverts the table to an older
+# edition's data. That happened on 2026-08-14, when a verify run that fell
+# back to the June default rewrote 71,442 rows of the freshly loaded July
+# edition. A verification suite that can corrupt what it verifies must not
+# guess which edition it is verifying.
+if len(sys.argv) < 2:
+    sys.exit("HALT: edition slug required, e.g. "
+             "scripts/s18_pipr_verify.py 22july2026. "
+             "This script writes and will not assume an edition.")
+EDITION = sys.argv[1]
 BULLETIN = ("https://www.ons.gov.uk/economy/inflationandpriceindices/bulletins/"
             "privaterentandhousepricesuk/latest")
 

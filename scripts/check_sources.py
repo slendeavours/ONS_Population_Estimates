@@ -53,9 +53,15 @@ DETECTORS = {
         note="href whose filename contains HSCA_Active_Locations (.ods or "
              ".xlsx); docs/nodes/s11_node1_fetch_cqc_directory.md",
     ),
+    # S18's URL carries the publication date, not the reference period: the
+    # 22 July 2026 edition contains data to June 2026. Comparing the two as
+    # if they were the same kind of thing reports a new edition forever, so
+    # the test is whether this edition's slug already appears in the target
+    # table's own source column.
     "18": dict(
         method="landing_page",
         pattern=r'href="([^"]*\.xlsx)"',
+        edition_key=r"/(\d{1,2}[a-z]+\d{4})/",
         note="first (newest) xlsx link on the dataset page; "
              "docs/s18_pipr_source.md",
     ),
@@ -203,6 +209,33 @@ def loaded_provenance(cur, table):
 PERIOD_COLUMNS = ("reporting_period", "period_ending", "period", "month",
                   "taxbase_year", "snapshot_year", "reference_year",
                   "financial_year", "reporting_year", "year")
+
+
+
+def edition_loaded(table, edition):
+    """Whether an edition identifier already appears in the table's source column.
+
+    Returns None where the question cannot be asked - no table, no source
+    column - so the caller can report check_failed rather than guess.
+    """
+    if not table or not edition:
+        return None
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_schema='public' AND table_name=%s
+              AND column_name='source'
+        """, (table,))
+        if not cur.fetchone():
+            return None
+        cur.execute(f'SELECT EXISTS (SELECT 1 FROM "{table}" '
+                    f'WHERE source ILIKE %s)', (f"%{edition}%",))
+        return bool(cur.fetchone()[0])
+    finally:
+        cur.close()
+        conn.close()
 
 
 def check_govuk(row, det, reg):
@@ -377,6 +410,30 @@ def check_one(code, reg):
     # pending edition reports no_change forever and disappears from the due
     # list without ever being loaded. That is the exact silent failure this
     # log exists to prevent.
+    # Where the detector can name the edition, ask the database directly
+    # whether that edition has been loaded. This is the same provenance test
+    # the revision check uses, and it is exact where a period comparison
+    # would be a category error.
+    if det.get("edition_key"):
+        edition = re.search(det["edition_key"], newest, re.I)
+        edition = edition.group(1) if edition else None
+        seen = edition_loaded(reg["target_table"], edition) if edition else None
+        row["notes"] += f"; edition '{edition}'"
+        if seen is True:
+            row["outcome"] = "no_change"
+            row["notes"] += " already present in the target table"
+            return row
+        if seen is False:
+            row["outcome"] = "new_edition"
+            row["notes"] += " not yet loaded"
+            return row
+        row.update(outcome="check_failed",
+                   error_detail="the edition could not be read from the "
+                                "newest link, or the target table records no "
+                                "source, so whether this edition is loaded "
+                                "is unestablished")
+        return row
+
     if period and loaded and period[:7] > loaded[:7]:
         row["outcome"] = "new_edition"
     elif before and before == after:

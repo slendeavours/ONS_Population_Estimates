@@ -21,7 +21,13 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 ROOT = Path(__file__).resolve().parent.parent
-EDITION = sys.argv[1] if len(sys.argv) > 1 else "17june2026"
+# The edition must be named. This script writes, and a stale default would
+# load an older edition over a newer one without saying so.
+if len(sys.argv) < 2:
+    sys.exit("HALT: edition slug required, e.g. "
+             "scripts/s18_pipr_load.py 22july2026. "
+             "This script writes and will not assume an edition.")
+EDITION = sys.argv[1]
 RUN_DATE = "2026-07-11"
 
 DDL = """
@@ -121,42 +127,71 @@ def main():
     print(f"la_succession rows: {cur.fetchone()[0]}")
 
     # 4.3 seed la_geography from CHD ChangeHistory (authoritative start dates)
-    z = zipfile.ZipFile(ROOT / "data" / "raw" / "chd_june2026.zip")
-    hist = pd.read_csv(z.open("ChangeHistory.csv"), dtype=str,
-                       encoding="latin-1", low_memory=False)
-    hist = hist[hist["ENTITYCD"].isin(["E06", "E07", "E08", "E09"])]
+    #
+    # This is a dimension bootstrap, not a per-edition step: the code history
+    # does not change when ONS publishes a month of rents. The CHD archive
+    # lives in the gitignored raw directory, so requiring it made every
+    # monthly refresh depend on a file that is not part of the refresh — the
+    # load failed on exactly that.
+    #
+    # Skipped when the dimension is already populated and the archive is
+    # absent. A genuine first build still halts, because seeding from nothing
+    # is not something to do silently.
+    chd_zip = ROOT / "data" / "raw" / "chd_june2026.zip"
+    cur.execute("SELECT COUNT(*) FROM la_geography")
+    geography_seeded = cur.fetchone()[0] > 0
+    if not chd_zip.exists():
+        if not geography_seeded:
+            print(f"ERROR: {chd_zip.name} is required to seed la_geography on "
+                  f"a first build. Download the ONS Code History Database "
+                  f"before re-running.", file=sys.stderr)
+            conn.rollback()
+            sys.exit(1)
+        cur.execute("SELECT COUNT(*), COUNT(valid_to) FROM la_geography")
+        n, n_term = cur.fetchone()
+        print(f"la_geography: {n} rows already seeded ({n_term} terminated); "
+              f"CHD archive absent, seed skipped")
+        return_early = True
+    else:
+        return_early = False
 
-    cur.execute("SELECT lad24cd, lad24nm FROM la_boundaries")
-    boundaries = cur.fetchall()
+    if not return_early:
+        z = zipfile.ZipFile(chd_zip)
+        hist = pd.read_csv(z.open("ChangeHistory.csv"), dtype=str,
+                           encoding="latin-1", low_memory=False)
+        hist = hist[hist["ENTITYCD"].isin(["E06", "E07", "E08", "E09"])]
 
-    geo_rows, missing_chd = [], []
-    for code, name in boundaries:
-        rows = hist[hist["GEOGCD"] == code]
-        if rows.empty:
-            missing_chd.append(code)
-            continue
-        oper = pd.to_datetime(rows["OPER_DATE"], dayfirst=True).min().date()
-        term_raw = rows.sort_values("OPER_DATE").iloc[-1]["TERM_DATE"]
-        term = (pd.to_datetime(term_raw, dayfirst=True).date()
-                if pd.notna(term_raw) else None)
-        geo_rows.append((code, name, "LAD24", oper, term))
+        cur.execute("SELECT lad24cd, lad24nm FROM la_boundaries")
+        boundaries = cur.fetchall()
 
-    if missing_chd:
-        print(f"ERROR: {len(missing_chd)} LAD24 codes not in CHD: {missing_chd}",
-              file=sys.stderr)
-        conn.rollback()
-        sys.exit(1)
+        geo_rows, missing_chd = [], []
+        for code, name in boundaries:
+            rows = hist[hist["GEOGCD"] == code]
+            if rows.empty:
+                missing_chd.append(code)
+                continue
+            oper = pd.to_datetime(rows["OPER_DATE"], dayfirst=True).min().date()
+            term_raw = rows.sort_values("OPER_DATE").iloc[-1]["TERM_DATE"]
+            term = (pd.to_datetime(term_raw, dayfirst=True).date()
+                    if pd.notna(term_raw) else None)
+            geo_rows.append((code, name, "LAD24", oper, term))
 
-    execute_values(cur, """
-        INSERT INTO la_geography (gss_code, la_name, boundary_set, valid_from, valid_to)
-        VALUES %s
-        ON CONFLICT (gss_code, valid_from) DO UPDATE SET
-            la_name = EXCLUDED.la_name, valid_to = EXCLUDED.valid_to,
-            loaded_at = NOW()
-    """, geo_rows)
-    cur.execute("SELECT COUNT(*), COUNT(valid_to) FROM la_geography")
-    n, n_term = cur.fetchone()
-    print(f"la_geography rows: {n} ({n_term} with a valid_to termination date)")
+        if missing_chd:
+            print(f"ERROR: {len(missing_chd)} LAD24 codes not in CHD: {missing_chd}",
+                  file=sys.stderr)
+            conn.rollback()
+            sys.exit(1)
+
+        execute_values(cur, """
+            INSERT INTO la_geography (gss_code, la_name, boundary_set, valid_from, valid_to)
+            VALUES %s
+            ON CONFLICT (gss_code, valid_from) DO UPDATE SET
+                la_name = EXCLUDED.la_name, valid_to = EXCLUDED.valid_to,
+                loaded_at = NOW()
+        """, geo_rows)
+        cur.execute("SELECT COUNT(*), COUNT(valid_to) FROM la_geography")
+        n, n_term = cur.fetchone()
+        print(f"la_geography rows: {n} ({n_term} with a valid_to termination date)")
 
     # 4.4 upsert rent data
     csv_path = ROOT / "data" / "processed" / f"la_private_rents_{EDITION}.csv"
