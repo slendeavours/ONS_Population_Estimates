@@ -682,6 +682,18 @@ SOURCES = [
     ),
     dict(
         source_code="19",
+        revision_note=(
+            "Tested once, negative, not established. Apr-26 was re-probed "
+            "against the live API on 2026-08-14 and reproduced exactly, "
+            "296 of 296, delta 0.000%. That is not evidence PIP does not "
+            "revise: the S8b finding compared a four-month window and this "
+            "compared one, so the tests are not like-for-like. "
+            "revises_back_series stays NULL rather than false. "
+            "For any Stat-Xplore source the revision check has to be data "
+            "comparison, not metadata comparison. DWP moved 285 of 296 LAs "
+            "on the HB caseload with no revision note anywhere a check "
+            "looks, so periodic re-probe against stored values is the only "
+            "reliable signal."),
         source_name="DWP Stat-Xplore PIP",
         publisher="DWP",
         series_name=("PIP Cases with Entitlement from 2019 "

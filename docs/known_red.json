@@ -1,0 +1,19 @@
+{
+  "_comment": "Gates known to fail for an owned, dated defect. Read by scripts/verify_source_registry.py. Explanation in KNOWN_RED.md. An entry past fix_by escalates to a hard failure - expiry is what stops this becoming a place defects go to be forgotten.",
+  "known_red": [
+    {
+      "gate": "13",
+      "summary": "homelessness_quarter_urls and la_statutory_homelessness disagree both ways: 2025Q1 marked loaded with zero rows, 2025Q3 loaded with no register row",
+      "owner": "Scott",
+      "fix_by": "2026-09-30",
+      "item": "backlog item 6 - S1 reconstruction and the 2025Q1 reload"
+    },
+    {
+      "gate": "14",
+      "summary": "la_s114_notices holds E10000021 (Northamptonshire CC, abolished 2021), absent from la_boundaries and from la_code_lookup",
+      "owner": "Scott",
+      "fix_by": "2026-09-30",
+      "item": "backlog item 10 - S12 Northamptonshire S.114 attribution"
+    }
+  ]
+}

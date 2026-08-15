@@ -11,6 +11,8 @@ Usage:
     python scripts/verify_source_registry.py --skip-idempotency
 """
 import argparse
+import datetime
+import json
 import re
 import subprocess
 import sys
@@ -512,26 +514,77 @@ def main():
     conn.close()
 
     # ---- Report -----------------------------------------------------------
+    # Known-red gates are reported separately from new ones. Two permanently
+    # failing gates would otherwise become the normal state, and the next
+    # genuine failure would hide behind them: people stop reading the output
+    # and start reading the exit code.
+    #
+    # Each known-red entry carries an owner and a date, and expires. Past its
+    # date it counts as a new failure, which is what stops known_red.json
+    # becoming a place defects go to be forgotten.
+    known = {}
+    kr_path = REPO / "docs" / "known_red.json"
+    if kr_path.exists():
+        for e in json.loads(kr_path.read_text(encoding="utf-8"))["known_red"]:
+            known[str(e["gate"])] = e
+    today = datetime.date.today()
+
     width = max(len(name) for _, name, _, _ in results)
     print()
     print(f"{'#':<4}{'GATE':<{width + 2}}RESULT")
-    print("-" * (width + 14))
-    failed = 0
+    print("-" * (width + 22))
+    new_failures, known_failures, expired = [], [], []
     for n, name, passed, _ in results:
-        mark = "SKIP" if passed is None else ("PASS" if passed else "FAIL")
-        if passed is False:
-            failed += 1
+        if passed is None:
+            mark = "SKIP"
+        elif passed:
+            mark = "PASS"
+        else:
+            entry = known.get(str(n))
+            if not entry:
+                mark = "FAIL (new)"
+                new_failures.append((n, name))
+            elif datetime.date.fromisoformat(entry["fix_by"]) < today:
+                mark = "FAIL (overdue)"
+                expired.append((n, name, entry))
+            else:
+                mark = "known-red"
+                known_failures.append((n, name, entry))
         print(f"{str(n):<4}{name:<{width + 2}}{mark}")
     print()
     for n, name, passed, detail in results:
         mark = "SKIP" if passed is None else ("PASS" if passed else "FAIL")
         print(f"[{mark}] {n}. {name}")
         print(f"       {detail}")
+
+    if known_failures:
+        print()
+        print("KNOWN-RED (owned, dated, not weakened):")
+        for n, name, e in known_failures:
+            days = (datetime.date.fromisoformat(e["fix_by"]) - today).days
+            print(f"  gate {n}: {e['summary']}")
+            print(f"     owner {e['owner']}, fix by {e['fix_by']} "
+                  f"({days} days), {e['item']}")
+
     print()
-    if failed:
-        print(f"{failed} gate(s) FAILED. The build is not complete and "
-              f"nothing should be published.")
+    if expired:
+        for n, name, e in expired:
+            print(f"OVERDUE: gate {n} was due to be fixed by {e['fix_by']} "
+                  f"({e['item']}). A known-red entry past its date is a "
+                  f"failure, not a footnote.")
+    if new_failures:
+        for n, name in new_failures:
+            print(f"NEW FAILURE: gate {n} - {name}")
+    if new_failures or expired:
+        print()
+        print(f"{len(new_failures)} new and {len(expired)} overdue gate "
+              f"failure(s). Nothing should be published.")
         return 1
+    if known_failures:
+        print(f"{len(known_failures)} known-red gate(s), all within date; no "
+              f"new failures. Publishing is allowed, and the known-red list "
+              f"is not.")
+        return 2
     print("All gates passed.")
     return 0
 
