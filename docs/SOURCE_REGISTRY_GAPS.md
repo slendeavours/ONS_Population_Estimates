@@ -11,7 +11,7 @@ The top of this list is the documentation debt.
 | Field | Sources missing it | Where the value would come from |
 | --- | ---: | --- |
 | `next_expected_at` | 26 | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `superseded_by` | 26 | only populated when a source is replaced; null is correct for an active source |
+| `superseded_by` | 25 | only populated when a source is replaced; null is correct for an active source |
 | `auth_env_var` | 23 | the build script, where the source needs a credential |
 | `hss_lens` | 21 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 21 | an explicit dual-lens note in the source documentation |
@@ -35,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 324 null fields across 26 published sources.
+Total: 323 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -244,11 +244,10 @@ Total: 324 null fields across 26 published sources.
 | `caveats` | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
-| `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
 | `revision_note` | — |
 
-**Note.** Mechanics established 2026-08-14. Same Stat-Xplore API, same account and same credential as S8b, which already runs unattended: the endpoint responds 401 without a key and the schema is discoverable programmatically. Tier A describes the mechanics; no build script exists yet, which build_script_path records separately.
+**Note.** Mechanics established 2026-08-14. Same Stat-Xplore API, same account and same credential as S8b, which already runs unattended: the endpoint responds 401 without a key and the schema is discoverable programmatically. Tier A describes the mechanics; no build script exists yet, which build_script_path records separately. SUPERSEDED by S8b on 2026-08-14. Both read the same measure from the same Stat-Xplore hb_new database, and a live probe of 202511 returned S8b's values on 296 of 296 LAs. S8b already carries six months against S8's one. Two sources maintaining one number will diverge and nothing would surface it, so hb_sa_caseload now comes from S8b. la_hb_sa_caseload is kept rather than dropped so the provenance of W1 runs 4-12 stays readable.
 
 ### S8b
 

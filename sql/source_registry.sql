@@ -512,6 +512,11 @@ SELECT b.source_code,
        CASE WHEN b.next_due_at IS NULL THEN NULL
             ELSE (CURRENT_DATE - b.next_due_at) END AS days_overdue,
        CASE
+           -- A retired source is not owed anything. Without this a superseded
+           -- source keeps reporting overdue forever against a cadence nobody
+           -- intends to meet: S8 sat at 105 days overdue, tier A, while the
+           -- measurement it carried had moved to S8b.
+           WHEN b.status IN ('superseded', 'deprecated') THEN 'retired'
            -- Manual sources are never chased automatically.
            WHEN b.refresh_tier = 'C' THEN 'manual_only'
            -- No successful run resolves to this source.

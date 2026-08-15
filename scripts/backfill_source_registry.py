@@ -314,9 +314,18 @@ SOURCES = [
     dict(
         source_code="8b",
         revises_back_series=True,
-        revision_note=("DWP applies retrospective revisions to the HB caseload: "
-            "Birmingham differs by 9.6% from la_hb_sa_caseload for "
-            "Nov-25 for that reason."),
+        revision_note=(
+            "DWP revises the HB caseload in place and publishes no "
+            "revision note that any check surfaces. Proven 2026-08-14: "
+            "202511 SA moved on 285 of 296 LAs between the S8 load on "
+            "2026-04-01 and the S8b load on 2026-07-22 - Birmingham "
+            "31,117 to 34,101, +9.6% - and a live probe confirmed the "
+            "API now returns the later figures. This is not a blanket "
+            "Stat-Xplore property: S19 PIP Apr-26 reproduced exactly, "
+            "296 of 296, delta 0.000%. The two tests are not "
+            "like-for-like, though - HB was compared over four months "
+            "and PIP over one - so PIP is left unflagged rather than "
+            "asserted not to revise."),
         source_name="DWP Stat-Xplore HB (accommodation type)",
         publisher="DWP",
         series_name=("Housing Benefit caseload (str:database:hb_new), "
@@ -330,8 +339,11 @@ SOURCES = [
             "Stat-Xplore returns monthly granularity, so the implied refresh "
             "cadence is monthly, not quarterly. The geography valueset has "
             "372 members, 316 English, resolved to 296 current LAD24CD "
-            "codes; two historical codes are unresolvable (E07000028, "
-            "E07000189)."),
+            "codes. The build recorded E07000028 and E07000189 as "
+            "unresolvable; both now resolve after the 2026-07-26 "
+            "la_code_lookup correction, and both were verified on "
+            "2026-08-14 to carry zero claimants in every month loaded, "
+            "so nothing was lost to them."),
         cadence="monthly", cadence_months=1,
         target_table="la_hb_accom_type_caseload", geography_level="LAD24",
         build_script_path="scripts/s8b_hb_accom_type_build.py",
@@ -1198,6 +1210,15 @@ TIER_C_FINDINGS = {
               "deliberate decision, never a routine refresh.")),
     "8": dict(
         tier="A", method="api",
+        status="superseded", superseded_by="8b",
+        completeness_extra=(
+            " SUPERSEDED by S8b on 2026-08-14. Both read the same measure from "
+            "the same Stat-Xplore hb_new database, and a live probe of 202511 "
+            "returned S8b's values on 296 of 296 LAs. S8b already carries six "
+            "months against S8's one. Two sources maintaining one number will "
+            "diverge and nothing would surface it, so hb_sa_caseload now comes "
+            "from S8b. la_hb_sa_caseload is kept rather than dropped so the "
+            "provenance of W1 runs 4-12 stays readable."),
         url=None,
         api="https://stat-xplore.dwp.gov.uk/webapi/rest/v1",
         ptype="reference_period",
@@ -1512,6 +1533,9 @@ def upsert_sources(cur, pks, register):
             record["acquisition_method"] = f["method"]
             record["completeness_note"] = (
                 f["note"] + f.get("completeness_extra", ""))
+            for k in ("status", "superseded_by"):
+                if f.get(k):
+                    record[k] = f[k]
             for key, col in (("url", "landing_page_url"),
                              ("api", "api_endpoint"),
                              ("ptype", "detected_period_type"),
