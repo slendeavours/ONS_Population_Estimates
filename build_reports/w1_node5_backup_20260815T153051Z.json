@@ -1,0 +1,191 @@
+[
+  {
+    "parameters": {},
+    "type": "n8n-nodes-base.manualTrigger",
+    "typeVersion": 1,
+    "position": [
+      0,
+      0
+    ],
+    "id": "d14cf157-0880-4a1d-b425-d6ca65ca7f3a",
+    "name": "When clicking \u2018Execute workflow\u2019"
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "CREATE TABLE IF NOT EXISTS staging_runs (\n    run_id          SERIAL PRIMARY KEY,\n    run_date        TIMESTAMPTZ DEFAULT NOW(),\n    status          TEXT DEFAULT 'in_progress',\n    notes           TEXT\n);\n\nCREATE TABLE IF NOT EXISTS staging_national (\n    run_id                          INTEGER NOT NULL,\n    ta_households_current           INTEGER,\n    ta_households_prev_year         INTEGER,\n    ta_yoy_pct                      NUMERIC(8,2),\n    rough_sleeping_current          INTEGER,\n    rough_sleeping_prev_year        INTEGER,\n    bb_spend_total_000              NUMERIC(14,2),\n    nightly_paid_spend_total_000    NUMERIC(14,2),\n    hb_sa_caseload_total            INTEGER,\n    housing_register_total          INTEGER,\n    PRIMARY KEY (run_id)\n);\n\nCREATE TABLE IF NOT EXISTS staging_la_signals (\n    run_id                      INTEGER NOT NULL,\n    lad24cd                     VARCHAR(9) NOT NULL,\n    la_name                     VARCHAR(100),\n    population                  INTEGER,\n    ta_households_current       INTEGER,\n    ta_households_prev_year     INTEGER,\n    ta_yoy_pct                  NUMERIC(8,2),\n    ta_trend_label              TEXT,\n    rough_sleeping_current      INTEGER,\n    rough_sleeping_prev_year    INTEGER,\n    care_leavers_semi_indep     INTEGER,\n    marac_cases                 NUMERIC(10,2),\n    marac_rate_per_10k          NUMERIC(10,6),\n    hb_sa_caseload              INTEGER,\n    housing_register            INTEGER,\n    ro4_bb_spend_000            NUMERIC(12,2),\n    ro4_nightly_spend_000       NUMERIC(12,2),\n    ro4_total_homelessness_000  NUMERIC(12,2),\n    efs_flag                    BOOLEAN DEFAULT FALSE,\n    s114_flag                   BOOLEAN DEFAULT FALSE,\n    imd_rank_of_average_rank    INTEGER,\n    data_quality                JSONB,\n    PRIMARY KEY (run_id, lad24cd)\n);\n\nCREATE TABLE IF NOT EXISTS staging_tenant_type_rankings (\n    run_id          INTEGER NOT NULL,\n    tenant_type     TEXT NOT NULL,\n    rank_position   INTEGER NOT NULL,\n    lad24cd         VARCHAR(9) NOT NULL,\n    la_name         VARCHAR(100),\n    primary_signal  NUMERIC,\n    signal_label    TEXT,\n    data_confidence TEXT,\n    PRIMARY KEY (run_id, tenant_type, rank_position)\n);\n\nCREATE TABLE IF NOT EXISTS staging_convergence (\n    run_id                  INTEGER NOT NULL,\n    lad24cd                 VARCHAR(9) NOT NULL,\n    la_name                 VARCHAR(100),\n    section3_rank           INTEGER,\n    tenant_types_in_top3    TEXT[],\n    convergence_count       INTEGER DEFAULT 0,\n    PRIMARY KEY (run_id, lad24cd)\n);",
+      "options": {}
+    },
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.6,
+    "position": [
+      208,
+      0
+    ],
+    "id": "212b6eca-d7fa-436b-8de5-65e9805b4c7a",
+    "name": "Create Staging Tables",
+    "credentials": {
+      "postgres": {
+        "id": "48kWY1QsbjiOZ8gg",
+        "name": "Postgres account 2"
+      }
+    }
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "DO $$\nBEGIN\n    IF EXISTS (\n        SELECT 1 FROM staging_runs\n        WHERE run_date::date = CURRENT_DATE\n        AND status = 'complete'\n    ) THEN\n        RAISE EXCEPTION 'A completed run already exists for today (%). Delete it from staging_runs first if you want to re-run.', CURRENT_DATE;\n    END IF;\nEND $$;\n\nINSERT INTO staging_runs (status, notes)\nVALUES ('in_progress', 'Workflow 1 pre-computation run')\nRETURNING run_id;",
+      "options": {}
+    },
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.6,
+    "position": [
+      416,
+      0
+    ],
+    "id": "aa796f62-6c12-4c4f-9a30-66824ac56da7",
+    "name": "Create Run",
+    "credentials": {
+      "postgres": {
+        "id": "48kWY1QsbjiOZ8gg",
+        "name": "Postgres account 2"
+      }
+    }
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "INSERT INTO staging_national (\n    run_id,\n    ta_households_current,\n    ta_households_prev_year,\n    ta_yoy_pct,\n    rough_sleeping_current,\n    rough_sleeping_prev_year,\n    bb_spend_total_000,\n    nightly_paid_spend_total_000,\n    hb_sa_caseload_total,\n    housing_register_total\n)\nSELECT\n    $1 AS run_id,\n    -- TA current (2025Q2 = most recent loaded)\n    SUM(CASE WHEN period = '2025Q2' THEN households_in_ta ELSE 0 END),\n    -- TA prior year (2024Q2)\n    SUM(CASE WHEN period = '2024Q2' THEN households_in_ta ELSE 0 END),\n    -- YoY %\n    ROUND(\n        (SUM(CASE WHEN period = '2025Q2' THEN households_in_ta ELSE 0 END)::NUMERIC\n        - SUM(CASE WHEN period = '2024Q2' THEN households_in_ta ELSE 0 END)::NUMERIC)\n        / NULLIF(SUM(CASE WHEN period = '2024Q2' THEN households_in_ta ELSE 0 END), 0) * 100\n    , 2),\n    -- Rough sleeping current\n    (SELECT SUM(rough_sleeping) FROM la_rough_sleeping WHERE snapshot_year = 2025),\n    -- Rough sleeping prior year\n    (SELECT SUM(rough_sleeping_prev_year) FROM la_rough_sleeping WHERE snapshot_year = 2025),\n    -- B&B spend\n    (SELECT SUM(bb_gross_exp_000) FROM ro4_housing_expenditure WHERE financial_year = '2024-25'),\n    -- Nightly paid spend\n    (SELECT SUM(nightly_paid_ta_gross_exp_000) FROM ro4_housing_expenditure WHERE financial_year = '2024-25'),\n    -- HB SA caseload (most recent month)\n    (SELECT SUM(hb_sa_claimants) FROM la_hb_sa_caseload\n     WHERE month = (SELECT MAX(month) FROM la_hb_sa_caseload)),\n    -- Housing register\n    (SELECT SUM(households_on_register) FROM la_housing_register\n     WHERE reporting_year = (SELECT MAX(reporting_year) FROM la_housing_register))\nFROM la_statutory_homelessness\nWHERE period IN ('2025Q2', '2024Q2')\nAND households_in_ta > 0;",
+      "options": {
+        "queryReplacement": "={{ $('Create Run').first().json.run_id }}"
+      }
+    },
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.6,
+    "position": [
+      608,
+      0
+    ],
+    "id": "2e109e42-ed89-4993-8e94-c107e196e462",
+    "name": "National Aggregates",
+    "credentials": {
+      "postgres": {
+        "id": "48kWY1QsbjiOZ8gg",
+        "name": "Postgres account 2"
+      }
+    }
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "-- ===========================================================================\n-- W1 Node 5 \"LA Signals\" \u2014 revised for S22 (MHCLG Council Taxbase empty homes)\n--\n-- Additive only. Every column, join and ON CONFLICT SET entry that was\n-- already in the node is retained. The node is a Postgres executeQuery node\n-- with queryReplacement = {{ $('Create Run').first().json.run_id }}, so $1 is\n-- the run_id. The query is parameterised; no value is concatenated into it.\n--\n-- Three groups were in the database but not in the stored node, because they\n-- were applied to runs 10 and 11 by direct SQL rather than through n8n. They\n-- are folded in here so the node and the table agree:\n--   S9a/S9b  drd_bed_days_lost, drd_pct_delayed_1plus_days, crfd_days\n--   S19      pip_total_claimants, pip_enhanced_daily_living, pip_rate_per_1000\n-- New in this revision:\n--   S22      ctb_total_dwellings, ctb_empty_6m_plus, ctb_empty_homes_premium,\n--            ctb_second_homes, ctb_lte_rate_pct\n--\n-- The five S22 columns are added to staging_la_signals by the additive\n-- migration in scripts/s22_w1_wire.py (DO $$ ... IF NOT EXISTS). The table is\n-- never dropped or recreated.\n-- ===========================================================================\n\nINSERT INTO staging_la_signals (\n    run_id, lad24cd, la_name, population,\n    ta_households_current, ta_households_prev_year, ta_yoy_pct, ta_trend_label,\n    rough_sleeping_current, rough_sleeping_prev_year,\n    care_leavers_semi_indep,\n    marac_cases, marac_rate_per_10k,\n    hb_sa_caseload, housing_register,\n    ro4_bb_spend_000, ro4_nightly_spend_000, ro4_total_homelessness_000,\n    efs_flag, s114_flag,\n    imd_rank_of_average_rank,\n    lha_brma_name, lha_sar_weekly, lha_1bed_weekly,\n    lha_2bed_weekly, lha_3bed_weekly, lha_4bed_weekly,\n    supported_living_locations,\n    drd_bed_days_lost, drd_pct_delayed_1plus_days, crfd_days,\n    pip_total_claimants, pip_enhanced_daily_living, pip_rate_per_1000,\n    ctb_total_dwellings, ctb_empty_6m_plus, ctb_empty_homes_premium,\n    ctb_second_homes, ctb_lte_rate_pct,\n    data_quality\n)\nSELECT\n    $1 AS run_id,\n    b.lad24cd,\n    b.lad24nm AS la_name,\n    p.population,\n\n    -- TA signals\n    ta_cur.households_in_ta AS ta_households_current,\n    ta_prev.households_in_ta AS ta_households_prev_year,\n    ROUND(\n        (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC\n        / NULLIF(ta_prev.households_in_ta, 0) * 100\n    , 2) AS ta_yoy_pct,\n    CASE\n        WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap'\n        WHEN ta_prev.households_in_ta IS NULL OR ta_prev.households_in_ta = 0 THEN 'no_prior_year'\n        WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC\n             / NULLIF(ta_prev.households_in_ta, 0) * 100 > 10  THEN 'rising_strongly'\n        WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC\n             / NULLIF(ta_prev.households_in_ta, 0) * 100 > 3   THEN 'rising'\n        WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC\n             / NULLIF(ta_prev.households_in_ta, 0) * 100 > -3  THEN 'flat'\n        WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC\n             / NULLIF(ta_prev.households_in_ta, 0) * 100 > -10 THEN 'falling'\n        ELSE 'falling_strongly'\n    END AS ta_trend_label,\n\n    -- Rough sleeping\n    rs.rough_sleeping AS rough_sleeping_current,\n    rs.rough_sleeping_prev_year,\n\n    -- Care leavers (most recent year, 17-21 cohort)\n    cl.semi_independent AS care_leavers_semi_indep,\n\n    -- MARAC (via PFA mapping, most recent year)\n    mc.cases_discussed AS marac_cases,\n    mc.cases_per_10k_adult_females AS marac_rate_per_10k,\n\n    -- HB SA caseload (most recent month)\n    sa.hb_sa_claimants AS hb_sa_caseload,\n\n    -- Housing register (most recent year)\n    hr.households_on_register AS housing_register,\n\n    -- RO4 spend\n    ro4.bb_gross_exp_000 AS ro4_bb_spend_000,\n    ro4.nightly_paid_ta_gross_exp_000 AS ro4_nightly_spend_000,\n    ro4.total_homelessness_gross_exp_000 AS ro4_total_homelessness_000,\n\n    -- Financial stress flags\n    CASE WHEN efs.lad24cd IS NOT NULL THEN TRUE ELSE FALSE END AS efs_flag,\n    CASE WHEN s114.lad24cd IS NOT NULL THEN TRUE ELSE FALSE END AS s114_flag,\n\n    -- IMD\n    imd.imd_rank_of_average_rank,\n\n    -- LHA rates (S14, via BRMA mapping)\n    lbm.brma_name AS lha_brma_name,\n    lha.sar_weekly AS lha_sar_weekly,\n    lha.one_bed_weekly AS lha_1bed_weekly,\n    lha.two_bed_weekly AS lha_2bed_weekly,\n    lha.three_bed_weekly AS lha_3bed_weekly,\n    lha.four_bed_weekly AS lha_4bed_weekly,\n\n    -- S11 CQC supported living locations (active, non-dormant)\n    COALESCE(s11.sl_count, 0) AS supported_living_locations,\n\n    -- S9a DRD / S9b MHSDS CRFD discharge delays\n    drd.total_bed_days_lost AS drd_bed_days_lost,\n    drd.pct_delayed_1plus_days AS drd_pct_delayed_1plus_days,\n    crfd.measure_value AS crfd_days,\n\n    -- S19 PIP claimants. Counts from the table; the rate from\n    -- v_la_pip_rates so pip_rate_per_1000 has exactly one definition, the\n    -- same treatment ctb_lte_rate_pct gets below. The view also exposes\n    -- population_reference_year, because the numerator refreshes monthly and\n    -- the denominator annually.\n    pip.pip_total_claimants,\n    pip.pip_enhanced_daily_living,\n    pipr.pip_rate_per_1000,\n\n    -- S22 MHCLG Council Taxbase empty homes (supply-side indicator).\n    -- Counts come from the table; the rate comes from\n    -- v_la_empty_homes_rates so lte_rate_pct has exactly one definition and\n    -- is never recomputed anywhere else.\n    ctb.total_dwellings           AS ctb_total_dwellings,\n    ctb.empty_6_months_plus       AS ctb_empty_6m_plus,\n    ctb.empty_homes_premium_count AS ctb_empty_homes_premium,\n    ctb.second_homes              AS ctb_second_homes,\n    ctbr.lte_rate_pct             AS ctb_lte_rate_pct,\n\n    -- Data quality flags\n    jsonb_build_object(\n        'ta_current', CASE WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap' ELSE 'ok' END,\n        'ta_trend',   CASE WHEN ta_prev.households_in_ta IS NULL THEN 'no_prior_year' ELSE 'ok' END,\n        'rough_sleeping', CASE WHEN rs.rough_sleeping IS NULL THEN 'missing' ELSE 'ok' END,\n        'marac',      CASE WHEN mc.cases_discussed IS NULL THEN 'missing' ELSE 'ok' END\n    ) AS data_quality\n\nFROM la_boundaries b\n\n-- TA current quarter\nLEFT JOIN la_statutory_homelessness ta_cur\n    ON ta_cur.lad24cd = b.lad24cd\n    AND ta_cur.period = '2025Q2'\n\n-- TA prior year same quarter\nLEFT JOIN la_statutory_homelessness ta_prev\n    ON ta_prev.lad24cd = b.lad24cd\n    AND ta_prev.period = '2024Q2'\n\n-- Population (S3). Pinned to the latest vintage. la_population became\n-- multi-year on 2026-08-13 when the mid-2025 estimates were loaded\n-- alongside mid-2024; without this pin the join returns one row per LA per\n-- vintage and the statement dies on ON CONFLICT with a cardinality\n-- violation. It fails loudly rather than silently double-counting, but it\n-- does fail.\nLEFT JOIN la_population p\n    ON p.lad24cd = b.lad24cd\n    AND p.reference_year = (SELECT MAX(reference_year) FROM la_population)\n\n-- Rough sleeping\nLEFT JOIN la_rough_sleeping rs\n    ON rs.lad24cd = b.lad24cd\n    AND rs.snapshot_year = 2025\n\n-- Care leavers (most recent year available = 2024)\nLEFT JOIN care_leaver_accommodation cl\n    ON cl.lad24cd = b.lad24cd\n    AND cl.reporting_year = 2024\n    AND cl.age_group = '17-21'\n\n-- MARAC (via PFA mapping, most recent year = 2024-25)\nLEFT JOIN la_pfa_mapping pfa ON pfa.lad24cd = b.lad24cd\nLEFT JOIN marac_cases mc\n    ON mc.pfa_name_safelives = pfa.pfa_name_safelives\n    AND mc.financial_year = '2024-25'\n\n-- HB SA caseload (most recent month)\nLEFT JOIN la_hb_sa_caseload sa\n    ON sa.lad24cd = b.lad24cd\n    AND sa.month = (SELECT MAX(month) FROM la_hb_sa_caseload)\n\n-- Housing register (most recent year)\nLEFT JOIN la_housing_register hr\n    ON hr.lad24cd = b.lad24cd\n    AND hr.reporting_year = (SELECT MAX(reporting_year) FROM la_housing_register)\n\n-- RO4 spend\nLEFT JOIN ro4_housing_expenditure ro4\n    ON ro4.lad24cd = b.lad24cd\n    AND ro4.financial_year = '2024-25'\n\n-- EFS (any year flagged)\nLEFT JOIN (\n    SELECT DISTINCT lad24cd FROM la_efs_support\n    WHERE financial_year IN ('2024-25', '2025-26')\n) efs ON efs.lad24cd = b.lad24cd\n\n-- S114 (any notice on record)\nLEFT JOIN (\n    SELECT DISTINCT lad24cd FROM la_s114_notices\n) s114 ON s114.lad24cd = b.lad24cd\n\n-- IMD\nLEFT JOIN la_imd_2025 imd ON imd.lad24cd = b.lad24cd\n\n-- LHA rates (S14)\nLEFT JOIN la_brma_mapping lbm ON lbm.lad24cd = b.lad24cd\nLEFT JOIN brma_lha_rates lha\n    ON lha.brma_name = lbm.brma_name\n    AND lha.financial_year = '2026-27'\n\n-- S11 supported living counts\nLEFT JOIN (\n    SELECT lad24cd, COUNT(*) AS sl_count\n    FROM cqc_locations\n    WHERE supported_living AND is_active AND NOT dormant\n    GROUP BY lad24cd\n) s11 ON s11.lad24cd = b.lad24cd\n\n-- S9a DRD (latest reporting period)\nLEFT JOIN vw_drd_discharge_delays_lad drd\n    ON drd.lad24cd = b.lad24cd\n    AND drd.reporting_period = (SELECT MAX(reporting_period)\n                                  FROM nhs_drd_discharge_delays)\n\n-- S9b MHSDS CRFD (latest reporting period, MHS26)\nLEFT JOIN vw_mh_crfd_lad crfd\n    ON crfd.lad24cd = b.lad24cd\n    AND crfd.reporting_period = (SELECT MAX(reporting_period)\n                                   FROM nhs_mh_crfd)\n    AND crfd.measure_id = 'MHS26'\n\n-- S19 PIP claimants (latest month)\nLEFT JOIN la_pip_claimants pip\n    ON pip.lad24cd = b.lad24cd\n    AND pip.month = (SELECT MAX(month) FROM la_pip_claimants)\nLEFT JOIN v_la_pip_rates pipr\n    ON pipr.lad24cd = b.lad24cd\n    AND pipr.month = (SELECT MAX(month) FROM la_pip_claimants)\n\n-- S22 Council Taxbase empty homes (latest taxbase year)\nLEFT JOIN la_council_taxbase_empties ctb\n    ON ctb.lad24cd = b.lad24cd\n    AND ctb.taxbase_year = (SELECT MAX(taxbase_year)\n                              FROM la_council_taxbase_empties)\nLEFT JOIN v_la_empty_homes_rates ctbr\n    ON ctbr.lad24cd = b.lad24cd\n\n-- Every inserted column except the key is refreshed. Eight of these were\n-- missing until 2026-08-13: la_name, population, rough_sleeping_prev_year,\n-- marac_rate_per_10k, housing_register and the three ro4_* columns. That\n-- was latent rather than harmless \u2014 it only slept because every run takes a\n-- fresh run_id, and the one time anyone re-runs into an existing run_id to\n-- recover from a failed pre-flight is exactly when those eight would have\n-- gone stale without a word. scripts/w1_contract_check.py now fails on a\n-- missing EXCLUDED clause rather than warning.\nON CONFLICT (run_id, lad24cd) DO UPDATE SET\n    la_name                    = EXCLUDED.la_name,\n    population                 = EXCLUDED.population,\n    ta_households_current      = EXCLUDED.ta_households_current,\n    ta_households_prev_year    = EXCLUDED.ta_households_prev_year,\n    ta_yoy_pct                 = EXCLUDED.ta_yoy_pct,\n    ta_trend_label             = EXCLUDED.ta_trend_label,\n    rough_sleeping_current     = EXCLUDED.rough_sleeping_current,\n    rough_sleeping_prev_year   = EXCLUDED.rough_sleeping_prev_year,\n    care_leavers_semi_indep    = EXCLUDED.care_leavers_semi_indep,\n    marac_cases                = EXCLUDED.marac_cases,\n    marac_rate_per_10k         = EXCLUDED.marac_rate_per_10k,\n    hb_sa_caseload             = EXCLUDED.hb_sa_caseload,\n    housing_register           = EXCLUDED.housing_register,\n    ro4_bb_spend_000           = EXCLUDED.ro4_bb_spend_000,\n    ro4_nightly_spend_000      = EXCLUDED.ro4_nightly_spend_000,\n    ro4_total_homelessness_000 = EXCLUDED.ro4_total_homelessness_000,\n    efs_flag                   = EXCLUDED.efs_flag,\n    s114_flag                  = EXCLUDED.s114_flag,\n    imd_rank_of_average_rank   = EXCLUDED.imd_rank_of_average_rank,\n    lha_brma_name              = EXCLUDED.lha_brma_name,\n    lha_sar_weekly             = EXCLUDED.lha_sar_weekly,\n    lha_1bed_weekly            = EXCLUDED.lha_1bed_weekly,\n    lha_2bed_weekly            = EXCLUDED.lha_2bed_weekly,\n    lha_3bed_weekly            = EXCLUDED.lha_3bed_weekly,\n    lha_4bed_weekly            = EXCLUDED.lha_4bed_weekly,\n    supported_living_locations = EXCLUDED.supported_living_locations,\n    drd_bed_days_lost          = EXCLUDED.drd_bed_days_lost,\n    drd_pct_delayed_1plus_days = EXCLUDED.drd_pct_delayed_1plus_days,\n    crfd_days                  = EXCLUDED.crfd_days,\n    pip_total_claimants        = EXCLUDED.pip_total_claimants,\n    pip_enhanced_daily_living  = EXCLUDED.pip_enhanced_daily_living,\n    pip_rate_per_1000          = EXCLUDED.pip_rate_per_1000,\n    ctb_total_dwellings        = EXCLUDED.ctb_total_dwellings,\n    ctb_empty_6m_plus          = EXCLUDED.ctb_empty_6m_plus,\n    ctb_empty_homes_premium    = EXCLUDED.ctb_empty_homes_premium,\n    ctb_second_homes           = EXCLUDED.ctb_second_homes,\n    ctb_lte_rate_pct           = EXCLUDED.ctb_lte_rate_pct,\n    data_quality               = EXCLUDED.data_quality;\n",
+      "options": {
+        "queryReplacement": "={{ $('Create Run').first().json.run_id }}"
+      }
+    },
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.6,
+    "position": [
+      800,
+      0
+    ],
+    "id": "4e8eea18-932b-4155-8225-ea103b4357b7",
+    "name": "LA Signals",
+    "credentials": {
+      "postgres": {
+        "id": "48kWY1QsbjiOZ8gg",
+        "name": "Postgres account 2"
+      }
+    }
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "INSERT INTO staging_tenant_type_rankings\n    (run_id, tenant_type, rank_position, lad24cd, la_name, primary_signal, signal_label, data_confidence)\n\nSELECT $1::integer, 'single_homeless', rank_position, lad24cd, la_name,\n       ta_households_current, 'households_in_ta_2025Q2', 'High'\nFROM (\n    SELECT lad24cd, la_name, ta_households_current,\n           ROW_NUMBER() OVER (ORDER BY ta_households_current DESC NULLS LAST) AS rank_position\n    FROM staging_la_signals\n    WHERE run_id = $1::integer\n    AND ta_households_current > 0\n    AND (data_quality->>'ta_current') = 'ok'\n) t WHERE rank_position <= 296\n\nUNION ALL\n\nSELECT $1::integer, 'rough_sleepers', rank_position, lad24cd, la_name,\n       rough_sleeping_current, 'rough_sleeping_2025', 'High'\nFROM (\n    SELECT lad24cd, la_name, rough_sleeping_current,\n           ROW_NUMBER() OVER (ORDER BY rough_sleeping_current DESC NULLS LAST) AS rank_position\n    FROM staging_la_signals\n    WHERE run_id = $1::integer\n    AND rough_sleeping_current IS NOT NULL\n) t WHERE rank_position <= 296\n\nUNION ALL\n\nSELECT $1::integer, 'care_leavers', rank_position, lad24cd, la_name,\n       care_leavers_semi_indep, 'semi_independent_2024', 'High'\nFROM (\n    SELECT lad24cd, la_name, care_leavers_semi_indep,\n           ROW_NUMBER() OVER (ORDER BY care_leavers_semi_indep DESC NULLS LAST) AS rank_position\n    FROM staging_la_signals\n    WHERE run_id = $1::integer\n    AND care_leavers_semi_indep IS NOT NULL\n) t WHERE rank_position <= 296\n\nUNION ALL\n\nSELECT $1::integer, 'domestic_abuse', rank_position, lad24cd, la_name,\n       marac_rate_per_10k, 'marac_cases_per_10k_adult_females_2024_25', 'Medium'\nFROM (\n    SELECT lad24cd, la_name, marac_rate_per_10k,\n           ROW_NUMBER() OVER (ORDER BY marac_rate_per_10k DESC NULLS LAST) AS rank_position\n    FROM staging_la_signals\n    WHERE run_id = $1::integer\n    AND marac_rate_per_10k IS NOT NULL\n) t WHERE rank_position <= 296\n\nUNION ALL\n\nSELECT $1::integer, 'older_complex', rank_position, lad24cd, la_name,\n       hb_sa_caseload, 'hb_sa_claimants_latest_month', 'Medium'\nFROM (\n    SELECT lad24cd, la_name, hb_sa_caseload,\n           ROW_NUMBER() OVER (ORDER BY hb_sa_caseload DESC NULLS LAST) AS rank_position\n    FROM staging_la_signals\n    WHERE run_id = $1::integer\n    AND hb_sa_caseload IS NOT NULL\n) t WHERE rank_position <= 296\n\nON CONFLICT (run_id, tenant_type, rank_position) DO UPDATE SET\n    lad24cd        = EXCLUDED.lad24cd,\n    la_name        = EXCLUDED.la_name,\n    primary_signal = EXCLUDED.primary_signal;",
+      "options": {
+        "queryReplacement": "={{ $('Create Run').first().json.run_id }}"
+      }
+    },
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.6,
+    "position": [
+      992,
+      0
+    ],
+    "id": "f5157021-e65e-42d9-a6ee-9e8a2d3cd07c",
+    "name": "Tenant Type Rankings",
+    "credentials": {
+      "postgres": {
+        "id": "48kWY1QsbjiOZ8gg",
+        "name": "Postgres account 2"
+      }
+    }
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "INSERT INTO staging_convergence\n    (run_id, lad24cd, la_name, section3_rank, tenant_types_in_top3, convergence_count)\n\nWITH tenant_appearances AS (\n    SELECT lad24cd, la_name,\n           ARRAY_AGG(tenant_type ORDER BY tenant_type) AS tenant_types_in_top3,\n           COUNT(*) AS convergence_count\n    FROM staging_tenant_type_rankings\n    WHERE run_id = $1::integer\n    AND rank_position <= 3\n    GROUP BY lad24cd, la_name\n)\nSELECT\n    $1::integer, s.lad24cd, s.la_name,\n    ROW_NUMBER() OVER (\n        ORDER BY COALESCE(t.convergence_count, 0) DESC,\n                 COALESCE(s.ta_households_current, 0) DESC\n    )::integer AS section3_rank,\n    COALESCE(t.tenant_types_in_top3, ARRAY[]::TEXT[]) AS tenant_types_in_top3,\n    COALESCE(t.convergence_count, 0) AS convergence_count\nFROM staging_la_signals s\nLEFT JOIN tenant_appearances t ON t.lad24cd = s.lad24cd\nWHERE s.run_id = $1::integer\n\nON CONFLICT (run_id, lad24cd) DO UPDATE SET\n    section3_rank        = EXCLUDED.section3_rank,\n    tenant_types_in_top3 = EXCLUDED.tenant_types_in_top3,\n    convergence_count    = EXCLUDED.convergence_count;",
+      "options": {
+        "queryReplacement": "={{ $('Create Run').first().json.run_id }}"
+      }
+    },
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.6,
+    "position": [
+      1200,
+      0
+    ],
+    "id": "b6b2bd47-dad3-4dcf-b572-f484ac37f3ca",
+    "name": "Section 3 Top 3 LAs",
+    "credentials": {
+      "postgres": {
+        "id": "48kWY1QsbjiOZ8gg",
+        "name": "Postgres account 2"
+      }
+    }
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "UPDATE staging_runs\nSET status = 'complete'\nWHERE run_id = $1;",
+      "options": {
+        "queryReplacement": "={{ $('Create Run').first().json.run_id }}"
+      }
+    },
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.6,
+    "position": [
+      1408,
+      0
+    ],
+    "id": "ff03a2c8-c9a3-48a3-ad9c-dea2bcc4c519",
+    "name": "Mark Run Complete",
+    "credentials": {
+      "postgres": {
+        "id": "48kWY1QsbjiOZ8gg",
+        "name": "Postgres account 2"
+      }
+    }
+  },
+  {
+    "parameters": {
+      "operation": "executeQuery",
+      "query": "-- W1 pre-flight: does node 5 still write every column of\n-- staging_la_signals, and only columns that exist?\n--\n-- The contract is refreshed from the stored node by\n-- scripts/w1_contract_check.py. This node enforces the table half inside the\n-- workflow so a divergence cannot wait for the next publish to be noticed.\nDO $$\nDECLARE\n    missing_from_node  TEXT;\n    missing_from_table TEXT;\n    contract_rows      INTEGER;\n    contract_age       INTERVAL;\nBEGIN\n    SELECT COUNT(*), now() - MIN(recorded_at)\n      INTO contract_rows, contract_age\n      FROM staging_signal_contract;\n\n    IF contract_rows = 0 THEN\n        RAISE EXCEPTION\n          'W1 pre-flight: staging_signal_contract is empty. Run '\n          'scripts/w1_contract_check.py before the workflow \u2014 the contract '\n          'is what this check compares against.';\n    END IF;\n\n    SELECT string_agg(c.column_name, ', ' ORDER BY c.ordinal_position)\n      INTO missing_from_node\n      FROM information_schema.columns c\n     WHERE c.table_schema = 'public'\n       AND c.table_name = 'staging_la_signals'\n       AND NOT EXISTS (SELECT 1 FROM staging_signal_contract sc\n                        WHERE sc.column_name = c.column_name);\n\n    SELECT string_agg(sc.column_name, ', ' ORDER BY sc.ordinal)\n      INTO missing_from_table\n      FROM staging_signal_contract sc\n     WHERE NOT EXISTS (SELECT 1 FROM information_schema.columns c\n                        WHERE c.table_schema = 'public'\n                          AND c.table_name = 'staging_la_signals'\n                          AND c.column_name = sc.column_name);\n\n    IF missing_from_node IS NOT NULL THEN\n        RAISE EXCEPTION\n          'W1 pre-flight ABORT: staging_la_signals has column(s) node 5 does '\n          'not write: %. A run in this state writes them null and nothing '\n          'would tell you. Update node 5, then re-run '\n          'scripts/w1_contract_check.py.', missing_from_node;\n    END IF;\n\n    IF missing_from_table IS NOT NULL THEN\n        RAISE EXCEPTION\n          'W1 pre-flight ABORT: node 5 writes column(s) absent from '\n          'staging_la_signals: %.', missing_from_table;\n    END IF;\n\n    RAISE NOTICE 'W1 pre-flight OK: % columns, contract recorded % ago.',\n                 contract_rows, contract_age;\nEND $$;\n\nSELECT COUNT(*) AS contract_columns,\n       MAX(recorded_at) AS contract_recorded_at,\n       MAX(node_query_sha256) AS node_query_sha256\n  FROM staging_signal_contract;\n",
+      "options": {}
+    },
+    "type": "n8n-nodes-base.postgres",
+    "typeVersion": 2.6,
+    "position": [
+      388,
+      160
+    ],
+    "id": "b22c0de0-5c22-4a11-9f22-c0de5c22a11e",
+    "name": "Signal Column Pre-flight",
+    "credentials": {
+      "postgres": {
+        "id": "48kWY1QsbjiOZ8gg",
+        "name": "Postgres account 2"
+      }
+    }
+  }
+]

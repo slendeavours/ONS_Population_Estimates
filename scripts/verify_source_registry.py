@@ -464,6 +464,50 @@ def main():
          f"{len(SIDE_REGISTERS)} side register(s) checked; "
          f"disagreements: {drift or 'none'}")
 
+    # ---- Gate 14: every stored lad24cd resolves to la_boundaries ----------
+    # A source that stores the publisher's LA code without resolving it
+    # through la_code_lookup produces rows that Workflow 1 cannot join to.
+    # Not a halved figure - no matching row at all, and W1 then published the
+    # resulting NULL as a trend. On 2026-08-14 this was true of
+    # la_statutory_homelessness and la_rough_sleeping, and would have been
+    # true of nhs_mh_crfd but for a view that happened to normalise on the way
+    # out. Standing rule 3 has required resolution at extraction since
+    # 2026-08-13; nothing enforced it.
+    #
+    # It was found by hand, by scanning forty tables. This turns that scan
+    # into something the build does every time. Base tables only: a view may
+    # legitimately re-map codes, which is exactly what vw_mh_crfd_lad does.
+    cur.execute("""
+        SELECT c.table_name
+        FROM information_schema.columns c
+        JOIN pg_class p ON p.relname = c.table_name
+        JOIN pg_namespace n ON n.oid = p.relnamespace AND n.nspname = 'public'
+        WHERE c.column_name = 'lad24cd'
+          AND c.table_schema = 'public'
+          AND p.relkind = 'r'
+          AND c.table_name <> 'la_boundaries'
+        ORDER BY 1
+    """)
+    lad_tables = [r[0] for r in cur.fetchall()]
+    orphans = []
+    for t in lad_tables:
+        cur.execute(f"""
+            SELECT DISTINCT t.lad24cd FROM {t} t
+            WHERE t.lad24cd IS NOT NULL
+              AND NOT EXISTS (SELECT 1 FROM la_boundaries b
+                              WHERE b.lad24cd = t.lad24cd)
+            ORDER BY 1
+        """)
+        bad = [r[0] for r in cur.fetchall()]
+        if bad:
+            orphans.append(f"{t}: {bad}")
+    gate(14, "every stored lad24cd resolves to la_boundaries",
+         not orphans,
+         f"{len(lad_tables)} base table(s) carrying lad24cd checked against "
+         f"the 296-code boundary set; "
+         f"tables holding a code la_boundaries does not have: "
+         f"{orphans or 'none'}")
+
     cur.close()
     conn.close()
 

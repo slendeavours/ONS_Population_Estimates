@@ -59,7 +59,12 @@ SELECT
         (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC
         / NULLIF(ta_prev.households_in_ta, 0) * 100
     , 2) AS ta_yoy_pct,
+    -- Absent, zero and suppressed are three different states. The NULL test
+    -- comes first so no comparison can swallow it, and the terminal ELSE is
+    -- 'undetermined' rather than a direction, so an unforeseen combination
+    -- can never again be published as a trend.
     CASE
+        WHEN ta_cur.households_in_ta IS NULL THEN 'no_current_data'
         WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap'
         WHEN ta_prev.households_in_ta IS NULL OR ta_prev.households_in_ta = 0 THEN 'no_prior_year'
         WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC
@@ -70,7 +75,9 @@ SELECT
              / NULLIF(ta_prev.households_in_ta, 0) * 100 > -3  THEN 'flat'
         WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC
              / NULLIF(ta_prev.households_in_ta, 0) * 100 > -10 THEN 'falling'
-        ELSE 'falling_strongly'
+        WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC
+             / NULLIF(ta_prev.households_in_ta, 0) * 100 <= -10 THEN 'falling_strongly'
+        ELSE 'undetermined'
     END AS ta_trend_label,
 
     -- Rough sleeping
@@ -139,8 +146,14 @@ SELECT
 
     -- Data quality flags
     jsonb_build_object(
-        'ta_current', CASE WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap' ELSE 'ok' END,
-        'ta_trend',   CASE WHEN ta_prev.households_in_ta IS NULL THEN 'no_prior_year' ELSE 'ok' END,
+        'ta_current', CASE
+            WHEN ta_cur.households_in_ta IS NULL THEN 'missing'
+            WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap'
+            ELSE 'ok' END,
+        'ta_trend',   CASE
+            WHEN ta_cur.households_in_ta IS NULL THEN 'no_current_data'
+            WHEN ta_prev.households_in_ta IS NULL THEN 'no_prior_year'
+            ELSE 'ok' END,
         'rough_sleeping', CASE WHEN rs.rough_sleeping IS NULL THEN 'missing' ELSE 'ok' END,
         'marac',      CASE WHEN mc.cases_discussed IS NULL THEN 'missing' ELSE 'ok' END
     ) AS data_quality
