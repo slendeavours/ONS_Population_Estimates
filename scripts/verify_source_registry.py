@@ -510,8 +510,51 @@ def main():
          f"tables holding a code la_boundaries does not have: "
          f"{orphans or 'none'}")
 
+    # ---- Gate 15: no label stands on an absent measure ---------------------
+    # Runs 4 to 12 published Sheffield and Barnsley with no TA figure and a
+    # trend label of falling_strongly. The mechanism is three-valued logic, not
+    # a wrong ELSE literal: a comparison against NULL yields NULL, which is
+    # not-matched, so every WHEN arm declines and the ELSE catches it as a
+    # positive assertion. The absent case then takes whatever the catch-all
+    # says - here, the strongest downward signal on the scale.
+    #
+    # Asserted against the latest run only. Earlier runs are immutable audit
+    # data and several are not reproducible, so gating them would produce a
+    # permanent red that no fix could clear.
+    LABEL_INPUTS = [
+        ("staging_la_signals", "ta_trend_label",
+         ["ta_households_current", "ta_households_prev_year"]),
+        ("staging_la_signals", "ta_yoy_pct",
+         ["ta_households_current", "ta_households_prev_year"]),
+        ("staging_la_signals", "marac_rate_per_10k",
+         ["marac_cases", "population"]),
+        ("staging_la_signals", "pip_rate_per_1000",
+         ["pip_total_claimants", "population"]),
+        ("staging_la_signals", "ctb_lte_rate_pct",
+         ["ctb_empty_6m_plus", "ctb_total_dwellings"]),
+        ("staging_national", "ta_yoy_pct",
+         ["ta_households_current", "ta_households_prev_year"]),
+    ]
+    cur.execute("SELECT MAX(run_id) FROM staging_la_signals")
+    latest_run = cur.fetchone()[0]
+    standing = []
+    for table, col, inputs in LABEL_INPUTS:
+        nulls = " OR ".join(f"{i} IS NULL" for i in inputs)
+        cur.execute(f"""SELECT COUNT(*) FROM {table}
+                        WHERE run_id = %s AND {col} IS NOT NULL AND ({nulls})""",
+                    (latest_run,))
+        n = cur.fetchone()[0]
+        if n:
+            standing.append(f"{table}.{col}: {n} row(s) over an absent "
+                            f"{' or '.join(inputs)}")
+    gate(15, "no derived label stands on an absent measure",
+         not standing,
+         f"run {latest_run}, {len(LABEL_INPUTS)} derived column(s) checked "
+         f"against their input measures; violations: {standing or 'none'}")
+
     cur.close()
     conn.close()
+
 
     # ---- Report -----------------------------------------------------------
     # Known-red gates are reported separately from new ones. Two permanently
