@@ -20,8 +20,8 @@ The top of this list is the documentation debt.
 | `source_doc_path` | 17 | a source documentation file — the single largest gap for undocumented sources |
 | `node_docs_path` | 15 | the per-node documentation under docs/nodes/ |
 | `revises_back_series` | 15 | — |
-| `revision_note` | 15 | — |
 | `join_path` | 14 | the build script's geography resolution step |
+| `revision_note` | 14 | — |
 | `build_script_path` | 13 | the build script, if it is in the published tree |
 | `detected_period_type` | 12 | — |
 | `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
@@ -35,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 323 null fields across 26 published sources.
+Total: 322 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -471,7 +471,6 @@ Total: 323 null fields across 26 published sources.
 | `verification_checks` | the source's verification suite and its documented check count |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
-| `revision_note` | — |
 | `detected_period_type` | — |
 
 **Note.** Wired into Workflow 1 since run 11: staging_la_signals carries pip_total_claimants, pip_enhanced_daily_living and pip_rate_per_1000. The rate is defined in v_la_pip_rates, which also exposes population_reference_year because the numerator refreshes monthly and the denominator annually.
