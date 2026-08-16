@@ -1810,6 +1810,13 @@ def main():
 
     conn = get_conn()
     conn.autocommit = False
+    # source_registry carries a writer-only trigger: it is a generated
+    # table, and a direct edit either reverts on the next backfill or
+    # persists until someone adds a declaration. This connection is a
+    # declared writer.
+    cur_flag = conn.cursor()
+    cur_flag.execute("SET ucws.registry_writer = 'on'")
+    cur_flag.close()
     cur = conn.cursor()
     try:
         apply_ddl(cur)

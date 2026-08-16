@@ -664,6 +664,32 @@ def main():
          f"asserted on its ratio relationship; disagreements: "
          f"{breaks or 'none'}")
 
+    # ---- Gate 17: source_registry cannot be hand-edited ------------------
+    # It is a generated table. 12 columns are regenerated for every source and
+    # 27 more for the sources that declare them, so a direct edit either
+    # reverts on the next backfill - which is how gate 9 caught one on
+    # 2026-08-16 - or, worse, persists silently until somebody adds a
+    # declaration for that source. The second case is the dangerous one: it
+    # works until it doesn't, and nothing says when it stopped.
+    #
+    # The trigger makes the destination refuse the write outright. This gate
+    # exists so the protection cannot be dropped without the suite noticing:
+    # a control nobody checks is a control that has already gone.
+    cur.execute("""
+        SELECT tgenabled FROM pg_trigger
+        WHERE tgrelid = 'source_registry'::regclass
+          AND tgname = 'source_registry_writer_only_trg'
+          AND NOT tgisinternal
+    """)
+    trg = cur.fetchone()
+    gate(17, "source_registry is protected against direct edits",
+         bool(trg) and trg[0] != 'D',
+         "trigger source_registry_writer_only_trg: "
+         + ("absent - direct edits are possible" if not trg
+            else "disabled - direct edits are possible" if trg[0] == 'D'
+            else "present and enabled; writers declare themselves with "
+                 "SET ucws.registry_writer = 'on'"))
+
     cur.close()
     conn.close()
 
@@ -688,12 +714,24 @@ def main():
     print()
     print(f"{'#':<4}{'GATE':<{width + 2}}RESULT")
     print("-" * (width + 22))
+    # A known-red entry whose gate is currently passing is a defect in the
+    # control itself. Proved 2026-08-16: gate 14 went green while its entry
+    # was still in place, and an injected failure - a genuine one - was
+    # absorbed as known-red so the suite exited 2 instead of 1. A stale entry
+    # does not merely go unread, it swallows the next real failure of that
+    # gate. Either the entry is stale or the gate is being masked, and neither
+    # may be silent, so this is a hard failure like any other.
+    gate_numbers = {str(n) for n, _, _, _ in results}
+    stale_known, unknown_known = [], []
+
     new_failures, known_failures, expired = [], [], []
     for n, name, passed, _ in results:
         if passed is None:
             mark = "SKIP"
         elif passed:
             mark = "PASS"
+            if str(n) in known:
+                stale_known.append((n, name, known[str(n)]))
         else:
             entry = known.get(str(n))
             if not entry:
@@ -721,6 +759,24 @@ def main():
             print(f"     owner {e['owner']}, fix by {e['fix_by']} "
                   f"({days} days), {e['item']}")
 
+    for g in sorted(known):
+        if g not in gate_numbers:
+            unknown_known.append(g)
+
+    if stale_known or unknown_known:
+        print()
+        print("STALE KNOWN-RED:")
+        for n, name, e in stale_known:
+            print(f"  gate {n} PASSES but is still declared known-red "
+                  f"({e['item']}).")
+            print(f"     While that entry stands, a genuine failure of gate "
+                  f"{n} reports as known-red and the suite exits 2 instead "
+                  f"of 1. Remove the entry.")
+        for g in unknown_known:
+            print(f"  known_red.json declares gate {g}, which this suite does "
+                  f"not define. The entry can never be cleared by a passing "
+                  f"gate and masks nothing that exists. Remove it.")
+
     print()
     if expired:
         for n, name, e in expired:
@@ -730,10 +786,15 @@ def main():
     if new_failures:
         for n, name in new_failures:
             print(f"NEW FAILURE: gate {n} - {name}")
-    if new_failures or expired:
+    if new_failures or expired or stale_known or unknown_known:
         print()
-        print(f"{len(new_failures)} new and {len(expired)} overdue gate "
-              f"failure(s). Nothing should be published.")
+        parts = [f"{len(new_failures)} new", f"{len(expired)} overdue"]
+        if stale_known:
+            parts.append(f"{len(stale_known)} stale known-red")
+        if unknown_known:
+            parts.append(f"{len(unknown_known)} unknown known-red")
+        print(f"{', '.join(parts)} gate failure(s). Nothing should be "
+              f"published.")
         return 1
     if known_failures:
         print(f"{len(known_failures)} known-red gate(s), all within date; no "
