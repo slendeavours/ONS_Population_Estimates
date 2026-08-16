@@ -490,24 +490,56 @@ def main():
           AND c.table_name <> 'la_boundaries'
         ORDER BY 1
     """)
+    #
+    # A code may be knowably historical rather than unresolved. S.114 notices
+    # are the case: Northamptonshire County Council issued two in 2018 and was
+    # abolished in 2021, and the notice belongs to the entity that issued it.
+    # It must not be propagated - one predecessor with two successors doubles
+    # on any join by predecessor, which is the la_succession fan-out defect.
+    #
+    # So the exemption is a positive declaration, not a tolerated code. A row
+    # is exempt only if its table carries an attribution column and the row
+    # says attribution = 'predecessor' with successor codes and a note. An
+    # orphan that declares nothing still fails. This narrows the gate: before,
+    # any code in the table was judged only against la_boundaries; now an
+    # unresolved code must either resolve or explain itself.
     lad_tables = [r[0] for r in cur.fetchall()]
-    orphans = []
+    orphans, declared = [], []
     for t in lad_tables:
+        cur.execute("""SELECT COUNT(*) FROM information_schema.columns
+                       WHERE table_schema='public' AND table_name=%s
+                         AND column_name IN ('attribution','successor_codes',
+                                             'attribution_note')""", (t,))
+        declarable = cur.fetchone()[0] == 3
+        exempt = ("""AND NOT (t.attribution = 'predecessor'
+                              AND t.successor_codes IS NOT NULL
+                              AND t.attribution_note IS NOT NULL)"""
+                  if declarable else "")
         cur.execute(f"""
             SELECT DISTINCT t.lad24cd FROM {t} t
             WHERE t.lad24cd IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM la_boundaries b
                               WHERE b.lad24cd = t.lad24cd)
+              {exempt}
             ORDER BY 1
         """)
         bad = [r[0] for r in cur.fetchall()]
         if bad:
             orphans.append(f"{t}: {bad}")
-    gate(14, "every stored lad24cd resolves to la_boundaries",
+        if declarable:
+            cur.execute(f"""SELECT DISTINCT t.lad24cd FROM {t} t
+                            WHERE t.attribution = 'predecessor'
+                              AND NOT EXISTS (SELECT 1 FROM la_boundaries b
+                                              WHERE b.lad24cd = t.lad24cd)""")
+            for (c,) in cur.fetchall():
+                declared.append(f"{t}: {c}")
+    gate(14, "every stored lad24cd resolves to la_boundaries, or declares why not",
          not orphans,
          f"{len(lad_tables)} base table(s) carrying lad24cd checked against "
          f"the 296-code boundary set; "
-         f"tables holding a code la_boundaries does not have: "
+         f"declared non-propagating predecessors (accepted): "
+         f"{declared or 'none'}; "
+         f"tables holding an undeclared code la_boundaries does not have: "
          f"{orphans or 'none'}")
 
     # ---- Gate 15: no label stands on an absent measure ---------------------

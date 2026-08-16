@@ -510,7 +510,20 @@ SOURCES = [
         target_table="la_efs_support", geography_level="LAD24",
         n8n_workflow_name="Workflow 1",
         caveats=["S.114 notices are held in a second table, la_s114_notices, "
-                 "keyed (lad24cd, notice_date)."],
+                 "keyed (lad24cd, notice_date).",
+                 "Notices are attributed to the authority that issued them and "
+                 "are never propagated to successors. la_s114_notices.attribution "
+                 "is 'direct' where the issuer still exists (13 notices, 10 "
+                 "authorities) and 'predecessor' where it does not (2, both "
+                 "Northamptonshire County Council E10000021, abolished 31 March "
+                 "2021). In 2018 Northamptonshire was two-tier: the county held "
+                 "social care and education while housing and homelessness sat "
+                 "with the seven districts, so the issuer did not hold the "
+                 "functions this source signals about. Propagating would also "
+                 "fan out - one predecessor, two successors, doubling the notice "
+                 "on any join by predecessor. successor_codes is reference only "
+                 "and must never be used as a join path; North and West "
+                 "Northamptonshire correctly carry s114_flag = false."],
         completeness_note=("No source documentation file exists. " + CAUTIOUS),
         refresh_tier="C", status="active",
         publish_github=True, publish_map=False,
