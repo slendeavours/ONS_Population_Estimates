@@ -1140,23 +1140,46 @@ TIER_C_FINDINGS = {
     "1": dict(
         tier="B", method="landing_page",
         completeness_extra=(
-            " AUDIT 2026-08-14: 2025Q1 (April to June 2025) is marked loaded "
-            "in homelessness_quarter_urls but has zero rows in "
-            "la_statutory_homelessness, so a quarter is missing from the TA "
-            "series; the publisher has also replaced the recorded _revised "
-            "file with a _corrected one. 2025Q3 is loaded with no row in the "
-            "URL register, so its provenance is unrecorded. No loaded quarter "
-            "is superseded. See "
-            "docs/decisions/2026-08-14-s1-quarter-gap-and-provenance.md."),
+            " AUDIT 2026-08-14, RESOLVED 2026-08-16: the 2025Q1 gap and the "
+            "unrecorded 2025Q3 provenance are both closed. Eleven quarters, "
+            "2023Q2 to 2025Q4, 296 rows each. period is a FINANCIAL-YEAR "
+            "quarter - 2025Q1 is April to June 2025 and 2025Q4 is January to "
+            "March 2026 - read from the files' own table titles, so 2026Q1 is "
+            "April to June 2026 and is not yet published. Every quarter now "
+            "carries a row in homelessness_quarter_urls with reproduction "
+            "status. See "
+            "docs/decisions/2026-08-14-s1-quarter-gap-and-provenance.md and "
+            "docs/decisions/"
+            "2026-08-16-s1-reconstruction-markers-and-revision.md."),
         url="https://www.gov.uk/government/collections/homelessness-statistics",
         api=GOVUK_API,
         ptype="reference_period",
         revises=True,
         revision_note=(
-            "Quarters are revised and republished: the curated URLs in "
-            "homelessness_quarter_urls include Detailed_LA_202309_revised.ods "
-            "and Detailed_LA_202312_Revised_No_Dropdowns.ods, so a loaded "
-            "quarter can be superseded in place."),
+            "Quarters are revised and republished in place, measured rather "
+            "than inferred from file names. On 2026-08-16 every loaded quarter "
+            "was re-extracted from the currently published file and compared "
+            "cell by cell. 2025Q2, 2025Q3 and 2025Q4 reproduce exactly. "
+            "2023Q2 to 2024Q4 do not, and the divergence is TWO defects, not "
+            "one. (a) The A1 measures - total_assessments, owed_duty, "
+            "prevention_duty, relief_duty - differ on 200-230 of 296 "
+            "authorities, consistent with revision: the 2023Q2 file itself "
+            "gives Hartlepool 172 initial assessments where the table holds "
+            "193; homelessness_quarter_urls.notes already recorded 'Revised' "
+            "against exactly those periods; the GOV.UK collection dates the "
+            "October-December 2024 release to June 2026, after the "
+            "2026-04-01 bulk load; and 2025Q2 came from that same load and "
+            "does reproduce. Still unrestated - a reload is its own backlog "
+            "item. (b) support_needs_total was NOT revision but misalignment: "
+            "it held 'households with one support need' instead of 'one or "
+            "more', at 45-47% of correct, matching the adjacent "
+            "hh_one_support_need column on 148-164 of 296. The tell was the "
+            "rate - a divergence hitting 99% of authorities on one column "
+            "while hitting 75% on the others is not a revision. Corrected in "
+            "place 2026-08-16 across 2,072 rows and verified 296/296 against "
+            "S1b in all eleven quarters. Per-quarter status is in "
+            "homelessness_quarter_urls.reproduces_from_source, joined onto "
+            "the data by v_la_statutory_homelessness."),
         note=("Mechanics established 2026-08-14. Quarterly releases titled "
               "'Statutory homelessness in England: {month} to {month} {year}' "
               "sit under the Homelessness statistics collection, which "
