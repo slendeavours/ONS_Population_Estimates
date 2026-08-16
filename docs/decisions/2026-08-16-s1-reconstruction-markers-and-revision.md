@@ -307,13 +307,84 @@ The A3 restructure of §4 is the mechanism for both, which is why S1b — which
 tracks layout version explicitly — is unaffected.
 
 **Not published.** `support_needs_total` is absent from `staging_la_signals`,
-so the error is contained to the database and has never reached the feed or the
-map. Not corrected here, because the seven-quarter reload is its own item — but
-it is a **different fix from a reload**: the correct values are already known
-exactly, from S1b and from the fresh extraction, for all seven quarters.
+so the error never reached the feed or the map.
+
+### Corrected in place
+
+A reload would have been the wrong instrument — it would re-fetch data already
+extracted and verified 296/296 against S1b. **2,072 rows updated across the
+seven quarters** from the extraction, and every one of the eleven quarters now
+agrees with S1b on 296/296.
+
+| Period | Before | After |
+| --- | ---: | ---: |
+| 2023Q2 | 19,705 | **42,112** |
+| 2023Q3 | 19,555 | **41,972** |
+| 2023Q4 | 20,883 | **45,230** |
+| 2024Q1 | 20,519 | **44,813** |
+| 2024Q2 | 20,091 | **45,137** |
+| 2024Q3 | 19,612 | **43,397** |
+| 2024Q4 | 21,623 | **48,467** |
+
+`reproduction_diff_cells` recomputed: the seven quarters drop from 1,038–1,128
+to **790–863**, which is now the A1 revision alone.
+
+**A provenance note.** These seven rows are now a mixture — `support_needs_total`
+from the current edition, the A1 measures still from whatever edition the
+2026-04-01 load used. `source_file` stays NULL rather than being set to the
+current file, because setting it would assert the whole row came from there.
+The mixture resolves when the A1 reload happens.
 
 Registered in `source_registry` S1's `revision_note` and in the seven
 `homelessness_quarter_urls.reproduction_note` rows.
+
+## 13. The escaped-quarantine sweep
+
+`support_needs_total` escaped because it read as an aggregate rather than a
+category, so the same test was run against every column in the table — as a
+data test, not a code read.
+
+For each stored column, pooled across all ten comparable quarters: how often
+does it match its nominal source column, and does **any other** column match
+better? A revision degrades the rate on the authorities it touches. A
+misalignment puts a different column's values in the field, so an adjacent
+column outscores the nominal one — which is exactly how `support_needs_total`
+was caught.
+
+| Stored column | Matches its own name | Best match |
+| --- | ---: | --- |
+| `total_assessments` | 1,385 / 2,960 | itself |
+| `owed_duty` | 1,402 / 2,960 | itself |
+| `prevention_duty` | 1,759 / 2,960 | itself |
+| `relief_duty` | 1,736 / 2,960 | itself |
+| `households_in_ta` | 2,696 / 2,960 | itself |
+| `support_needs_total` | 2,908 / 2,960 | itself |
+
+**Every column best-matches its own name. Nothing else escaped.** The low
+absolute rates on the A1 measures are the revision, not misalignment — the
+point of the test is which column wins, not how often it wins.
+
+The five `*_suspect` columns are NULL throughout, so A3 is fully accounted for:
+five quarantined, one corrected, none remaining.
+
+### S1b's own aggregates check out
+
+Since S1b is now the authority, its aggregates were checked against their own
+parts — the gate-16 technique applied to A3.
+`hh_one_or_more_support_needs` must equal `hh_one_support_need` +
+`hh_two_support_needs` + `hh_three_or_more_support_needs`. Across all eleven
+quarters: **net difference 0, maximum absolute difference 0.** Where both sides
+are comparable they agree exactly; the rows that do not compare carry a
+suppressed part.
+
+### The technique worth keeping
+
+**Rate is a diagnostic signature, not just a magnitude.** A divergence hitting
+99% of authorities on one column while hitting 75% on the others is not a
+revision — revisions touch the authorities that resubmitted, misalignment
+touches everyone. Reading the *shape* of the disagreement rather than its size
+is what separated the two defects, and it is reusable anywhere a stored table
+is compared against its source.
 
 ## Still open
 
