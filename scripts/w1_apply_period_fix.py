@@ -45,7 +45,11 @@ TARGETS = {
     "LA Signals": REPORT_DIR / "w1_la_signals_periods_revised.sql",
     "National Aggregates": REPORT_DIR / "w1_national_aggregates_periods_revised.sql",
 }
-BACKUP = REPORT_DIR / "w1_period_fix_backup.json"
+# Dated, not overwritten. A single file replaced by each apply is a
+# temporary, not provenance - and the whole reason runs 4 to 12 are
+# irreproducible is that nobody can say what SQL produced them. Each
+# backup is committed alongside the run it precedes.
+BACKUP_DIR = REPORT_DIR / "w1_node_backups"
 RESULT = REPORT_DIR / "w1_period_fix_run.json"
 
 RUN_ORDER = ["National Aggregates", "LA Signals", "Tenant Type Rankings",
@@ -100,8 +104,11 @@ def apply_nodes(revised, dry_run):
             target["parameters"]["query"] = sql
             changed.append(name)
 
-    BACKUP.write_text(json.dumps(backup, indent=1), encoding="utf-8")
-    log(f"  previous SQL backed up to {BACKUP.name}")
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H%M%S")
+    backup_path = BACKUP_DIR / f"w1_node_backup_{stamp}.json"
+    backup_path.write_text(json.dumps(backup, indent=1), encoding="utf-8")
+    log(f"  previous SQL backed up to {backup_path.relative_to(REPO)}")
 
     if dry_run:
         log(f"  DRY RUN: would update {changed or 'nothing'}")
