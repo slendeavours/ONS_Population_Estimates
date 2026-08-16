@@ -1,0 +1,2974 @@
+{
+ "captured_at": "2026-08-15T23:16:22.521173+00:00",
+ "run_id": 14,
+ "note": "Captured before run 14 was deleted and replaced by run 15. Run 14 was published to the live map on 2026-08-15 15:33 and is the 'published now' column of the restatement.",
+ "row_counts": {
+  "staging_convergence": 296,
+  "staging_la_signals": 296,
+  "staging_national": 1,
+  "staging_runs": 1,
+  "staging_tenant_type_rankings": 1289
+ },
+ "rows": [
+  {
+   "lad24cd": "E06000001",
+   "lad24nm": "Hartlepool",
+   "ta_households_current": 17,
+   "ta_households_prev_year": 15,
+   "ta_yoy_pct": "13.33",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 603,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000002",
+   "lad24nm": "Middlesbrough",
+   "ta_households_current": 88,
+   "ta_households_prev_year": 106,
+   "ta_yoy_pct": "-16.98",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 1248,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000003",
+   "lad24nm": "Redcar and Cleveland",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 35,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 255,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000004",
+   "lad24nm": "Stockton-on-Tees",
+   "ta_households_current": 31,
+   "ta_households_prev_year": 26,
+   "ta_yoy_pct": "19.23",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 593,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000005",
+   "lad24nm": "Darlington",
+   "ta_households_current": 93,
+   "ta_households_prev_year": 77,
+   "ta_yoy_pct": "20.78",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 742,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000006",
+   "lad24nm": "Halton",
+   "ta_households_current": 103,
+   "ta_households_prev_year": 92,
+   "ta_yoy_pct": "11.96",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 869,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000007",
+   "lad24nm": "Warrington",
+   "ta_households_current": 217,
+   "ta_households_prev_year": 169,
+   "ta_yoy_pct": "28.40",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1411,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000008",
+   "lad24nm": "Blackburn with Darwen",
+   "ta_households_current": 49,
+   "ta_households_prev_year": 42,
+   "ta_yoy_pct": "16.67",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 680,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000009",
+   "lad24nm": "Blackpool",
+   "ta_households_current": 139,
+   "ta_households_prev_year": 113,
+   "ta_yoy_pct": "23.01",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 779,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000010",
+   "lad24nm": "Kingston upon Hull, City of",
+   "ta_households_current": 256,
+   "ta_households_prev_year": 197,
+   "ta_yoy_pct": "29.95",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 2787,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000011",
+   "lad24nm": "East Riding of Yorkshire",
+   "ta_households_current": 258,
+   "ta_households_prev_year": 225,
+   "ta_yoy_pct": "14.67",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 478,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000012",
+   "lad24nm": "North East Lincolnshire",
+   "ta_households_current": 103,
+   "ta_households_prev_year": 95,
+   "ta_yoy_pct": "8.42",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 1093,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000013",
+   "lad24nm": "North Lincolnshire",
+   "ta_households_current": 73,
+   "ta_households_prev_year": 57,
+   "ta_yoy_pct": "28.07",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 506,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000014",
+   "lad24nm": "York",
+   "ta_households_current": 64,
+   "ta_households_prev_year": 59,
+   "ta_yoy_pct": "8.47",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 417,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000015",
+   "lad24nm": "Derby",
+   "ta_households_current": 465,
+   "ta_households_prev_year": 442,
+   "ta_yoy_pct": "5.20",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 1087,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000016",
+   "lad24nm": "Leicester",
+   "ta_households_current": 1008,
+   "ta_households_prev_year": 920,
+   "ta_yoy_pct": "9.57",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 1375,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000017",
+   "lad24nm": "Rutland",
+   "ta_households_current": 15,
+   "ta_households_prev_year": 17,
+   "ta_yoy_pct": "-11.76",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 33,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000018",
+   "lad24nm": "Nottingham",
+   "ta_households_current": 726,
+   "ta_households_prev_year": 749,
+   "ta_yoy_pct": "-3.07",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 3662,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000019",
+   "lad24nm": "Herefordshire, County of",
+   "ta_households_current": 182,
+   "ta_households_prev_year": 151,
+   "ta_yoy_pct": "20.53",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 254,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000020",
+   "lad24nm": "Telford and Wrekin",
+   "ta_households_current": 89,
+   "ta_households_prev_year": 73,
+   "ta_yoy_pct": "21.92",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 2497,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000021",
+   "lad24nm": "Stoke-on-Trent",
+   "ta_households_current": 94,
+   "ta_households_prev_year": 71,
+   "ta_yoy_pct": "32.39",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1454,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000022",
+   "lad24nm": "Bath and North East Somerset",
+   "ta_households_current": 96,
+   "ta_households_prev_year": 64,
+   "ta_yoy_pct": "50.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 419,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000023",
+   "lad24nm": "Bristol, City of",
+   "ta_households_current": 1721,
+   "ta_households_prev_year": 1585,
+   "ta_yoy_pct": "8.58",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 3181,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000024",
+   "lad24nm": "North Somerset",
+   "ta_households_current": 63,
+   "ta_households_prev_year": 84,
+   "ta_yoy_pct": "-25.00",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 886,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000025",
+   "lad24nm": "South Gloucestershire",
+   "ta_households_current": 243,
+   "ta_households_prev_year": 174,
+   "ta_yoy_pct": "39.66",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 688,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000026",
+   "lad24nm": "Plymouth",
+   "ta_households_current": 446,
+   "ta_households_prev_year": 321,
+   "ta_yoy_pct": "38.94",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1113,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000027",
+   "lad24nm": "Torbay",
+   "ta_households_current": 173,
+   "ta_households_prev_year": 154,
+   "ta_yoy_pct": "12.34",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 376,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000030",
+   "lad24nm": "Swindon",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 387,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 692,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000031",
+   "lad24nm": "Peterborough",
+   "ta_households_current": 292,
+   "ta_households_prev_year": 381,
+   "ta_yoy_pct": "-23.36",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 925,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000032",
+   "lad24nm": "Luton",
+   "ta_households_current": 990,
+   "ta_households_prev_year": 1072,
+   "ta_yoy_pct": "-7.65",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 1243,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000033",
+   "lad24nm": "Southend-on-Sea",
+   "ta_households_current": 404,
+   "ta_households_prev_year": 341,
+   "ta_yoy_pct": "18.48",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1722,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000034",
+   "lad24nm": "Thurrock",
+   "ta_households_current": 702,
+   "ta_households_prev_year": 560,
+   "ta_yoy_pct": "25.36",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 241,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000035",
+   "lad24nm": "Medway",
+   "ta_households_current": 602,
+   "ta_households_prev_year": 599,
+   "ta_yoy_pct": "0.50",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 924,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000036",
+   "lad24nm": "Bracknell Forest",
+   "ta_households_current": 161,
+   "ta_households_prev_year": 159,
+   "ta_yoy_pct": "1.26",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 388,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000037",
+   "lad24nm": "West Berkshire",
+   "ta_households_current": 163,
+   "ta_households_prev_year": 100,
+   "ta_yoy_pct": "63.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 558,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000038",
+   "lad24nm": "Reading",
+   "ta_households_current": 408,
+   "ta_households_prev_year": 400,
+   "ta_yoy_pct": "2.00",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 703,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000039",
+   "lad24nm": "Slough",
+   "ta_households_current": 1408,
+   "ta_households_prev_year": 1106,
+   "ta_yoy_pct": "27.31",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 322,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000040",
+   "lad24nm": "Windsor and Maidenhead",
+   "ta_households_current": 307,
+   "ta_households_prev_year": 274,
+   "ta_yoy_pct": "12.04",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 208,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000041",
+   "lad24nm": "Wokingham",
+   "ta_households_current": 92,
+   "ta_households_prev_year": 81,
+   "ta_yoy_pct": "13.58",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 308,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000042",
+   "lad24nm": "Milton Keynes",
+   "ta_households_current": 949,
+   "ta_households_prev_year": 1047,
+   "ta_yoy_pct": "-9.36",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 915,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000043",
+   "lad24nm": "Brighton and Hove",
+   "ta_households_current": 1863,
+   "ta_households_prev_year": 1655,
+   "ta_yoy_pct": "12.57",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1801,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000044",
+   "lad24nm": "Portsmouth",
+   "ta_households_current": 549,
+   "ta_households_prev_year": 601,
+   "ta_yoy_pct": "-8.65",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 1042,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000045",
+   "lad24nm": "Southampton",
+   "ta_households_current": 414,
+   "ta_households_prev_year": 352,
+   "ta_yoy_pct": "17.61",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 2499,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000046",
+   "lad24nm": "Isle of Wight",
+   "ta_households_current": 247,
+   "ta_households_prev_year": 242,
+   "ta_yoy_pct": "2.07",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 479,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000047",
+   "lad24nm": "County Durham",
+   "ta_households_current": 116,
+   "ta_households_prev_year": 117,
+   "ta_yoy_pct": "-0.85",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 2158,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000049",
+   "lad24nm": "Cheshire East",
+   "ta_households_current": 52,
+   "ta_households_prev_year": 28,
+   "ta_yoy_pct": "85.71",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1117,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000050",
+   "lad24nm": "Cheshire West and Chester",
+   "ta_households_current": 70,
+   "ta_households_prev_year": 111,
+   "ta_yoy_pct": "-36.94",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 1340,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000051",
+   "lad24nm": "Shropshire",
+   "ta_households_current": 269,
+   "ta_households_prev_year": 237,
+   "ta_yoy_pct": "13.50",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1069,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000052",
+   "lad24nm": "Cornwall",
+   "ta_households_current": 818,
+   "ta_households_prev_year": 876,
+   "ta_yoy_pct": "-6.62",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 1681,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000053",
+   "lad24nm": "Isles of Scilly",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 0,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000054",
+   "lad24nm": "Wiltshire",
+   "ta_households_current": 112,
+   "ta_households_prev_year": 99,
+   "ta_yoy_pct": "13.13",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 713,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000055",
+   "lad24nm": "Bedford",
+   "ta_households_current": 868,
+   "ta_households_prev_year": 1105,
+   "ta_yoy_pct": "-21.45",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 1642,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000056",
+   "lad24nm": "Central Bedfordshire",
+   "ta_households_current": 258,
+   "ta_households_prev_year": 245,
+   "ta_yoy_pct": "5.31",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 496,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000057",
+   "lad24nm": "Northumberland",
+   "ta_households_current": 41,
+   "ta_households_prev_year": 61,
+   "ta_yoy_pct": "-32.79",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 773,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000058",
+   "lad24nm": "Bournemouth, Christchurch and Poole",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 488,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 1033,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000059",
+   "lad24nm": "Dorset",
+   "ta_households_current": 191,
+   "ta_households_prev_year": 261,
+   "ta_yoy_pct": "-26.82",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 491,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000060",
+   "lad24nm": "Buckinghamshire",
+   "ta_households_current": 421,
+   "ta_households_prev_year": 398,
+   "ta_yoy_pct": "5.78",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 868,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000061",
+   "lad24nm": "North Northamptonshire",
+   "ta_households_current": 232,
+   "ta_households_prev_year": 223,
+   "ta_yoy_pct": "4.04",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 796,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000062",
+   "lad24nm": "West Northamptonshire",
+   "ta_households_current": 780,
+   "ta_households_prev_year": 752,
+   "ta_yoy_pct": "3.72",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 723,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000063",
+   "lad24nm": "Cumberland",
+   "ta_households_current": 72,
+   "ta_households_prev_year": 39,
+   "ta_yoy_pct": "84.62",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 640,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E06000064",
+   "lad24nm": "Westmorland and Furness",
+   "ta_households_current": 68,
+   "ta_households_prev_year": 43,
+   "ta_yoy_pct": "58.14",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 702,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000065",
+   "lad24nm": "North Yorkshire",
+   "ta_households_current": 261,
+   "ta_households_prev_year": 238,
+   "ta_yoy_pct": "9.66",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 1375,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E06000066",
+   "lad24nm": "Somerset",
+   "ta_households_current": 332,
+   "ta_households_prev_year": 259,
+   "ta_yoy_pct": "28.19",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 450,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E07000008",
+   "lad24nm": "Cambridge",
+   "ta_households_current": 143,
+   "ta_households_prev_year": 166,
+   "ta_yoy_pct": "-13.86",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 667,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000009",
+   "lad24nm": "East Cambridgeshire",
+   "ta_households_current": 25,
+   "ta_households_prev_year": 9,
+   "ta_yoy_pct": "177.78",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 89,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000010",
+   "lad24nm": "Fenland",
+   "ta_households_current": 69,
+   "ta_households_prev_year": 82,
+   "ta_yoy_pct": "-15.85",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 353,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000011",
+   "lad24nm": "Huntingdonshire",
+   "ta_households_current": 125,
+   "ta_households_prev_year": 125,
+   "ta_yoy_pct": "0.00",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 727,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000012",
+   "lad24nm": "South Cambridgeshire",
+   "ta_households_current": 71,
+   "ta_households_prev_year": 74,
+   "ta_yoy_pct": "-4.05",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 137,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000032",
+   "lad24nm": "Amber Valley",
+   "ta_households_current": 13,
+   "ta_households_prev_year": 14,
+   "ta_yoy_pct": "-7.14",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 451,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000033",
+   "lad24nm": "Bolsover",
+   "ta_households_current": 18,
+   "ta_households_prev_year": 10,
+   "ta_yoy_pct": "80.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 165,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000034",
+   "lad24nm": "Chesterfield",
+   "ta_households_current": 21,
+   "ta_households_prev_year": 24,
+   "ta_yoy_pct": "-12.50",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 406,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000035",
+   "lad24nm": "Derbyshire Dales",
+   "ta_households_current": 12,
+   "ta_households_prev_year": 14,
+   "ta_yoy_pct": "-14.29",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 91,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000036",
+   "lad24nm": "Erewash",
+   "ta_households_current": 17,
+   "ta_households_prev_year": 18,
+   "ta_yoy_pct": "-5.56",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 427,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000037",
+   "lad24nm": "High Peak",
+   "ta_households_current": 9,
+   "ta_households_prev_year": 25,
+   "ta_yoy_pct": "-64.00",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 181,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000038",
+   "lad24nm": "North East Derbyshire",
+   "ta_households_current": 5,
+   "ta_households_prev_year": 17,
+   "ta_yoy_pct": "-70.59",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 232,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000039",
+   "lad24nm": "South Derbyshire",
+   "ta_households_current": 18,
+   "ta_households_prev_year": 18,
+   "ta_yoy_pct": "0.00",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 232,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000040",
+   "lad24nm": "East Devon",
+   "ta_households_current": 46,
+   "ta_households_prev_year": 49,
+   "ta_yoy_pct": "-6.12",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 215,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000041",
+   "lad24nm": "Exeter",
+   "ta_households_current": 105,
+   "ta_households_prev_year": 139,
+   "ta_yoy_pct": "-24.46",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 699,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000042",
+   "lad24nm": "Mid Devon",
+   "ta_households_current": 64,
+   "ta_households_prev_year": 49,
+   "ta_yoy_pct": "30.61",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 86,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000043",
+   "lad24nm": "North Devon",
+   "ta_households_current": 78,
+   "ta_households_prev_year": 88,
+   "ta_yoy_pct": "-11.36",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 686,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000044",
+   "lad24nm": "South Hams",
+   "ta_households_current": 25,
+   "ta_households_prev_year": 32,
+   "ta_yoy_pct": "-21.88",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 125,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000045",
+   "lad24nm": "Teignbridge",
+   "ta_households_current": 87,
+   "ta_households_prev_year": 93,
+   "ta_yoy_pct": "-6.45",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 217,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000046",
+   "lad24nm": "Torridge",
+   "ta_households_current": 37,
+   "ta_households_prev_year": 47,
+   "ta_yoy_pct": "-21.28",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 115,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000047",
+   "lad24nm": "West Devon",
+   "ta_households_current": 20,
+   "ta_households_prev_year": 21,
+   "ta_yoy_pct": "-4.76",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 61,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000061",
+   "lad24nm": "Eastbourne",
+   "ta_households_current": 322,
+   "ta_households_prev_year": 313,
+   "ta_yoy_pct": "2.88",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 376,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E07000062",
+   "lad24nm": "Hastings",
+   "ta_households_current": 635,
+   "ta_households_prev_year": 567,
+   "ta_yoy_pct": "11.99",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 233,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000063",
+   "lad24nm": "Lewes",
+   "ta_households_current": 94,
+   "ta_households_prev_year": 75,
+   "ta_yoy_pct": "25.33",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 156,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000064",
+   "lad24nm": "Rother",
+   "ta_households_current": 234,
+   "ta_households_prev_year": 182,
+   "ta_yoy_pct": "28.57",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 185,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000065",
+   "lad24nm": "Wealden",
+   "ta_households_current": 56,
+   "ta_households_prev_year": 72,
+   "ta_yoy_pct": "-22.22",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 191,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000066",
+   "lad24nm": "Basildon",
+   "ta_households_current": 760,
+   "ta_households_prev_year": 710,
+   "ta_yoy_pct": "7.04",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 313,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000067",
+   "lad24nm": "Braintree",
+   "ta_households_current": 47,
+   "ta_households_prev_year": 34,
+   "ta_yoy_pct": "38.24",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 253,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000068",
+   "lad24nm": "Brentwood",
+   "ta_households_current": 40,
+   "ta_households_prev_year": 29,
+   "ta_yoy_pct": "37.93",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 122,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000069",
+   "lad24nm": "Castle Point",
+   "ta_households_current": 170,
+   "ta_households_prev_year": 130,
+   "ta_yoy_pct": "30.77",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 280,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000070",
+   "lad24nm": "Chelmsford",
+   "ta_households_current": 548,
+   "ta_households_prev_year": 481,
+   "ta_yoy_pct": "13.93",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 384,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000071",
+   "lad24nm": "Colchester",
+   "ta_households_current": 441,
+   "ta_households_prev_year": 383,
+   "ta_yoy_pct": "15.14",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 588,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000072",
+   "lad24nm": "Epping Forest",
+   "ta_households_current": 127,
+   "ta_households_prev_year": 123,
+   "ta_yoy_pct": "3.25",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 617,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000073",
+   "lad24nm": "Harlow",
+   "ta_households_current": 379,
+   "ta_households_prev_year": 336,
+   "ta_yoy_pct": "12.80",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 243,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000074",
+   "lad24nm": "Maldon",
+   "ta_households_current": 40,
+   "ta_households_prev_year": 33,
+   "ta_yoy_pct": "21.21",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 28,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000075",
+   "lad24nm": "Rochford",
+   "ta_households_current": 71,
+   "ta_households_prev_year": 54,
+   "ta_yoy_pct": "31.48",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 49,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000076",
+   "lad24nm": "Tendring",
+   "ta_households_current": 185,
+   "ta_households_prev_year": 167,
+   "ta_yoy_pct": "10.78",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 452,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000077",
+   "lad24nm": "Uttlesford",
+   "ta_households_current": 36,
+   "ta_households_prev_year": 38,
+   "ta_yoy_pct": "-5.26",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 152,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000078",
+   "lad24nm": "Cheltenham",
+   "ta_households_current": 19,
+   "ta_households_prev_year": 17,
+   "ta_yoy_pct": "11.76",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 723,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000079",
+   "lad24nm": "Cotswold",
+   "ta_households_current": 33,
+   "ta_households_prev_year": 25,
+   "ta_yoy_pct": "32.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 48,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000080",
+   "lad24nm": "Forest of Dean",
+   "ta_households_current": 44,
+   "ta_households_prev_year": 31,
+   "ta_yoy_pct": "41.94",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 254,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000081",
+   "lad24nm": "Gloucester",
+   "ta_households_current": 242,
+   "ta_households_prev_year": 215,
+   "ta_yoy_pct": "12.56",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 826,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000082",
+   "lad24nm": "Stroud",
+   "ta_households_current": 41,
+   "ta_households_prev_year": 50,
+   "ta_yoy_pct": "-18.00",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 171,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000083",
+   "lad24nm": "Tewkesbury",
+   "ta_households_current": 28,
+   "ta_households_prev_year": 25,
+   "ta_yoy_pct": "12.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 129,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000084",
+   "lad24nm": "Basingstoke and Deane",
+   "ta_households_current": 39,
+   "ta_households_prev_year": 32,
+   "ta_yoy_pct": "21.88",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 290,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000085",
+   "lad24nm": "East Hampshire",
+   "ta_households_current": 49,
+   "ta_households_prev_year": 53,
+   "ta_yoy_pct": "-7.55",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 69,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000086",
+   "lad24nm": "Eastleigh",
+   "ta_households_current": 97,
+   "ta_households_prev_year": 46,
+   "ta_yoy_pct": "110.87",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 237,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000087",
+   "lad24nm": "Fareham",
+   "ta_households_current": 105,
+   "ta_households_prev_year": 143,
+   "ta_yoy_pct": "-26.57",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 179,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000088",
+   "lad24nm": "Gosport",
+   "ta_households_current": 101,
+   "ta_households_prev_year": 108,
+   "ta_yoy_pct": "-6.48",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 203,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000089",
+   "lad24nm": "Hart",
+   "ta_households_current": 13,
+   "ta_households_prev_year": 24,
+   "ta_yoy_pct": "-45.83",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 160,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000090",
+   "lad24nm": "Havant",
+   "ta_households_current": 170,
+   "ta_households_prev_year": 182,
+   "ta_yoy_pct": "-6.59",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 230,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000091",
+   "lad24nm": "New Forest",
+   "ta_households_current": 288,
+   "ta_households_prev_year": 323,
+   "ta_yoy_pct": "-10.84",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 418,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000092",
+   "lad24nm": "Rushmoor",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 73,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 239,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000093",
+   "lad24nm": "Test Valley",
+   "ta_households_current": 239,
+   "ta_households_prev_year": 180,
+   "ta_yoy_pct": "32.78",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 212,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000094",
+   "lad24nm": "Winchester",
+   "ta_households_current": 92,
+   "ta_households_prev_year": 67,
+   "ta_yoy_pct": "37.31",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 147,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000095",
+   "lad24nm": "Broxbourne",
+   "ta_households_current": 154,
+   "ta_households_prev_year": 147,
+   "ta_yoy_pct": "4.76",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 47,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000096",
+   "lad24nm": "Dacorum",
+   "ta_households_current": 269,
+   "ta_households_prev_year": 228,
+   "ta_yoy_pct": "17.98",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 334,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000098",
+   "lad24nm": "Hertsmere",
+   "ta_households_current": 108,
+   "ta_households_prev_year": 90,
+   "ta_yoy_pct": "20.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 257,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000099",
+   "lad24nm": "North Hertfordshire",
+   "ta_households_current": 86,
+   "ta_households_prev_year": 101,
+   "ta_yoy_pct": "-14.85",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 250,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000102",
+   "lad24nm": "Three Rivers",
+   "ta_households_current": 42,
+   "ta_households_prev_year": 66,
+   "ta_yoy_pct": "-36.36",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 101,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000103",
+   "lad24nm": "Watford",
+   "ta_households_current": 239,
+   "ta_households_prev_year": 239,
+   "ta_yoy_pct": "0.00",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 433,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000105",
+   "lad24nm": "Ashford",
+   "ta_households_current": 274,
+   "ta_households_prev_year": 231,
+   "ta_yoy_pct": "18.61",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 165,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000106",
+   "lad24nm": "Canterbury",
+   "ta_households_current": 160,
+   "ta_households_prev_year": 169,
+   "ta_yoy_pct": "-5.33",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 292,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000107",
+   "lad24nm": "Dartford",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 381,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 152,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000108",
+   "lad24nm": "Dover",
+   "ta_households_current": 315,
+   "ta_households_prev_year": 307,
+   "ta_yoy_pct": "2.61",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 254,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000109",
+   "lad24nm": "Gravesham",
+   "ta_households_current": 252,
+   "ta_households_prev_year": 199,
+   "ta_yoy_pct": "26.63",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 224,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000110",
+   "lad24nm": "Maidstone",
+   "ta_households_current": 268,
+   "ta_households_prev_year": 274,
+   "ta_yoy_pct": "-2.19",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 282,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000111",
+   "lad24nm": "Sevenoaks",
+   "ta_households_current": 59,
+   "ta_households_prev_year": 87,
+   "ta_yoy_pct": "-32.18",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 94,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000112",
+   "lad24nm": "Folkestone and Hythe",
+   "ta_households_current": 118,
+   "ta_households_prev_year": 58,
+   "ta_yoy_pct": "103.45",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 348,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000113",
+   "lad24nm": "Swale",
+   "ta_households_current": 292,
+   "ta_households_prev_year": 298,
+   "ta_yoy_pct": "-2.01",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 218,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000114",
+   "lad24nm": "Thanet",
+   "ta_households_current": 219,
+   "ta_households_prev_year": 302,
+   "ta_yoy_pct": "-27.48",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 281,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000115",
+   "lad24nm": "Tonbridge and Malling",
+   "ta_households_current": 103,
+   "ta_households_prev_year": 143,
+   "ta_yoy_pct": "-27.97",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 550,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000116",
+   "lad24nm": "Tunbridge Wells",
+   "ta_households_current": 79,
+   "ta_households_prev_year": 71,
+   "ta_yoy_pct": "11.27",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 187,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000117",
+   "lad24nm": "Burnley",
+   "ta_households_current": 29,
+   "ta_households_prev_year": 30,
+   "ta_yoy_pct": "-3.33",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 739,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000118",
+   "lad24nm": "Chorley",
+   "ta_households_current": 26,
+   "ta_households_prev_year": 29,
+   "ta_yoy_pct": "-10.34",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 620,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000119",
+   "lad24nm": "Fylde",
+   "ta_households_current": 66,
+   "ta_households_prev_year": 16,
+   "ta_yoy_pct": "312.50",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 239,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000120",
+   "lad24nm": "Hyndburn",
+   "ta_households_current": 14,
+   "ta_households_prev_year": 10,
+   "ta_yoy_pct": "40.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 600,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000121",
+   "lad24nm": "Lancaster",
+   "ta_households_current": 15,
+   "ta_households_prev_year": 27,
+   "ta_yoy_pct": "-44.44",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 762,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000122",
+   "lad24nm": "Pendle",
+   "ta_households_current": 13,
+   "ta_households_prev_year": 15,
+   "ta_yoy_pct": "-13.33",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 279,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000123",
+   "lad24nm": "Preston",
+   "ta_households_current": 31,
+   "ta_households_prev_year": 72,
+   "ta_yoy_pct": "-56.94",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 1353,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000124",
+   "lad24nm": "Ribble Valley",
+   "ta_households_current": 6,
+   "ta_households_prev_year": 8,
+   "ta_yoy_pct": "-25.00",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 69,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000125",
+   "lad24nm": "Rossendale",
+   "ta_households_current": 14,
+   "ta_households_prev_year": 25,
+   "ta_yoy_pct": "-44.00",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 348,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000126",
+   "lad24nm": "South Ribble",
+   "ta_households_current": 55,
+   "ta_households_prev_year": 51,
+   "ta_yoy_pct": "7.84",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 405,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000127",
+   "lad24nm": "West Lancashire",
+   "ta_households_current": 39,
+   "ta_households_prev_year": 41,
+   "ta_yoy_pct": "-4.88",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 221,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000128",
+   "lad24nm": "Wyre",
+   "ta_households_current": 19,
+   "ta_households_prev_year": 4,
+   "ta_yoy_pct": "375.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 347,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000129",
+   "lad24nm": "Blaby",
+   "ta_households_current": 87,
+   "ta_households_prev_year": 51,
+   "ta_yoy_pct": "70.59",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 170,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000130",
+   "lad24nm": "Charnwood",
+   "ta_households_current": 108,
+   "ta_households_prev_year": 109,
+   "ta_yoy_pct": "-0.92",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 495,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000131",
+   "lad24nm": "Harborough",
+   "ta_households_current": 30,
+   "ta_households_prev_year": 34,
+   "ta_yoy_pct": "-11.76",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 93,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000132",
+   "lad24nm": "Hinckley and Bosworth",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 70,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 187,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000133",
+   "lad24nm": "Melton",
+   "ta_households_current": 27,
+   "ta_households_prev_year": 36,
+   "ta_yoy_pct": "-25.00",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 108,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000134",
+   "lad24nm": "North West Leicestershire",
+   "ta_households_current": 24,
+   "ta_households_prev_year": 29,
+   "ta_yoy_pct": "-17.24",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 137,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000135",
+   "lad24nm": "Oadby and Wigston",
+   "ta_households_current": 123,
+   "ta_households_prev_year": 105,
+   "ta_yoy_pct": "17.14",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 152,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000136",
+   "lad24nm": "Boston",
+   "ta_households_current": 12,
+   "ta_households_prev_year": 11,
+   "ta_yoy_pct": "9.09",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 143,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000137",
+   "lad24nm": "East Lindsey",
+   "ta_households_current": 49,
+   "ta_households_prev_year": 42,
+   "ta_yoy_pct": "16.67",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 240,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000138",
+   "lad24nm": "Lincoln",
+   "ta_households_current": 68,
+   "ta_households_prev_year": 67,
+   "ta_yoy_pct": "1.49",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 567,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000139",
+   "lad24nm": "North Kesteven",
+   "ta_households_current": 50,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 140,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000140",
+   "lad24nm": "South Holland",
+   "ta_households_current": 17,
+   "ta_households_prev_year": 26,
+   "ta_yoy_pct": "-34.62",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 104,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000141",
+   "lad24nm": "South Kesteven",
+   "ta_households_current": 50,
+   "ta_households_prev_year": 46,
+   "ta_yoy_pct": "8.70",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 317,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000142",
+   "lad24nm": "West Lindsey",
+   "ta_households_current": 14,
+   "ta_households_prev_year": 9,
+   "ta_yoy_pct": "55.56",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 169,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000143",
+   "lad24nm": "Breckland",
+   "ta_households_current": 78,
+   "ta_households_prev_year": 126,
+   "ta_yoy_pct": "-38.10",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 180,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000144",
+   "lad24nm": "Broadland",
+   "ta_households_current": 76,
+   "ta_households_prev_year": 72,
+   "ta_yoy_pct": "5.56",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 200,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000145",
+   "lad24nm": "Great Yarmouth",
+   "ta_households_current": 55,
+   "ta_households_prev_year": 51,
+   "ta_yoy_pct": "7.84",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 237,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000146",
+   "lad24nm": "King's Lynn and West Norfolk",
+   "ta_households_current": 53,
+   "ta_households_prev_year": 59,
+   "ta_yoy_pct": "-10.17",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 257,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000147",
+   "lad24nm": "North Norfolk",
+   "ta_households_current": 58,
+   "ta_households_prev_year": 47,
+   "ta_yoy_pct": "23.40",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 179,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000148",
+   "lad24nm": "Norwich",
+   "ta_households_current": 72,
+   "ta_households_prev_year": 58,
+   "ta_yoy_pct": "24.14",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 952,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000149",
+   "lad24nm": "South Norfolk",
+   "ta_households_current": 64,
+   "ta_households_prev_year": 54,
+   "ta_yoy_pct": "18.52",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 196,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000170",
+   "lad24nm": "Ashfield",
+   "ta_households_current": 49,
+   "ta_households_prev_year": 57,
+   "ta_yoy_pct": "-14.04",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 501,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000171",
+   "lad24nm": "Bassetlaw",
+   "ta_households_current": 66,
+   "ta_households_prev_year": 72,
+   "ta_yoy_pct": "-8.33",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 405,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000172",
+   "lad24nm": "Broxtowe",
+   "ta_households_current": 10,
+   "ta_households_prev_year": 22,
+   "ta_yoy_pct": "-54.55",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 232,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000173",
+   "lad24nm": "Gedling",
+   "ta_households_current": 32,
+   "ta_households_prev_year": 51,
+   "ta_yoy_pct": "-37.25",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 275,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000174",
+   "lad24nm": "Mansfield",
+   "ta_households_current": 32,
+   "ta_households_prev_year": 32,
+   "ta_yoy_pct": "0.00",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 522,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000175",
+   "lad24nm": "Newark and Sherwood",
+   "ta_households_current": 24,
+   "ta_households_prev_year": 19,
+   "ta_yoy_pct": "26.32",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 405,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000176",
+   "lad24nm": "Rushcliffe",
+   "ta_households_current": 9,
+   "ta_households_prev_year": 7,
+   "ta_yoy_pct": "28.57",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 147,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000177",
+   "lad24nm": "Cherwell",
+   "ta_households_current": 82,
+   "ta_households_prev_year": 69,
+   "ta_yoy_pct": "18.84",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 269,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000178",
+   "lad24nm": "Oxford",
+   "ta_households_current": 300,
+   "ta_households_prev_year": 237,
+   "ta_yoy_pct": "26.58",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 813,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000179",
+   "lad24nm": "South Oxfordshire",
+   "ta_households_current": 49,
+   "ta_households_prev_year": 29,
+   "ta_yoy_pct": "68.97",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 200,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000180",
+   "lad24nm": "Vale of White Horse",
+   "ta_households_current": 76,
+   "ta_households_prev_year": 58,
+   "ta_yoy_pct": "31.03",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 191,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000181",
+   "lad24nm": "West Oxfordshire",
+   "ta_households_current": 71,
+   "ta_households_prev_year": 89,
+   "ta_yoy_pct": "-20.22",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 117,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000192",
+   "lad24nm": "Cannock Chase",
+   "ta_households_current": 49,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 159,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000193",
+   "lad24nm": "East Staffordshire",
+   "ta_households_current": 51,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 371,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000194",
+   "lad24nm": "Lichfield",
+   "ta_households_current": 48,
+   "ta_households_prev_year": 27,
+   "ta_yoy_pct": "77.78",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 178,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000195",
+   "lad24nm": "Newcastle-under-Lyme",
+   "ta_households_current": 29,
+   "ta_households_prev_year": 21,
+   "ta_yoy_pct": "38.10",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 330,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000196",
+   "lad24nm": "South Staffordshire",
+   "ta_households_current": 16,
+   "ta_households_prev_year": 13,
+   "ta_yoy_pct": "23.08",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 580,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000197",
+   "lad24nm": "Stafford",
+   "ta_households_current": 20,
+   "ta_households_prev_year": 18,
+   "ta_yoy_pct": "11.11",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 268,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000198",
+   "lad24nm": "Staffordshire Moorlands",
+   "ta_households_current": 8,
+   "ta_households_prev_year": 15,
+   "ta_yoy_pct": "-46.67",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 160,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000199",
+   "lad24nm": "Tamworth",
+   "ta_households_current": 31,
+   "ta_households_prev_year": 34,
+   "ta_yoy_pct": "-8.82",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 108,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000200",
+   "lad24nm": "Babergh",
+   "ta_households_current": 93,
+   "ta_households_prev_year": 71,
+   "ta_yoy_pct": "30.99",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 122,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000202",
+   "lad24nm": "Ipswich",
+   "ta_households_current": 79,
+   "ta_households_prev_year": 98,
+   "ta_yoy_pct": "-19.39",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 803,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000203",
+   "lad24nm": "Mid Suffolk",
+   "ta_households_current": 58,
+   "ta_households_prev_year": 66,
+   "ta_yoy_pct": "-12.12",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 96,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000207",
+   "lad24nm": "Elmbridge",
+   "ta_households_current": 151,
+   "ta_households_prev_year": 123,
+   "ta_yoy_pct": "22.76",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 180,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000208",
+   "lad24nm": "Epsom and Ewell",
+   "ta_households_current": 285,
+   "ta_households_prev_year": 264,
+   "ta_yoy_pct": "7.95",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 239,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000209",
+   "lad24nm": "Guildford",
+   "ta_households_current": 97,
+   "ta_households_prev_year": 61,
+   "ta_yoy_pct": "59.02",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 468,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000210",
+   "lad24nm": "Mole Valley",
+   "ta_households_current": 48,
+   "ta_households_prev_year": 50,
+   "ta_yoy_pct": "-4.00",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 242,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000211",
+   "lad24nm": "Reigate and Banstead",
+   "ta_households_current": 192,
+   "ta_households_prev_year": 188,
+   "ta_yoy_pct": "2.13",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 492,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000212",
+   "lad24nm": "Runnymede",
+   "ta_households_current": 81,
+   "ta_households_prev_year": 58,
+   "ta_yoy_pct": "39.66",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 216,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000213",
+   "lad24nm": "Spelthorne",
+   "ta_households_current": 211,
+   "ta_households_prev_year": 212,
+   "ta_yoy_pct": "-0.47",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 335,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000214",
+   "lad24nm": "Surrey Heath",
+   "ta_households_current": 47,
+   "ta_households_prev_year": 51,
+   "ta_yoy_pct": "-7.84",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 109,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000215",
+   "lad24nm": "Tandridge",
+   "ta_households_current": 54,
+   "ta_households_prev_year": 51,
+   "ta_yoy_pct": "5.88",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 211,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000216",
+   "lad24nm": "Waverley",
+   "ta_households_current": 9,
+   "ta_households_prev_year": 8,
+   "ta_yoy_pct": "12.50",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 146,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000217",
+   "lad24nm": "Woking",
+   "ta_households_current": 127,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 284,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E07000218",
+   "lad24nm": "North Warwickshire",
+   "ta_households_current": 4,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 78,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000219",
+   "lad24nm": "Nuneaton and Bedworth",
+   "ta_households_current": 126,
+   "ta_households_prev_year": 159,
+   "ta_yoy_pct": "-20.75",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 270,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000220",
+   "lad24nm": "Rugby",
+   "ta_households_current": 48,
+   "ta_households_prev_year": 49,
+   "ta_yoy_pct": "-2.04",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 177,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000221",
+   "lad24nm": "Stratford-on-Avon",
+   "ta_households_current": 49,
+   "ta_households_prev_year": 69,
+   "ta_yoy_pct": "-28.99",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 249,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000222",
+   "lad24nm": "Warwick",
+   "ta_households_current": 55,
+   "ta_households_prev_year": 44,
+   "ta_yoy_pct": "25.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 316,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000223",
+   "lad24nm": "Adur",
+   "ta_households_current": 158,
+   "ta_households_prev_year": 159,
+   "ta_yoy_pct": "-0.63",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 110,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000224",
+   "lad24nm": "Arun",
+   "ta_households_current": 224,
+   "ta_households_prev_year": 226,
+   "ta_yoy_pct": "-0.88",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 740,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000225",
+   "lad24nm": "Chichester",
+   "ta_households_current": 132,
+   "ta_households_prev_year": 97,
+   "ta_yoy_pct": "36.08",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 198,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000226",
+   "lad24nm": "Crawley",
+   "ta_households_current": 627,
+   "ta_households_prev_year": 563,
+   "ta_yoy_pct": "11.37",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 312,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000227",
+   "lad24nm": "Horsham",
+   "ta_households_current": 157,
+   "ta_households_prev_year": 124,
+   "ta_yoy_pct": "26.61",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 221,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000228",
+   "lad24nm": "Mid Sussex",
+   "ta_households_current": 119,
+   "ta_households_prev_year": 92,
+   "ta_yoy_pct": "29.35",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 255,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000229",
+   "lad24nm": "Worthing",
+   "ta_households_current": 498,
+   "ta_households_prev_year": 469,
+   "ta_yoy_pct": "6.18",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 600,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E07000234",
+   "lad24nm": "Bromsgrove",
+   "ta_households_current": 41,
+   "ta_households_prev_year": 36,
+   "ta_yoy_pct": "13.89",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 804,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000235",
+   "lad24nm": "Malvern Hills",
+   "ta_households_current": 24,
+   "ta_households_prev_year": 12,
+   "ta_yoy_pct": "100.00",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 133,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000236",
+   "lad24nm": "Redditch",
+   "ta_households_current": 28,
+   "ta_households_prev_year": 52,
+   "ta_yoy_pct": "-46.15",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 264,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000237",
+   "lad24nm": "Worcester",
+   "ta_households_current": 61,
+   "ta_households_prev_year": 45,
+   "ta_yoy_pct": "35.56",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 590,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000238",
+   "lad24nm": "Wychavon",
+   "ta_households_current": 43,
+   "ta_households_prev_year": 27,
+   "ta_yoy_pct": "59.26",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 268,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000239",
+   "lad24nm": "Wyre Forest",
+   "ta_households_current": 45,
+   "ta_households_prev_year": 31,
+   "ta_yoy_pct": "45.16",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 264,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000240",
+   "lad24nm": "St Albans",
+   "ta_households_current": 224,
+   "ta_households_prev_year": 157,
+   "ta_yoy_pct": "42.68",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 432,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000241",
+   "lad24nm": "Welwyn Hatfield",
+   "ta_households_current": 171,
+   "ta_households_prev_year": 181,
+   "ta_yoy_pct": "-5.52",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 393,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000242",
+   "lad24nm": "East Hertfordshire",
+   "ta_households_current": 62,
+   "ta_households_prev_year": 54,
+   "ta_yoy_pct": "14.81",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 151,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000243",
+   "lad24nm": "Stevenage",
+   "ta_households_current": 150,
+   "ta_households_prev_year": 157,
+   "ta_yoy_pct": "-4.46",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 182,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000244",
+   "lad24nm": "East Suffolk",
+   "ta_households_current": 159,
+   "ta_households_prev_year": 154,
+   "ta_yoy_pct": "3.25",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 600,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E07000245",
+   "lad24nm": "West Suffolk",
+   "ta_households_current": 72,
+   "ta_households_prev_year": 86,
+   "ta_yoy_pct": "-16.28",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 416,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000001",
+   "lad24nm": "Bolton",
+   "ta_households_current": 217,
+   "ta_households_prev_year": 225,
+   "ta_yoy_pct": "-3.56",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 2436,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000002",
+   "lad24nm": "Bury",
+   "ta_households_current": 112,
+   "ta_households_prev_year": 174,
+   "ta_yoy_pct": "-35.63",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 430,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000003",
+   "lad24nm": "Manchester",
+   "ta_households_current": 2824,
+   "ta_households_prev_year": 2775,
+   "ta_yoy_pct": "1.77",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 4688,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000004",
+   "lad24nm": "Oldham",
+   "ta_households_current": 521,
+   "ta_households_prev_year": 679,
+   "ta_yoy_pct": "-23.27",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 923,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000005",
+   "lad24nm": "Rochdale",
+   "ta_households_current": 310,
+   "ta_households_prev_year": 260,
+   "ta_yoy_pct": "19.23",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 2244,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000006",
+   "lad24nm": "Salford",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 775,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 1772,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000007",
+   "lad24nm": "Stockport",
+   "ta_households_current": 199,
+   "ta_households_prev_year": 150,
+   "ta_yoy_pct": "32.67",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 764,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000008",
+   "lad24nm": "Tameside",
+   "ta_households_current": 408,
+   "ta_households_prev_year": 329,
+   "ta_yoy_pct": "24.01",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1009,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000009",
+   "lad24nm": "Trafford",
+   "ta_households_current": 281,
+   "ta_households_prev_year": 243,
+   "ta_yoy_pct": "15.64",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 554,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E08000010",
+   "lad24nm": "Wigan",
+   "ta_households_current": 261,
+   "ta_households_prev_year": 209,
+   "ta_yoy_pct": "24.88",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1706,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000011",
+   "lad24nm": "Knowsley",
+   "ta_households_current": 115,
+   "ta_households_prev_year": 77,
+   "ta_yoy_pct": "49.35",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1112,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000012",
+   "lad24nm": "Liverpool",
+   "ta_households_current": 1575,
+   "ta_households_prev_year": 1046,
+   "ta_yoy_pct": "50.57",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 5579,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000013",
+   "lad24nm": "St. Helens",
+   "ta_households_current": 44,
+   "ta_households_prev_year": 56,
+   "ta_yoy_pct": "-21.43",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 1076,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000014",
+   "lad24nm": "Sefton",
+   "ta_households_current": 233,
+   "ta_households_prev_year": 184,
+   "ta_yoy_pct": "26.63",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1141,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000015",
+   "lad24nm": "Wirral",
+   "ta_households_current": 198,
+   "ta_households_prev_year": 134,
+   "ta_yoy_pct": "47.76",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1698,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E08000016",
+   "lad24nm": "Barnsley",
+   "ta_households_current": 50,
+   "ta_households_prev_year": 51,
+   "ta_yoy_pct": "-1.96",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 620,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000017",
+   "lad24nm": "Doncaster",
+   "ta_households_current": 135,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 1580,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000018",
+   "lad24nm": "Rotherham",
+   "ta_households_current": 149,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 1316,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000019",
+   "lad24nm": "Sheffield",
+   "ta_households_current": 642,
+   "ta_households_prev_year": 718,
+   "ta_yoy_pct": "-10.58",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 2277,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000021",
+   "lad24nm": "Newcastle upon Tyne",
+   "ta_households_current": 195,
+   "ta_households_prev_year": 192,
+   "ta_yoy_pct": "1.56",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 1723,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000022",
+   "lad24nm": "North Tyneside",
+   "ta_households_current": 77,
+   "ta_households_prev_year": 100,
+   "ta_yoy_pct": "-23.00",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 675,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000023",
+   "lad24nm": "South Tyneside",
+   "ta_households_current": 36,
+   "ta_households_prev_year": 138,
+   "ta_yoy_pct": "-73.91",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 508,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000024",
+   "lad24nm": "Sunderland",
+   "ta_households_current": 171,
+   "ta_households_prev_year": 131,
+   "ta_yoy_pct": "30.53",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1331,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000025",
+   "lad24nm": "Birmingham",
+   "ta_households_current": 5196,
+   "ta_households_prev_year": 5221,
+   "ta_yoy_pct": "-0.48",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 31117,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E08000026",
+   "lad24nm": "Coventry",
+   "ta_households_current": 1229,
+   "ta_households_prev_year": 1293,
+   "ta_yoy_pct": "-4.95",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 3112,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000027",
+   "lad24nm": "Dudley",
+   "ta_households_current": 23,
+   "ta_households_prev_year": 37,
+   "ta_yoy_pct": "-37.84",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 894,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000028",
+   "lad24nm": "Sandwell",
+   "ta_households_current": 247,
+   "ta_households_prev_year": 217,
+   "ta_yoy_pct": "13.82",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 1019,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000029",
+   "lad24nm": "Solihull",
+   "ta_households_current": 222,
+   "ta_households_prev_year": 239,
+   "ta_yoy_pct": "-7.11",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 667,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E08000030",
+   "lad24nm": "Walsall",
+   "ta_households_current": 136,
+   "ta_households_prev_year": 138,
+   "ta_yoy_pct": "-1.45",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 604,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000031",
+   "lad24nm": "Wolverhampton",
+   "ta_households_current": 330,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 1178,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000032",
+   "lad24nm": "Bradford",
+   "ta_households_current": 442,
+   "ta_households_prev_year": 398,
+   "ta_yoy_pct": "11.06",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 2223,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E08000033",
+   "lad24nm": "Calderdale",
+   "ta_households_current": 71,
+   "ta_households_prev_year": 94,
+   "ta_yoy_pct": "-24.47",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 655,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000034",
+   "lad24nm": "Kirklees",
+   "ta_households_current": 350,
+   "ta_households_prev_year": 410,
+   "ta_yoy_pct": "-14.63",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 661,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000035",
+   "lad24nm": "Leeds",
+   "ta_households_current": 674,
+   "ta_households_prev_year": 384,
+   "ta_yoy_pct": "75.52",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 3394,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000036",
+   "lad24nm": "Wakefield",
+   "ta_households_current": 272,
+   "ta_households_prev_year": 273,
+   "ta_yoy_pct": "-0.37",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 1536,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E08000037",
+   "lad24nm": "Gateshead",
+   "ta_households_current": 106,
+   "ta_households_prev_year": 95,
+   "ta_yoy_pct": "11.58",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 576,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000001",
+   "lad24nm": "City of London",
+   "ta_households_current": 29,
+   "ta_households_prev_year": 32,
+   "ta_yoy_pct": "-9.38",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 27,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000002",
+   "lad24nm": "Barking and Dagenham",
+   "ta_households_current": 1019,
+   "ta_households_prev_year": 1044,
+   "ta_yoy_pct": "-2.39",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 548,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000003",
+   "lad24nm": "Barnet",
+   "ta_households_current": 2948,
+   "ta_households_prev_year": 2623,
+   "ta_yoy_pct": "12.39",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 906,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E09000004",
+   "lad24nm": "Bexley",
+   "ta_households_current": 309,
+   "ta_households_prev_year": 495,
+   "ta_yoy_pct": "-37.58",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 203,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000005",
+   "lad24nm": "Brent",
+   "ta_households_current": 2323,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 1052,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000006",
+   "lad24nm": "Bromley",
+   "ta_households_current": 1809,
+   "ta_households_prev_year": 1876,
+   "ta_yoy_pct": "-3.57",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 404,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000007",
+   "lad24nm": "Camden",
+   "ta_households_current": 1221,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 1427,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000008",
+   "lad24nm": "Croydon",
+   "ta_households_current": 3388,
+   "ta_households_prev_year": 3518,
+   "ta_yoy_pct": "-3.70",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 1562,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E09000009",
+   "lad24nm": "Ealing",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 3219,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 1565,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000010",
+   "lad24nm": "Enfield",
+   "ta_households_current": 3094,
+   "ta_households_prev_year": 3085,
+   "ta_yoy_pct": "0.29",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 626,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E09000011",
+   "lad24nm": "Greenwich",
+   "ta_households_current": 1916,
+   "ta_households_prev_year": 1859,
+   "ta_yoy_pct": "3.07",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 1185,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000012",
+   "lad24nm": "Hackney",
+   "ta_households_current": 3631,
+   "ta_households_prev_year": 3445,
+   "ta_yoy_pct": "5.40",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 912,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000013",
+   "lad24nm": "Hammersmith and Fulham",
+   "ta_households_current": 1451,
+   "ta_households_prev_year": 1403,
+   "ta_yoy_pct": "3.42",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 559,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E09000014",
+   "lad24nm": "Haringey",
+   "ta_households_current": 2641,
+   "ta_households_prev_year": 2644,
+   "ta_yoy_pct": "-0.11",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 774,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000015",
+   "lad24nm": "Harrow",
+   "ta_households_current": 1446,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 345,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000016",
+   "lad24nm": "Havering",
+   "ta_households_current": 1384,
+   "ta_households_prev_year": 1267,
+   "ta_yoy_pct": "9.23",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 339,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E09000017",
+   "lad24nm": "Hillingdon",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 1455,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 729,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000018",
+   "lad24nm": "Hounslow",
+   "ta_households_current": 441,
+   "ta_households_prev_year": 611,
+   "ta_yoy_pct": "-27.82",
+   "ta_trend_label": "falling_strongly",
+   "hb_sa_caseload": 501,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000019",
+   "lad24nm": "Islington",
+   "ta_households_current": 1877,
+   "ta_households_prev_year": 1551,
+   "ta_yoy_pct": "21.02",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 951,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000020",
+   "lad24nm": "Kensington and Chelsea",
+   "ta_households_current": 1912,
+   "ta_households_prev_year": 1991,
+   "ta_yoy_pct": "-3.97",
+   "ta_trend_label": "falling",
+   "hb_sa_caseload": 947,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000021",
+   "lad24nm": "Kingston upon Thames",
+   "ta_households_current": 882,
+   "ta_households_prev_year": 854,
+   "ta_yoy_pct": "3.28",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 311,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000022",
+   "lad24nm": "Lambeth",
+   "ta_households_current": 4512,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 1583,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E09000023",
+   "lad24nm": "Lewisham",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 2729,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 1867,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000024",
+   "lad24nm": "Merton",
+   "ta_households_current": 747,
+   "ta_households_prev_year": 608,
+   "ta_yoy_pct": "22.86",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 297,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000025",
+   "lad24nm": "Newham",
+   "ta_households_current": 7343,
+   "ta_households_prev_year": 6667,
+   "ta_yoy_pct": "10.14",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 977,
+   "efs_flag": true
+  },
+  {
+   "lad24cd": "E09000026",
+   "lad24nm": "Redbridge",
+   "ta_households_current": 2874,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 796,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000027",
+   "lad24nm": "Richmond upon Thames",
+   "ta_households_current": 628,
+   "ta_households_prev_year": 542,
+   "ta_yoy_pct": "15.87",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 172,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000028",
+   "lad24nm": "Southwark",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 1252,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000029",
+   "lad24nm": "Sutton",
+   "ta_households_current": 1109,
+   "ta_households_prev_year": 1027,
+   "ta_yoy_pct": "7.98",
+   "ta_trend_label": "rising",
+   "hb_sa_caseload": 335,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000030",
+   "lad24nm": "Tower Hamlets",
+   "ta_households_current": 3092,
+   "ta_households_prev_year": 3159,
+   "ta_yoy_pct": "-2.12",
+   "ta_trend_label": "flat",
+   "hb_sa_caseload": 1116,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000031",
+   "lad24nm": "Waltham Forest",
+   "ta_households_current": 0,
+   "ta_households_prev_year": 1443,
+   "ta_yoy_pct": "-100.00",
+   "ta_trend_label": "submission_gap",
+   "hb_sa_caseload": 658,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000032",
+   "lad24nm": "Wandsworth",
+   "ta_households_current": 4048,
+   "ta_households_prev_year": 3496,
+   "ta_yoy_pct": "15.79",
+   "ta_trend_label": "rising_strongly",
+   "hb_sa_caseload": 487,
+   "efs_flag": false
+  },
+  {
+   "lad24cd": "E09000033",
+   "lad24nm": "Westminster",
+   "ta_households_current": 4637,
+   "ta_households_prev_year": 0,
+   "ta_yoy_pct": null,
+   "ta_trend_label": "no_prior_year",
+   "hb_sa_caseload": 1199,
+   "efs_flag": false
+  }
+ ]
+}

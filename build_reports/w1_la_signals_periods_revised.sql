@@ -137,18 +137,81 @@ SELECT
     ctb.second_homes              AS ctb_second_homes,
     ctbr.lte_rate_pct             AS ctb_lte_rate_pct,
 
-    -- Data quality flags
+    -- Data quality. Derived from every signal column, not a fixed subset.
+    --
+    -- The previous version read 4 columns while the table carried 36, so 31
+    -- were unvouched - every source from S9 onward. In run 15, 173 of 296
+    -- authorities carried a clean flag while holding at least one absent
+    -- signal. A flag that certifies what it does not check will certify the
+    -- next gap exactly as it certified that one.
+    --
+    -- 'core' preserves the previous four-key verdict verbatim, because the
+    -- published JSON feed carries it and something outside this repository
+    -- may read it.
+    --
+    -- absent and suppressed are counted separately. DWP disclosure control on
+    -- PIP and NHS suppression of MHS26 both land as NULL, and neither is a
+    -- gap of the same kind as an unreturned submission. The distinction is
+    -- made per column, not per value, because the stored data cannot tell
+    -- them apart - both are NULL.
     jsonb_build_object(
-        'ta_current', CASE
-            WHEN ta_cur.households_in_ta IS NULL THEN 'missing'
-            WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap'
-            ELSE 'ok' END,
-        'ta_trend',   CASE
-            WHEN ta_cur.households_in_ta IS NULL THEN 'no_current_data'
-            WHEN ta_prev.households_in_ta IS NULL THEN 'no_prior_year'
-            ELSE 'ok' END,
-        'rough_sleeping', CASE WHEN rs.rough_sleeping IS NULL THEN 'missing' ELSE 'ok' END,
-        'marac',      CASE WHEN mc.cases_discussed IS NULL THEN 'missing' ELSE 'ok' END
+        'core', jsonb_build_object(
+            'ta_current', CASE
+                WHEN ta_cur.households_in_ta IS NULL THEN 'missing'
+                WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap'
+                ELSE 'ok' END,
+            'ta_trend',   CASE
+                WHEN ta_cur.households_in_ta IS NULL THEN 'no_current_data'
+                WHEN ta_prev.households_in_ta IS NULL THEN 'no_prior_year'
+                ELSE 'ok' END,
+            'rough_sleeping', CASE WHEN rs.rough_sleeping IS NULL THEN 'missing' ELSE 'ok' END,
+            'marac',      CASE WHEN mc.cases_discussed IS NULL THEN 'missing' ELSE 'ok' END
+        ),
+        'signals_checked', 33,
+        'absent_count', (CASE WHEN p.population IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ta_cur.households_in_ta IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ta_prev.households_in_ta IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ROUND( (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 , 2) IS NULL THEN 1 ELSE 0 END) + (CASE WHEN CASE WHEN ta_cur.households_in_ta IS NULL THEN 'no_current_data' WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap' WHEN ta_prev.households_in_ta IS NULL OR ta_prev.households_in_ta = 0 THEN 'no_prior_year' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > 10 THEN 'rising_strongly' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > 3 THEN 'rising' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > -3 THEN 'flat' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > -10 THEN 'falling' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 <= -10 THEN 'falling_strongly' ELSE 'undetermined' END IS NULL THEN 1 ELSE 0 END) + (CASE WHEN rs.rough_sleeping IS NULL THEN 1 ELSE 0 END) + (CASE WHEN rs.rough_sleeping_prev_year IS NULL THEN 1 ELSE 0 END) + (CASE WHEN cl.semi_independent IS NULL THEN 1 ELSE 0 END) + (CASE WHEN mc.cases_discussed IS NULL THEN 1 ELSE 0 END) + (CASE WHEN mc.cases_per_10k_adult_females IS NULL THEN 1 ELSE 0 END) + (CASE WHEN sa.claimants IS NULL THEN 1 ELSE 0 END) + (CASE WHEN hr.households_on_register IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ro4.bb_gross_exp_000 IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ro4.nightly_paid_ta_gross_exp_000 IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ro4.total_homelessness_gross_exp_000 IS NULL THEN 1 ELSE 0 END) + (CASE WHEN imd.imd_rank_of_average_rank IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lbm.brma_name IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.sar_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.one_bed_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.two_bed_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.three_bed_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.four_bed_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN drd.total_bed_days_lost IS NULL THEN 1 ELSE 0 END) + (CASE WHEN drd.pct_delayed_1plus_days IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctb.total_dwellings IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctb.empty_6_months_plus IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctb.empty_homes_premium_count IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctb.second_homes IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctbr.lte_rate_pct IS NULL THEN 1 ELSE 0 END),
+        'absent', COALESCE((SELECT jsonb_agg(x) FROM (SELECT unnest(ARRAY[
+                CASE WHEN p.population IS NULL THEN to_jsonb('population'::text) END,
+                CASE WHEN ta_cur.households_in_ta IS NULL THEN to_jsonb('ta_households_current'::text) END,
+                CASE WHEN ta_prev.households_in_ta IS NULL THEN to_jsonb('ta_households_prev_year'::text) END,
+                CASE WHEN ROUND( (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 , 2) IS NULL THEN to_jsonb('ta_yoy_pct'::text) END,
+                CASE WHEN CASE WHEN ta_cur.households_in_ta IS NULL THEN 'no_current_data' WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap' WHEN ta_prev.households_in_ta IS NULL OR ta_prev.households_in_ta = 0 THEN 'no_prior_year' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > 10 THEN 'rising_strongly' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > 3 THEN 'rising' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > -3 THEN 'flat' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > -10 THEN 'falling' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 <= -10 THEN 'falling_strongly' ELSE 'undetermined' END IS NULL THEN to_jsonb('ta_trend_label'::text) END,
+                CASE WHEN rs.rough_sleeping IS NULL THEN to_jsonb('rough_sleeping_current'::text) END,
+                CASE WHEN rs.rough_sleeping_prev_year IS NULL THEN to_jsonb('rough_sleeping_prev_year'::text) END,
+                CASE WHEN cl.semi_independent IS NULL THEN to_jsonb('care_leavers_semi_indep'::text) END,
+                CASE WHEN mc.cases_discussed IS NULL THEN to_jsonb('marac_cases'::text) END,
+                CASE WHEN mc.cases_per_10k_adult_females IS NULL THEN to_jsonb('marac_rate_per_10k'::text) END,
+                CASE WHEN sa.claimants IS NULL THEN to_jsonb('hb_sa_caseload'::text) END,
+                CASE WHEN hr.households_on_register IS NULL THEN to_jsonb('housing_register'::text) END,
+                CASE WHEN ro4.bb_gross_exp_000 IS NULL THEN to_jsonb('ro4_bb_spend_000'::text) END,
+                CASE WHEN ro4.nightly_paid_ta_gross_exp_000 IS NULL THEN to_jsonb('ro4_nightly_spend_000'::text) END,
+                CASE WHEN ro4.total_homelessness_gross_exp_000 IS NULL THEN to_jsonb('ro4_total_homelessness_000'::text) END,
+                CASE WHEN imd.imd_rank_of_average_rank IS NULL THEN to_jsonb('imd_rank_of_average_rank'::text) END,
+                CASE WHEN lbm.brma_name IS NULL THEN to_jsonb('lha_brma_name'::text) END,
+                CASE WHEN lha.sar_weekly IS NULL THEN to_jsonb('lha_sar_weekly'::text) END,
+                CASE WHEN lha.one_bed_weekly IS NULL THEN to_jsonb('lha_1bed_weekly'::text) END,
+                CASE WHEN lha.two_bed_weekly IS NULL THEN to_jsonb('lha_2bed_weekly'::text) END,
+                CASE WHEN lha.three_bed_weekly IS NULL THEN to_jsonb('lha_3bed_weekly'::text) END,
+                CASE WHEN lha.four_bed_weekly IS NULL THEN to_jsonb('lha_4bed_weekly'::text) END,
+                CASE WHEN drd.total_bed_days_lost IS NULL THEN to_jsonb('drd_bed_days_lost'::text) END,
+                CASE WHEN drd.pct_delayed_1plus_days IS NULL THEN to_jsonb('drd_pct_delayed_1plus_days'::text) END,
+                CASE WHEN ctb.total_dwellings IS NULL THEN to_jsonb('ctb_total_dwellings'::text) END,
+                CASE WHEN ctb.empty_6_months_plus IS NULL THEN to_jsonb('ctb_empty_6m_plus'::text) END,
+                CASE WHEN ctb.empty_homes_premium_count IS NULL THEN to_jsonb('ctb_empty_homes_premium'::text) END,
+                CASE WHEN ctb.second_homes IS NULL THEN to_jsonb('ctb_second_homes'::text) END,
+                CASE WHEN ctbr.lte_rate_pct IS NULL THEN to_jsonb('ctb_lte_rate_pct'::text) END
+            ]) AS x) t WHERE x IS NOT NULL), '[]'::jsonb),
+        'suppressible_absent_count', (CASE WHEN crfd.measure_value IS NULL THEN 1 ELSE 0 END) + (CASE WHEN pip.pip_total_claimants IS NULL THEN 1 ELSE 0 END) + (CASE WHEN pip.pip_enhanced_daily_living IS NULL THEN 1 ELSE 0 END) + (CASE WHEN pipr.pip_rate_per_1000 IS NULL THEN 1 ELSE 0 END),
+        'suppressible_absent', COALESCE((SELECT jsonb_agg(x) FROM (SELECT unnest(ARRAY[
+                CASE WHEN crfd.measure_value IS NULL THEN to_jsonb('crfd_days'::text) END,
+                CASE WHEN pip.pip_total_claimants IS NULL THEN to_jsonb('pip_total_claimants'::text) END,
+                CASE WHEN pip.pip_enhanced_daily_living IS NULL THEN to_jsonb('pip_enhanced_daily_living'::text) END,
+                CASE WHEN pipr.pip_rate_per_1000 IS NULL THEN to_jsonb('pip_rate_per_1000'::text) END
+            ]) AS x) t WHERE x IS NOT NULL), '[]'::jsonb),
+        'verdict', CASE WHEN ((CASE WHEN p.population IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ta_cur.households_in_ta IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ta_prev.households_in_ta IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ROUND( (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 , 2) IS NULL THEN 1 ELSE 0 END) + (CASE WHEN CASE WHEN ta_cur.households_in_ta IS NULL THEN 'no_current_data' WHEN ta_cur.households_in_ta = 0 THEN 'submission_gap' WHEN ta_prev.households_in_ta IS NULL OR ta_prev.households_in_ta = 0 THEN 'no_prior_year' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > 10 THEN 'rising_strongly' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > 3 THEN 'rising' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > -3 THEN 'flat' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 > -10 THEN 'falling' WHEN (ta_cur.households_in_ta - ta_prev.households_in_ta)::NUMERIC / NULLIF(ta_prev.households_in_ta, 0) * 100 <= -10 THEN 'falling_strongly' ELSE 'undetermined' END IS NULL THEN 1 ELSE 0 END) + (CASE WHEN rs.rough_sleeping IS NULL THEN 1 ELSE 0 END) + (CASE WHEN rs.rough_sleeping_prev_year IS NULL THEN 1 ELSE 0 END) + (CASE WHEN cl.semi_independent IS NULL THEN 1 ELSE 0 END) + (CASE WHEN mc.cases_discussed IS NULL THEN 1 ELSE 0 END) + (CASE WHEN mc.cases_per_10k_adult_females IS NULL THEN 1 ELSE 0 END) + (CASE WHEN sa.claimants IS NULL THEN 1 ELSE 0 END) + (CASE WHEN hr.households_on_register IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ro4.bb_gross_exp_000 IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ro4.nightly_paid_ta_gross_exp_000 IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ro4.total_homelessness_gross_exp_000 IS NULL THEN 1 ELSE 0 END) + (CASE WHEN imd.imd_rank_of_average_rank IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lbm.brma_name IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.sar_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.one_bed_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.two_bed_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.three_bed_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN lha.four_bed_weekly IS NULL THEN 1 ELSE 0 END) + (CASE WHEN drd.total_bed_days_lost IS NULL THEN 1 ELSE 0 END) + (CASE WHEN drd.pct_delayed_1plus_days IS NULL THEN 1 ELSE 0 END) + (CASE WHEN crfd.measure_value IS NULL THEN 1 ELSE 0 END) + (CASE WHEN pip.pip_total_claimants IS NULL THEN 1 ELSE 0 END) + (CASE WHEN pip.pip_enhanced_daily_living IS NULL THEN 1 ELSE 0 END) + (CASE WHEN pipr.pip_rate_per_1000 IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctb.total_dwellings IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctb.empty_6_months_plus IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctb.empty_homes_premium_count IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctb.second_homes IS NULL THEN 1 ELSE 0 END) + (CASE WHEN ctbr.lte_rate_pct IS NULL THEN 1 ELSE 0 END)) = 0
+                        THEN 'complete' ELSE 'incomplete' END,
+        'not_checked', jsonb_build_array(
+            'supported_living_locations',  -- COALESCE to 0, never NULL
+            'efs_flag', 's114_flag')       -- boolean, absent reads as false
     ) AS data_quality
 
 FROM la_boundaries b

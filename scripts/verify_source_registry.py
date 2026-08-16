@@ -552,6 +552,68 @@ def main():
          f"run {latest_run}, {len(LABEL_INPUTS)} derived column(s) checked "
          f"against their input measures; violations: {standing or 'none'}")
 
+
+    # ---- Gate 16: national reconciles to the sum of its own LA rows --------
+    # staging_national reads the source tables directly; staging_la_signals
+    # reaches them through a join. For two authorities the join failed, so the
+    # two were computed from different populations and nothing compared them:
+    # runs 4 to 12 published a national TA total of 119,219 against a sum of
+    # their own LA rows of 118,527 - a 692 gap, exactly Sheffield plus
+    # Barnsley. No NULL test catches this; it needs the arithmetic checked
+    # against itself.
+    #
+    # Every measure present in both tables is asserted. The one that is not a
+    # sum is asserted on its correct relationship rather than skipped.
+    SUM_MEASURES = [
+        ("ta_households_current", "ta_households_current"),
+        ("ta_households_prev_year", "ta_households_prev_year"),
+        ("rough_sleeping_current", "rough_sleeping_current"),
+        ("rough_sleeping_prev_year", "rough_sleeping_prev_year"),
+        ("bb_spend_total_000", "ro4_bb_spend_000"),
+        ("nightly_paid_spend_total_000", "ro4_nightly_spend_000"),
+        ("hb_sa_caseload_total", "hb_sa_caseload"),
+        ("housing_register_total", "housing_register"),
+    ]
+    cur.execute("SELECT MAX(run_id) FROM staging_national")
+    nat_run = cur.fetchone()[0]
+    breaks = []
+    for nat_col, la_col in SUM_MEASURES:
+        cur.execute(f"""
+            SELECT n.{nat_col}, (SELECT SUM(s.{la_col})
+                                 FROM staging_la_signals s
+                                 WHERE s.run_id = n.run_id)
+            FROM staging_national n WHERE n.run_id = %s
+        """, (nat_run,))
+        row = cur.fetchone()
+        if not row:
+            continue
+        nat_v, la_v = row
+        if nat_v is None and la_v is None:
+            continue
+        if nat_v is None or la_v is None or round(float(nat_v), 2) != round(float(la_v), 2):
+            breaks.append(f"{nat_col}: national {nat_v} vs sum of LA rows {la_v}")
+
+    # ta_yoy_pct is a ratio, not a sum. Summing per-authority percentages is
+    # meaningless, so the relationship asserted is that the national
+    # percentage equals the change between the two national totals.
+    cur.execute("""
+        SELECT ta_yoy_pct,
+               ROUND((ta_households_current - ta_households_prev_year)::numeric
+                     / NULLIF(ta_households_prev_year, 0) * 100, 2)
+        FROM staging_national WHERE run_id = %s
+    """, (nat_run,))
+    row = cur.fetchone()
+    if row and row[0] is not None and row[1] is not None:
+        if round(float(row[0]), 2) != round(float(row[1]), 2):
+            breaks.append(f"ta_yoy_pct: stored {row[0]} vs derived from the "
+                          f"national totals {row[1]}")
+
+    gate(16, "national totals reconcile to the sum of their own LA rows",
+         not breaks,
+         f"run {nat_run}, {len(SUM_MEASURES)} sum measure(s) plus ta_yoy_pct "
+         f"asserted on its ratio relationship; disagreements: "
+         f"{breaks or 'none'}")
+
     cur.close()
     conn.close()
 
