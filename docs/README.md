@@ -2,7 +2,7 @@
 
 <!-- repo-meta
 status: active
-last-reviewed: 2026-08-13
+last-reviewed: 2026-08-16
 type: tool
 consumed-by: map.slendeavours.org, n8n exempt_pipeline workflows
 -->
@@ -37,6 +37,7 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | S# | Source | Metric(s) | In signals JSON | Map layer |
 | --- | --- | --- | --- | --- |
 | 1 | DLUHC H-CLIC | TA households (current + prev year), trend label | yes | yes |
+| 1b | MHCLG statutory homelessness Table A3 | Households owed a duty by support need — 24 published categories, plus the no/unknown/one/two/three-or-more household breakdown and the support-needs count, per LA per quarter | no | no |
 | 2 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | yes | yes |
 | 3 | ONS Mid-Year Estimates | Population by LA (mid-2025, 2023 LA boundaries edition; mid-2024 retained) | yes | no |
 | 3b | Census 2021 TS054 | Tenure | no | no |
@@ -60,6 +61,8 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | 20 | Commercial rate card (private) | Withheld — commercial in confidence. Held in `exempt_pipeline` only and never exported to this repository, the signals JSON or the map | no | no |
 | 21 | ONS Clustering similar local authorities and statistical nearest neighbours in the UK | Five nearest statistical neighbours per LA (Table 7a, LTLA global) | no | no |
 | 22 | MHCLG Council Taxbase (CTB form) + Live Table 615 | Dwellings empty six months or more, all empties, empty homes premium counts, second homes, unoccupied exemptions by class per LA; vacant and long-term vacant dwellings by district from 2004 | yes | yes |
+| 23 | RSH registered provider social housing stock (SDR + LADR) | Owned social stock per registered provider per LA: supported housing and housing for older people, general needs self-contained and bedspaces, low cost home ownership | no | no |
+| 24 | RSH register of registered providers and regulatory judgements | Provider registration number, name, registration date, designation, corporate form; consumer, governance, viability and rent gradings with dates; enforcement notices. Entity-level, no LA geography | no | no |
 
 **In signals JSON** means the source populates `staging_la_signals` and reaches `data/signals/staging_la_signals_latest.json`. **Map layer** means `index.html` renders it as a choropleth. They are different states: S19 PIP is in the signals JSON with no map layer, and S15 house prices are a map layer fed by their own `hpi_la_prices.json` with no signals column. A source that is "no" in both columns is loaded in Postgres and queryable there.
 

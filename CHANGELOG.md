@@ -6,6 +6,22 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 ## [Unreleased]
 
 ### Added
+- **S1's ODS extraction step, which existed nowhere.** Node 1 fetched a pre-processed CSV from the public repo and the ODS-to-CSV conversion behind it was never committed, so `la_statutory_homelessness` could not be rebuilt from its source. Now `scripts/s1_extract_ods.py`, reproducing the stored table exactly for 2025Q2 and 2025Q3.
+- **2025Q1 (Apr–Jun 2025) and 2025Q4 (Jan–Mar 2026) loaded.** Eleven quarters at 296 rows each, 2023Q2 to 2025Q4. The 2025Q1 gap is closed. `period` is a **financial-year** quarter — read from the files' own table titles, not their names — so 2026Q1 is Apr–Jun 2026 and is not yet published.
+- `source_file` and `extracted_at` on `la_statutory_homelessness` (additive, guarded). The seven historical quarters carry NULL, which is honest: nobody can say which edition produced them.
+- An `.xlsx` reader. MHCLG published 2023Q4, 2024Q1 and 2024Q2 as `.xlsx` while everything either side is `.ods`. Container format is not a property of the data and is now not a property of the pipeline.
+
+### Fixed
+- **`..` was being stored as `0`, so suppressed and zero were the same value.** Of the eight authorities `submission_gap` flagged in run 16, seven were suppression markers and one — Isles of Scilly — is a genuine zero. **54 cells corrected to NULL across 2025Q2 and 2025Q3 only**, the two quarters that reproduce exactly and therefore the only two where the verdict is evidence rather than inference. 129 stored zeros in the earlier quarters remain ambiguous.
+- **Column resolution is header-driven and now refuses ambiguity.** 2025Q4 redesigned all three sheets and shifted the A3 support-need block three columns left, putting *domestic abuse* where *mental health* had been — a fixed-offset reader would have loaded one as the other and reported success. This is the probable mechanism behind the quarantined support-need columns. Candidates are ordered most-specific first, only an exactly-one match wins, and rate columns are excluded before matching.
+- Barnsley and Sheffield resolve through `la_code_lookup` on `change_type = 'recode'` only; abolitions stay unmapped so no successor is counted once per predecessor.
+- **Gate 13 green.** `homelessness_quarter_urls` carries rows for 2025Q3 and 2025Q4 with URLs verified by `Content-Length` against the stored files rather than assumed, and `loaded` re-derived from actual row counts rather than set by intent. Known-red entry removed.
+- The README generated source block was stale — S1b, S23 and S24 were registered in METHODOLOGY on 2026-08-14 and never regenerated.
+
+### Known issues
+- **Seven quarters (2023Q2–2024Q4) no longer reproduce from the current published files**, differing on 200–230 of 296 authorities for the assessment measures, while 2025Q2 and 2025Q3 match exactly. Not an extraction fault — the 2023Q2 file itself disagrees with the stored value. Almost certainly MHCLG revising the back series after the 2026-04-01 bulk load. Left unrestated pending a dedicated reload.
+
+### Added
 - **S3 population refreshed to mid-2025**, closing the denominator lag that gated external use of the HSS material. From *Estimates of the population for England and Wales*, edition "Mid-2025: 2023 local authority boundaries", released 29 July 2026, resolved from the landing page at run time. `pip_rate_per_1000` moves from a mid-2024 base to mid-2025: England 58,620,101 → 58,834,812, Birmingham 78.74 → 79.18 per 1,000, Kingston upon Hull 87.85 → 88.54. Six hard gates, all pass; the England total reconciles exactly to the publisher's own England row. Build script `scripts/s3_mye_refresh.py`.
 - `la_population` is now **multi-year** — key widened from `(lad24cd)` to `(lad24cd, reference_year)`, mid-2024 retained rather than overwritten, 592 rows.
 - **A weekly scheduled source register audit** (`UCWS\Source register audit`, Mondays 08:17). It exits non-zero on any finding and keeps the previous report so drift is one diff away, and treats "could not run" as distinct from "clean". Verified end to end.
