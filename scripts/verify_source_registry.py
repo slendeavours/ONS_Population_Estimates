@@ -356,8 +356,17 @@ def main():
     offenders, checked = [], 0
     for path in sorted(script_dir.glob("*.py")):
         text = path.read_text(encoding="utf-8", errors="replace")
-        needs_env = ("PG_PASSWORD" in text or 'load_dotenv' in text
-                     or '.env' in text)
+        # '.env' as a bare substring also matches os.environ, which is an
+        # environment variable read and not a dotenv file at all. That false
+        # positive pulled push.py and credential_scan.py into scope on
+        # 2026-08-16 for containing dict(os.environ, ...). The test is now the
+        # filename in the forms it is actually written, plus any script that
+        # reaches the database - so a script that delegates to _db stays
+        # asserted rather than dropping out of scope.
+        DOTENV_REFS = ('".env"', "'.env'", "/.env", ".env file", "dotenv")
+        needs_env = ("PG_PASSWORD" in text
+                     or any(s in text for s in DOTENV_REFS)
+                     or "from _db import" in text)
         if not needs_env or path.name == "_db.py":
             continue
         checked += 1
