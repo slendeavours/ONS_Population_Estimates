@@ -540,3 +540,48 @@ COMMENT ON VIEW vw_source_due IS
     'cadence_months plus expected_lag_days. Where neither is derivable the '
     'source reports check_stale, not not_due — an underivable date is not '
     'evidence that nothing is owed.';
+
+
+-- ---------------------------------------------------------------------------
+-- source_registry is a generated table, and this makes the destination say so.
+--
+-- Gate 9 caught a hand-edited revision_note reverting on the next backfill.
+-- The audit that followed found the worse case: 12 columns are regenerated for
+-- every source, but 27 more only for the sources that declare a value, so an
+-- edit to an undeclared cell PERSISTS - and keeps working until somebody adds
+-- a declaration for that source, with nothing marking the moment it stopped.
+-- The same edit to the same column behaves differently depending on which row
+-- you touch, which is the hardest class to catch by inspection.
+--
+-- Convention did not hold it, so the destination refuses the write. A writer
+-- declares itself on its own connection. Gate 17 asserts this trigger is
+-- present and enabled, because a control nobody checks has already gone.
+-- Full per-column map: docs/GENERATED_FIELDS.md
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION source_registry_writer_only()
+RETURNS trigger AS $fn$
+BEGIN
+  IF COALESCE(current_setting('ucws.registry_writer', true), '') <> 'on' THEN
+    RAISE EXCEPTION
+      'source_registry is a generated table and must not be edited directly.'
+      USING DETAIL =
+        TG_OP || ' blocked. 12 columns are regenerated for every source and 27 '
+        'more only for the sources that declare a value, so a direct edit '
+        'either reverts on the next backfill or - worse - persists until '
+        'someone adds a declaration for that source, with nothing marking the '
+        'moment it stopped working. Edit the source of truth and regenerate: '
+        'scripts/backfill_source_registry.py for registry content, or '
+        'scripts/check_sources.py for last_check_at and last_seen_fingerprint. '
+        'The full per-column map is in docs/GENERATED_FIELDS.md.',
+        HINT =
+        'If this really is a writer, it declares itself on its own connection '
+        'with: SET ucws.registry_writer = ''on''';
+  END IF;
+  RETURN NEW;
+END;
+$fn$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS source_registry_writer_only_trg ON source_registry;
+CREATE TRIGGER source_registry_writer_only_trg
+    BEFORE INSERT OR UPDATE ON source_registry
+    FOR EACH ROW EXECUTE FUNCTION source_registry_writer_only();
