@@ -266,9 +266,61 @@ The column was declared in the extraction and never populated. Nothing was lost
 in loading. Whether LAHS publishes a reasonable-preference figure that could
 fill it is a separate question and has not been established.
 
+## 12. Item 5 — the S1b cross-check, and a correction to §3
+
+S1b is an independent extraction of the same A3 sheet, built separately and
+carrying its own `layout_version` (`legacy_37col` / `v2026_34col`), so it can
+arbitrate between the stored table and a fresh extraction.
+
+**The five quarantined `*_suspect` columns are NULL in all eleven quarters.**
+The quarantine was executed, not merely flagged, so nothing downstream can read
+them and there is no residual bad data. S1b is the only support-need source.
+
+**But `support_needs_total` escaped the quarantine, and it is wrong.**
+
+| | Agrees with S1b |
+| --- | ---: |
+| Fresh extraction, every quarter | **296 / 296** |
+| Stored value, 2025Q2 / Q3 / Q4 | **296 / 296** |
+| Stored value, 2023Q2 – 2024Q4 | **1–3 / 296** |
+
+It is not stale. It is a different measure. Stored `support_needs_total` runs
+at **45–47% of the correct total** in every one of the seven quarters and
+exactly **1.000** in the three that reproduce, and it matches the *adjacent*
+`hh_one_support_need` column on 148–164 of 296 authorities. It holds
+**households with one support need** where it should hold **one or more**.
+
+### This corrects §3
+
+§3 read the whole seven-quarter divergence as revision. That was right for the
+A1 measures and wrong for this one. There are **two defects, not one**:
+
+- `total_assessments`, `owed_duty`, `prevention_duty`, `relief_duty` — A1
+  sheet, differing on 200–230 of 296, consistent with revision.
+- `support_needs_total` — A3 sheet, differing on ~293 of 296 at a fixed
+  ~46% ratio. **Misalignment, the same defect that quarantined the
+  `*_suspect` columns.** The near-universal rate was the tell: a revision
+  touching 99% of authorities on one column while touching 75% on the others
+  is not a revision.
+
+The A3 restructure of §4 is the mechanism for both, which is why S1b — which
+tracks layout version explicitly — is unaffected.
+
+**Not published.** `support_needs_total` is absent from `staging_la_signals`,
+so the error is contained to the database and has never reached the feed or the
+map. Not corrected here, because the seven-quarter reload is its own item — but
+it is a **different fix from a reload**: the correct values are already known
+exactly, from S1b and from the fresh extraction, for all seven quarters.
+
+Registered in `source_registry` S1's `revision_note` and in the seven
+`homelessness_quarter_urls.reproduction_note` rows.
+
 ## Still open
 
 1. Reload the seven quarters from the current editions and restate — its own
-   backlog item, now registered in the database rather than only here.
+   backlog item, now registered in the database rather than only here. Note it
+   is two fixes: revision for the A1 measures, and a straight column
+   correction for `support_needs_total` where the right values are already
+   known.
 2. S10 `la_rough_sleeping` — 22 and 27 zeros with no NULL anywhere. Settles the
    way S1 did: extract from source and compare. Not actionable from the table.
