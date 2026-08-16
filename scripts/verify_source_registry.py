@@ -521,9 +521,20 @@ def main():
     # Asserted against the latest run only. Earlier runs are immutable audit
     # data and several are not reproducible, so gating them would produce a
     # permanent red that no fix could clear.
+    #
+    # A numeric derived value must be NULL when an input is absent - a number
+    # over an absent measure is a fabrication. A categorical label is
+    # different: ta_trend_label's whole purpose is to name the absence, so
+    # requiring it to be NULL would forbid the correct behaviour. For those
+    # columns the assertion is stricter, not looser - when an input is absent
+    # the label must be one of the declared absence sentinels, and any
+    # direction word is a violation. 'undetermined' is deliberately not a
+    # sentinel: over an absent input it would mean the CASE fell through,
+    # which is the exact defect this gate exists for.
+    TA_ABSENT_OK = ("no_current_data", "no_prior_year", "submission_gap")
     LABEL_INPUTS = [
         ("staging_la_signals", "ta_trend_label",
-         ["ta_households_current", "ta_households_prev_year"]),
+         ["ta_households_current", "ta_households_prev_year"], TA_ABSENT_OK),
         ("staging_la_signals", "ta_yoy_pct",
          ["ta_households_current", "ta_households_prev_year"]),
         ("staging_la_signals", "marac_rate_per_10k",
@@ -538,15 +549,22 @@ def main():
     cur.execute("SELECT MAX(run_id) FROM staging_la_signals")
     latest_run = cur.fetchone()[0]
     standing = []
-    for table, col, inputs in LABEL_INPUTS:
+    for entry in LABEL_INPUTS:
+        table, col, inputs = entry[0], entry[1], entry[2]
+        absent_ok = entry[3] if len(entry) > 3 else None
         nulls = " OR ".join(f"{i} IS NULL" for i in inputs)
+        if absent_ok is None:
+            cond, params = f"{col} IS NOT NULL", (latest_run,)
+        else:
+            cond, params = f"{col} IS NULL OR {col} <> ALL(%s)", (latest_run, list(absent_ok))
         cur.execute(f"""SELECT COUNT(*) FROM {table}
-                        WHERE run_id = %s AND {col} IS NOT NULL AND ({nulls})""",
-                    (latest_run,))
+                        WHERE run_id = %s AND ({nulls}) AND ({cond})""", params)
         n = cur.fetchone()[0]
         if n:
-            standing.append(f"{table}.{col}: {n} row(s) over an absent "
-                            f"{' or '.join(inputs)}")
+            standing.append(
+                f"{table}.{col}: {n} row(s) over an absent "
+                f"{' or '.join(inputs)}"
+                + (f" not carrying one of {absent_ok}" if absent_ok else ""))
     gate(15, "no derived label stands on an absent measure",
          not standing,
          f"run {latest_run}, {len(LABEL_INPUTS)} derived column(s) checked "

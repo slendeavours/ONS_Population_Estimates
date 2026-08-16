@@ -101,8 +101,38 @@ and the whole A3 block shifted three columns left — mental health moved from
 column 21 to 18, where column 21 now holds *domestic abuse*.
 
 **A fixed-offset reader would have loaded domestic abuse as mental health and
-reported success.** This is the most probable mechanism behind the known S1
-support-need misalignment.
+reported success.**
+
+### This is the probable mechanism behind the quarantined support-need columns
+
+Stating it as a finding rather than an aside, because it answers the question
+the quarantine left open.
+
+The quarantined columns — `mental_health_suspect`, `learning_disability_suspect`,
+`drug_dependency_suspect`, `alcohol_dependency_suspect`,
+`rough_sleeping_history_suspect` — were quarantined because their values looked
+wrong and nobody could say why. The A3 restructure explains it, and explains
+the detail that a simple off-by-one never could: **the misalignment varied by
+quarter rather than being a constant offset.**
+
+A constant bug produces a constant error. What was actually happening is that
+the offset was correct for the editions it was written against and wrong for
+the ones that came later, so the size and direction of the error changed
+whenever MHCLG moved the block. 2025Q4 moved it three columns left. Every
+support-need column read three positions off, which is not a near-miss — at
+that offset *mental health* reads *domestic abuse*, *learning disability* reads
+*non-domestic abuse*, and *drug dependency* reads *offending history*. Each is
+a plausible-looking count for an English local authority, so nothing downstream
+had any reason to complain.
+
+This is the reason the columns stay quarantined and deprecated in favour of
+S1b rather than being restored: the values are not recoverable by applying a
+correction, because there is no single correction to apply. They have to be
+re-extracted per edition, which is what S1b already does.
+
+The header-driven resolver below is the control that makes a recurrence
+visible: when MHCLG next moves a column, it halts and names the ambiguity
+instead of reading whatever now sits at the old index.
 
 Resolution is now: candidates ordered most-specific first, the first candidate
 matching *exactly one* column wins, a candidate matching several is abandoned
@@ -157,10 +187,88 @@ the source file.
 Separately, `la_housing_register.reasonable_preference` is NULL in all 3,256
 rows — a column that has never been populated.
 
+## 9. Restatement — run 17 supersedes run 16
+
+Decided: the feed catching up to data that exists is not an error correction,
+and leaving it stale to avoid a restatement is the wrong trade.
+
+Run 16 was deleted whole — 1,600 rows across `staging_la_signals`,
+`staging_national`, `staging_tenant_type_rankings`, `staging_convergence` and
+`staging_runs` — after a full snapshot to
+`build_reports/run_snapshots/run16_snapshot_2026-08-16T161122.json`, with the
+snapshot read back against live row counts *before* the delete and the absence
+read back after. W1 re-ran as run 17 through the Create Run node.
+
+| | Run 16 | Run 17 |
+| --- | ---: | ---: |
+| Latest quarter | 2025Q3 (Oct–Dec 2025) | **2025Q4 (Jan–Mar 2026)** |
+| National TA households | 124,142 | **130,775** |
+| Prior year comparison | 2024Q3 | 2024Q4 |
+| TA year on year | — | **+13.29%** |
+| Authorities with a TA figure | 296 | **284** |
+| `submission_gap` | 8 | **0** |
+| `data_quality` complete | 105 | 101 |
+
+`submission_gap` falling to zero is the marker fix showing through: seven of
+the eight were `..`, and no authority reported a genuine zero in Jan–Mar 2026.
+The twelve authorities without a TA figure now carry `no_current_data` and a
+NULL `ta_yoy_pct` rather than a fabricated trend.
+
+### Gate 15 was red on run 17, and the gate was wrong
+
+Run 16 predated the marker backfill, so run 17 was the first run to carry a
+NULL TA — and gate 15 immediately failed on twelve rows.
+
+It was a false positive, but a useful one. The gate asserted that a derived
+column must be **NULL** when an input is absent. That is right for a numeric
+value, where a number over an absent measure is a fabrication. It is wrong for
+a categorical label, because `ta_trend_label`'s entire purpose is to *name* the
+absence — requiring NULL would have forbidden the correct behaviour and made
+the gate permanently red the moment TA was legitimately absent.
+
+The assertion is now **stricter, not looser**: when an input is absent the
+label must be one of the declared absence sentinels
+(`no_current_data`, `no_prior_year`, `submission_gap`), and any direction word
+is a violation. `undetermined` is deliberately not a sentinel — over an absent
+input it would mean the CASE fell through, which is the exact defect gate 15
+exists for.
+
+Proved by injection: setting one absent-TA row to `falling_strongly` turned
+gate 15 red and exited 1; restoring `no_current_data` returned it to pass and
+exit 2. That is the original Sheffield/Barnsley defect, and the gate still
+catches it.
+
+Feed re-exported at 40 columns, carrying `run_id 17`.
+
+## 10. The seven quarters are registered, not restated
+
+Left unrestated for now, but no longer discoverable only by reading this file.
+
+**`source_registry` S1** keeps `revises_back_series = true`, and
+`revision_note` now records the *measured instance* rather than an inference
+from file names — the per-quarter cell counts, the Hartlepool 172-versus-193
+check that rules out an extraction fault, and the three corroborating facts.
+
+**`homelessness_quarter_urls`** gains `reproduces_from_source`,
+`reproduction_checked_at`, `reproduction_diff_cells` and `reproduction_note`,
+populated from the measured comparison. Seven quarters are `false` with their
+cell counts; four are `true`.
+
+**`v_la_statutory_homelessness`** joins that status onto the data, so a query
+against 2023Q2 discovers it does not match the publisher without anyone
+knowing to write the join.
+
+## 11. `la_housing_register.reasonable_preference` — schema artefact, not a load bug
+
+NULL in all 3,256 stored rows because it is **empty in the source extract too**
+— all 3,471 rows of `lahs_waiting_list_2015_2025.csv`, every year 2015–2025.
+The column was declared in the extraction and never populated. Nothing was lost
+in loading. Whether LAHS publishes a reasonable-preference figure that could
+fill it is a separate question and has not been established.
+
 ## Still open
 
-1. The seven-quarter divergence in §3 — restate to the current editions or not.
-2. Re-running W1 so the map reflects 2025Q4. Blocked by the same-day guard:
-   run 16 exists and backs the current feed, so this means discarding run 16
-   and moving the published TA headline from **124,142 to 130,775**.
-3. S10 zeros — verify against source.
+1. Reload the seven quarters from the current editions and restate — its own
+   backlog item, now registered in the database rather than only here.
+2. S10 `la_rough_sleeping` — 22 and 27 zeros with no NULL anywhere. Settles the
+   way S1 did: extract from source and compare. Not actionable from the table.
