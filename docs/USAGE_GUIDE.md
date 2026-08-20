@@ -71,9 +71,13 @@ When you click an LA, the panel shows:
 - Current and prior year snapshot counts
 
 **Other Demand Signals**
-- Care leavers in semi-independent housing
-- MARAC domestic violence cases
-- Housing Benefit asylum seekers
+- Care leavers in supported accommodation. The map layer uses the combined
+  measure (DfE's semi-independent category plus foyers plus supported lodgings).
+  External documents quote the published category alone, which is lower. See
+  `docs/s4_care_leaver_source.md`
+- MARAC domestic violence cases, published by police force area rather than
+  local authority
+- Housing Benefit claimants in specified accommodation
 - Social housing waiting list size
 - IMD deprivation rank
 

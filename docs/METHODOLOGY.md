@@ -93,6 +93,17 @@ Two MHCLG publishers, both resolved from their landing pages at run time. No fil
 
 **Geography.** MHCLG publishes Barnsley and Sheffield under the codes recoded on 1 April 2025 (SI 1328/2024), E08000038 and E08000039, while `la_boundaries` is LAD May 2024 and carries E08000016 and E08000019. Both resolve through `la_code_lookup` as `change_type = 'recode'` — the same area under a new number. Nothing was written back to the lookup.
 
+**`staging_la_signals` is a snapshot and goes stale between runs.** Run 17
+(2026-08-16) predates the August 2026 source assurance work and still holds
+pre-correction values for rough sleeping, care leavers, MARAC and both NHS
+discharge measures. Anything reading staging rather than the base tables is
+serving those old numbers, including the exported signals JSON the demand map
+loads. The LandAid Liverpool paper was rebuilt to read base tables directly for
+this reason. Re-running node 5 picks the corrections up without further work,
+because every join selects MAX(period) from its source table. See
+`docs/decisions/2026-08-20-s3b-tenure-rebasing-error.md` and
+`docs/decisions/2026-08-20-s12-efs-misattribution.md`.
+
 **Standing rule — direct SQL against `staging_la_signals` updates the stored node in the same session, or it is not applied.** Any change to the columns of `staging_la_signals` must be written back to W1 node 5 in `n8ndb` before the session ends. Applying it to the data alone leaves the stored node behind, and the next genuine workflow run silently drops every column the node does not know about. This is not hypothetical: runs 10 and 11 added the S9 and S19 columns by direct SQL and never wrote them back, so the stored node was two builds stale until the S22 build in August 2026 found it. The same rule covers anything that creates a `staging_runs` row outside the workflow — the row must be created through the Create Run node's query so the sequence stays ahead of the data. Runs 10 and 11 skipped that too, leaving the sequence trailing by two and the next `nextval()` set to collide with an existing run.
 
 **The rule is enforced, not just stated.** A rule that relies on remembering is what failed twice, so the check runs in three places:
