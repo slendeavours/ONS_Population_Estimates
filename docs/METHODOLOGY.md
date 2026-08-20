@@ -13,7 +13,7 @@
 | 2 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | MHCLG | Annual |
 | 3 | ONS Mid-Year Estimates | Population by LA (mid-2025, 2023 LA boundaries edition; mid-2024 retained) | ONS | Annual |
 | 3b | Census 2021 TS054 | Tenure | ONS | Decennial |
-| 4 | DfE SEN2 / Children in Need | Care leavers in semi-independent housing | DfE | Annual |
+| 4 | DfE Children Looked After (SSDA903) | Care leavers in supported accommodation (published DfE category); Care leavers in supported accommodation (wider pipeline aggregate) | DfE | Annual |
 | 5 | MHCLG IMD | Index of Multiple Deprivation | MHCLG | Every ~5 years |
 | 6 | Home Office Asy_D11 / Reg_02 | Asylum seekers in receipt of Home Office support by support type and accommodation type; immigration groups by pathway (standalone) | Home Office / MHCLG | Quarterly |
 | 7 | ONS Open Geography Portal | LA boundary polygons (LAD **May 2024** BGC) | ONS | On boundary changes |
@@ -269,8 +269,10 @@ Always uses `MAX(run_id)` to ensure the latest data is exported. Never hardcodes
 | DRD apportionment resolution | DRD % and average columns are UTLA-level pass-through for county districts. All E07 districts under an E10 county inherit the same value. |
 | CRFD suppression rate | 28–46% of LAs have suppressed MHS26 values per month. These LAs are excluded from tenant-type rankings. |
 | MARAC temporal lag | SafeLives publishes MARAC data 6–9 months after reference period. Current run may show prior year figures. |
-| Care leaver data granularity | DfE data is at upper-tier LA level; district-level LAs may show NULL or estimated values. |
-| IMD version | IMD 2019 is used (supplemented by 2025 LA summary). No full LSOA-level 2025 IMD released yet. |
+| Care leaver data granularity | DfE publishes at upper-tier LA level, 155 authorities including 24 county councils. District councils have no figure and are absent, not zero. Counties are carried on their own E10 code and do not join `la_boundaries`, so any boundary-joined query still excludes them. See [s4_care_leaver_source.md](s4_care_leaver_source.md). |
+| Care leaver definition | `semi_independent` is a pipeline aggregate of three DfE categories (semi-independent transitional, foyers, supported lodgings) and is **not** DfE's published category. External documents must quote `semi_independent_published`. From reporting year 2024 the DfE category means Ofsted-registered provision only, so counts must not be trended across 2023/2024. |
+| Care leaver suppression | Suppressed cells are added as zero on the 17-21 path, so bucket counts and `total_care_leavers` are minima. Quote `total_published`, read from DfE's own Total row. |
+| IMD version | IMD 2025 is used: MHCLG English Indices of Deprivation 2025, File 10 Local Authority District Summaries (lower-tier) v2, published 30 October 2025. Verified against the published file at 296 of 296 authorities, 2026-08-20. An earlier note stating IMD 2019 was used was wrong. |
 | TA seasonality | H-CLIC is quarterly. The pipeline uses the most recent quarter end, which may vary by LA submission. |
 | Rough sleeping count uncertainty | The DLUHC rough sleeping count is a single-night snapshot. Actual levels may be significantly higher. |
 

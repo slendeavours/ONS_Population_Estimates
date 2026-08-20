@@ -51,11 +51,26 @@ Source: DLUHC annual rough sleeping snapshot count
 
 ## Care Leavers
 
-Source: DfE children in need return (annual)
+Source: DfE Children Looked After in England including adoptions, SSDA903 return (annual, year ending 31 March). Full source note: [s4_care_leaver_source.md](s4_care_leaver_source.md)
 
 | Column | Type | Range | Description |
 |---|---|---|---|
-| `care_leavers_semi_indep` | integer | 0 – 500+ | Care leavers in semi-independent or supported accommodation placements |
+| `care_leavers_semi_indep` | integer | 0 – 500+ | Care leavers aged 17-21 in supported accommodation. Pipeline aggregate of three DfE categories: semi-independent transitional, foyers, supported lodgings. **Not** DfE's published category |
+
+### Which measure to quote
+
+Two measures are held on `care_leaver_accommodation` and they are not interchangeable.
+
+| Column | Definition | Use |
+|---|---|---|
+| `semi_independent_published` | DfE's published `Semi-independent, transitional accommodation` alone | **External documents.** Reproducible directly from DfE |
+| `semi_independent` | The above plus foyers plus supported lodgings | Internal analysis only, and only when labelled as a combined measure with its components named |
+
+Liverpool 2025 is 188 on the published definition and 208 on the aggregate, ranking 11th and 20th of 155 respectively. The gap is material and quoting the wrong one is a reputational risk.
+
+Suppressed cells are added as zero on the 17-21 path, so `semi_independent` and `total_care_leavers` are minima. `suppressed_flag` marks affected rows and `total_published` carries DfE's own Total.
+
+From reporting year 2024 the DfE category means Ofsted-registered supported accommodation only. Do not trend across 2023/2024.
 
 ---
 

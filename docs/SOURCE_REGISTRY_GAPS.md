@@ -13,29 +13,29 @@ The top of this list is the documentation debt.
 | `next_expected_at` | 26 | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
 | `superseded_by` | 25 | only populated when a source is replaced; null is correct for an active source |
 | `auth_env_var` | 23 | the build script, where the source needs a credential |
-| `hss_lens` | 21 | an explicit dual-lens note in the source documentation |
-| `ucws_lens` | 21 | an explicit dual-lens note in the source documentation |
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
-| `verification_checks` | 19 | the source's verification suite and its documented check count |
-| `source_doc_path` | 17 | a source documentation file — the single largest gap for undocumented sources |
-| `node_docs_path` | 15 | the per-node documentation under docs/nodes/ |
-| `revises_back_series` | 15 | — |
-| `join_path` | 14 | the build script's geography resolution step |
-| `revision_note` | 14 | — |
+| `hss_lens` | 20 | an explicit dual-lens note in the source documentation |
+| `ucws_lens` | 20 | an explicit dual-lens note in the source documentation |
+| `verification_checks` | 18 | the source's verification suite and its documented check count |
+| `source_doc_path` | 16 | a source documentation file — the single largest gap for undocumented sources |
+| `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
+| `revises_back_series` | 14 | — |
 | `build_script_path` | 13 | the build script, if it is in the published tree |
-| `detected_period_type` | 12 | — |
+| `join_path` | 13 | the build script's geography resolution step |
+| `revision_note` | 13 | — |
+| `detected_period_type` | 11 | — |
 | `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
 | `n8n_workflow_name` | 10 | the n8n workflow that runs the source, where one does |
-| `publication_window` | 10 | the publisher's stated release window |
-| `series_name` | 10 | the publisher's dataset or table title, as named in a source documentation file |
-| `known_gotchas` | 9 | a source documentation file — acquisition traps are only known once written down |
+| `publication_window` | 9 | the publisher's stated release window |
+| `series_name` | 9 | the publisher's dataset or table title, as named in a source documentation file |
+| `known_gotchas` | 8 | a source documentation file — acquisition traps are only known once written down |
 | `caveats` | 6 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `landing_page_url` | 4 | the publisher's landing page, recorded in a source or node documentation file |
 | `cadence_months` | 3 | the publisher's stated cadence, where it is regular enough to express in months |
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 322 null fields across 26 published sources.
+Total: 310 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -143,26 +143,14 @@ Total: 322 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `series_name` | the publisher's dataset or table title, as named in a source documentation file |
 | `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
-| `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
-| `publication_window` | the publisher's stated release window |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
 | `build_script_path` | the build script, if it is in the published tree |
-| `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
-| `ucws_lens` | an explicit dual-lens note in the source documentation |
-| `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
-| `detected_period_type` | — |
 
-**Note.** Mechanics checked 2026-08-14 and not established, which is not the same as unchecked. DfE publishes through Explore Education Statistics rather than GOV.UK; the find-statistics entry point responds but no working content API path was found, and the specific SEN2 / Children in Need release was not pinned down. Tier C stands on that evidence rather than as a default.
+**Note.** Mechanics established 2026-08-20, superseding the 2026-08-14 check. The release was previously misidentified as SEN2 / Children in Need; it is the SSDA903 Children Looked After return. Dataset CSVs are retrievable without auth from /data-catalogue/data-set/{uuid}/csv, so acquisition is an API rather than manual. Tier C stands because the UUID changes each release and must be read by hand from the release data guidance page: the data catalogue front end is a JavaScript app and EES exposes no content API path for this publication.
 
 ### S5
 

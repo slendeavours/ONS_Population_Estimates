@@ -170,15 +170,80 @@ SOURCES = [
     ),
     dict(
         source_code="4",
-        source_name="DfE SEN2 / Children in Need",
+        detected_period_type="reference_period",
+        revises_back_series=True,
+        revision_note=("Each annual release republishes several prior years "
+            "with revisions applied, so the newer edition must be loaded "
+            "first. The pre-2026-08-20 build deduplicated first-occurrence-"
+            "wins with the older file at index 0 and retained superseded "
+            "figures for 7 rows across 2020-2023."),
+        source_name="DfE Children Looked After (SSDA903) care leaver accommodation",
         publisher="DfE",
-        acquisition_method="manual",
+        series_name=("Children looked after in England including adoptions: "
+                     "care leaver activity and accommodation"),
+        landing_page_url=("https://explore-education-statistics.service.gov.uk/"
+                          "find-statistics/children-looked-after-in-england-"
+                          "including-adoptions"),
+        acquisition_method="api",
+        known_gotchas=(
+            "A new EES dataset UUID is issued per release for the 17-21 "
+            "accommodation file; the 22-25 suitability file is persistent. "
+            "The 2025 release renamed columns from age/accommodation_type/"
+            "number to care_leaver_age/breakdown/care_leaver_count. Code "
+            "reading the old names against the new file matches no category, "
+            "routes every row to 'other' and returns zero for every bucket "
+            "WITHOUT raising an error, so any edition change needs a column-"
+            "name assertion that fails loudly. EES exposes no working content "
+            "API for this publication and the data catalogue is a JavaScript "
+            "app, so UUIDs must be taken from the release data guidance page."),
         cadence="annual", cadence_months=12,
-        target_table="care_leaver_accommodation", geography_level="LAD24",
-        n8n_workflow_name="Workflow 1",
-        caveats=["DfE data is at upper-tier LA level; district-level LAs may "
-                 "show NULL or estimated values."],
-        completeness_note=("No source documentation file exists. " + CAUTIOUS),
+        publication_window="November, for the reporting year ending 31 March",
+        target_table="care_leaver_accommodation",
+        geography_level="UTLA",
+        join_path=("lad24cd via la_code_lookup for unitary and metropolitan "
+                   "authorities. County councils have no LAD24 successor and "
+                   "are carried on their own E10 code; they do not join "
+                   "la_boundaries."),
+        node_docs_path="docs/nodes/s4_node1_fetch_1721_2023.md",
+        source_doc_path="docs/s4_care_leaver_source.md",
+        verification_checks={
+            "rebuild_date": "2026-08-20",
+            "replication": ("808 of 815 rows reproduced exactly under the "
+                            "documented bucketing rule against source CSVs"),
+            "replication_exceptions": ("7 rows, all overlapping years where "
+                                       "the older edition had been retained"),
+            "published_column": ("semi_independent_published matches DfE at "
+                                 "155/155 authorities for reporting year "
+                                 "2025, zero mismatches"),
+        },
+        caveats=["semi_independent is a pipeline aggregate of three DfE "
+                 "categories (semi-independent transitional, foyers, "
+                 "supported lodgings) and is not DfE's published category. "
+                 "External documents must quote semi_independent_published.",
+                 "From reporting year 2024 the DfE category means Ofsted-"
+                 "registered supported accommodation only; before 2024 it "
+                 "included unregistered provision. Counts must not be "
+                 "trended across that boundary.",
+                 "Suppressed cells (c/k/z/x) are added as zero on the 17-21 "
+                 "path, so bucket counts and total_care_leavers are minima. "
+                 "total_published carries DfE's own Total row.",
+                 "DfE publishes 155 upper-tier authorities including 24 "
+                 "county councils. Until 2026-08-20 an inner join on "
+                 "la_code_lookup dropped all 24 counties silently, so England "
+                 "totals and national ranks were computed over 132 of 155.",
+                 "Point-in-time count at 31 March, not a flow. Annual need is "
+                 "higher.",
+                 "The 22-25 cohort covers only those who contacted the "
+                 "authority and requested support, so figures are partial."],
+        ucws_lens="context", hss_lens="primary",
+        completeness_note=(
+            "155 of 155 upper-tier authorities for reporting years 2019-2025 "
+            "(17-21 accommodation), including the 24 county councils restored "
+            "on 2026-08-20. 22-25 suitability covers 2023-2025."),
+        metrics=["Care leavers in supported accommodation (published DfE "
+                 "category)",
+                 "Care leavers in supported accommodation (wider pipeline "
+                 "aggregate)"],
         refresh_tier="C", status="active",
         publish_github=True, publish_map=True,
     ),
@@ -191,10 +256,14 @@ SOURCES = [
         publication_window="Every ~5 years",
         target_table="la_imd_2025", geography_level="LAD24",
         n8n_workflow_name="Workflow 1",
-        caveats=["IMD 2019 is used, supplemented by the 2025 LA summary. No "
-                 "full LSOA-level 2025 IMD has been released.",
+        caveats=["IMD 2025 is used: MHCLG English Indices of Deprivation "
+                 "2025, File 10 Local Authority District Summaries "
+                 "(lower-tier) v2, published 30 October 2025. Verified "
+                 "against the published file at 296 of 296 authorities on "
+                 "2026-08-20. An earlier caveat stating that IMD 2019 was "
+                 "used was wrong and understated the data actually held.",
                  "imd_rank_of_average_rank ranks LAs from 1 (most deprived) "
-                 "to 317 (least deprived) on the average rank of constituent "
+                 "to 296 (least deprived) on the average rank of constituent "
                  "LSOAs."],
         completeness_note=("No source documentation file exists. " + CAUTIOUS),
         refresh_tier="C", status="active",
@@ -1225,15 +1294,21 @@ TIER_C_FINDINGS = {
               "machine-readable. Cadence makes this close to academic: the "
               "next census is 2031, so detection will not fire for years.")),
     "4": dict(
-        tier="C", method="manual",
-        url="https://explore-education-statistics.service.gov.uk/find-statistics",
-        ptype=None,
-        note=("Mechanics checked 2026-08-14 and not established, which is not "
-              "the same as unchecked. DfE publishes through Explore Education "
-              "Statistics rather than GOV.UK; the find-statistics entry point "
-              "responds but no working content API path was found, and the "
-              "specific SEN2 / Children in Need release was not pinned down. "
-              "Tier C stands on that evidence rather than as a default.")),
+        tier="C", method="api",
+        url=("https://explore-education-statistics.service.gov.uk/"
+             "find-statistics/children-looked-after-in-england-including-"
+             "adoptions"),
+        ptype="reference_period",
+        note=("Mechanics established 2026-08-20, superseding the 2026-08-14 "
+              "check. The release was previously misidentified as SEN2 / "
+              "Children in Need; it is the SSDA903 Children Looked After "
+              "return. Dataset CSVs are retrievable without auth from "
+              "/data-catalogue/data-set/{uuid}/csv, so acquisition is an API "
+              "rather than manual. Tier C stands because the UUID changes "
+              "each release and must be read by hand from the release data "
+              "guidance page: the data catalogue front end is a JavaScript "
+              "app and EES exposes no content API path for this "
+              "publication.")),
     "5": dict(
         tier="B", method="landing_page",
         url=("https://www.gov.uk/government/collections/"

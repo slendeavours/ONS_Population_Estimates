@@ -41,7 +41,7 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | 2 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | yes | yes |
 | 3 | ONS Mid-Year Estimates | Population by LA (mid-2025, 2023 LA boundaries edition; mid-2024 retained) | yes | no |
 | 3b | Census 2021 TS054 | Tenure | no | no |
-| 4 | DfE SEN2 / Children in Need | Care leavers in semi-independent housing | yes | yes |
+| 4 | DfE Children Looked After (SSDA903) | Care leavers in supported accommodation (published DfE category); Care leavers in supported accommodation (wider pipeline aggregate) | yes | yes |
 | 5 | MHCLG IMD | Index of Multiple Deprivation | yes | yes |
 | 6 | Home Office Asy_D11 / Reg_02 | Asylum seekers in receipt of Home Office support by support type and accommodation type; immigration groups by pathway (standalone) | no | no |
 | 7 | ONS Open Geography Portal | LA boundary polygons (LAD **May 2024** BGC) | no | no |
