@@ -497,6 +497,11 @@ def main():
           AND c.table_schema = 'public'
           AND p.relkind = 'r'
           AND c.table_name <> 'la_boundaries'
+          -- _bak_YYYYMMDD tables are frozen copies taken before a rebuild.
+          -- They are audit evidence of what a table was, so their codes must
+          -- not be rewritten, and no product reads them. Gating them would
+          -- produce a red that only deleting the evidence could clear.
+          AND c.table_name !~ '_bak_[0-9]{8}$'
         ORDER BY 1
     """)
     #
@@ -506,6 +511,16 @@ def main():
     # It must not be propagated - one predecessor with two successors doubles
     # on any join by predecessor, which is the la_succession fan-out defect.
     #
+    # A code may also be a live authority that is simply not a district. Care
+    # leaver duties sit with upper tier, so care_leaver_accommodation stores 24
+    # county councils on E10 codes that la_boundaries, a 296-code district set,
+    # will never hold. Those are correct data, not orphans. They are accepted
+    # on evidence - presence in utla_lad_mapping, the upper-tier reference -
+    # rather than by declaration, because the evidence is already maintained
+    # and a hand-written exemption would not be. Three of the 24 are abolished
+    # counties absent from that reference, and they take the predecessor route
+    # above.
+    #
     # So the exemption is a positive declaration, not a tolerated code. A row
     # is exempt only if its table carries an attribution column and the row
     # says attribution = 'predecessor' with successor codes and a note. An
@@ -513,7 +528,7 @@ def main():
     # any code in the table was judged only against la_boundaries; now an
     # unresolved code must either resolve or explain itself.
     lad_tables = [r[0] for r in cur.fetchall()]
-    orphans, declared = [], []
+    orphans, declared, upper_tier = [], [], []
     for t in lad_tables:
         cur.execute("""SELECT COUNT(*) FROM information_schema.columns
                        WHERE table_schema='public' AND table_name=%s
@@ -529,6 +544,8 @@ def main():
             WHERE t.lad24cd IS NOT NULL
               AND NOT EXISTS (SELECT 1 FROM la_boundaries b
                               WHERE b.lad24cd = t.lad24cd)
+              AND NOT EXISTS (SELECT 1 FROM utla_lad_mapping u
+                              WHERE u.utla_code = t.lad24cd)
               {exempt}
             ORDER BY 1
         """)
@@ -542,12 +559,22 @@ def main():
                                               WHERE b.lad24cd = t.lad24cd)""")
             for (c,) in cur.fetchall():
                 declared.append(f"{t}: {c}")
+        cur.execute(f"""SELECT COUNT(DISTINCT t.lad24cd) FROM {t} t
+                        WHERE EXISTS (SELECT 1 FROM utla_lad_mapping u
+                                      WHERE u.utla_code = t.lad24cd)
+                          AND NOT EXISTS (SELECT 1 FROM la_boundaries b
+                                          WHERE b.lad24cd = t.lad24cd)""")
+        n_ut = cur.fetchone()[0]
+        if n_ut:
+            upper_tier.append(f"{t}: {n_ut}")
     gate(14, "every stored lad24cd resolves to la_boundaries, or declares why not",
          not orphans,
          f"{len(lad_tables)} base table(s) carrying lad24cd checked against "
          f"the 296-code boundary set; "
          f"declared non-propagating predecessors (accepted): "
          f"{declared or 'none'}; "
+         f"live upper-tier codes accepted via utla_lad_mapping: "
+         f"{upper_tier or 'none'}; "
          f"tables holding an undeclared code la_boundaries does not have: "
          f"{orphans or 'none'}")
 

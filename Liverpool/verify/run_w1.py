@@ -16,7 +16,14 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 
-load_dotenv(r"C:\Users\slewi\ucws-repo\.env")
+# Resolve .env from both candidate locations rather than one absolute path:
+# it sits at the repo root in this working copy and a level up in the
+# published checkout. Same rule scripts/_db.py enforces for scripts/.
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+for _c in (os.path.join(_REPO, ".env"), os.path.join(os.path.dirname(_REPO), ".env")):
+    if os.path.exists(_c):
+        load_dotenv(_c)
+        break
 W1_ID = "IrrglXLYcphSg5bC"
 
 
@@ -60,6 +67,16 @@ def main():
     cur = conn.cursor()
     run_id = int(os.getenv("RUN_ID")) if os.getenv("RUN_ID") else None
     if run_id:
+        # Only an in-progress run can be resumed. The nodes after LA Signals
+        # insert rather than upsert, so re-running them over a finished run
+        # fails on a unique violation that reads like corruption and is not.
+        cur.execute("SELECT status FROM staging_runs WHERE run_id = %s", (run_id,))
+        row = cur.fetchone()
+        if not row:
+            sys.exit("RUN_ID %s is not in staging_runs." % run_id)
+        if row[0] == "complete":
+            sys.exit("Run %s is already complete. Drop RUN_ID to create a new "
+                     "run, or delete this one from staging_runs first." % run_id)
         print("Resuming open run   -> run_id %s" % run_id)
 
     for name, query in order:

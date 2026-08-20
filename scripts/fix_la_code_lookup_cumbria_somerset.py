@@ -25,18 +25,12 @@ import sys
 
 import psycopg2
 import psycopg2.extras
-from dotenv import load_dotenv
 
-load_dotenv(r"C:\Users\slewi\ucws-repo\.env")
-
-DB_HOST = (os.getenv("PG_HOST") or "localhost").replace("postgres", "localhost")
-DB_CFG = dict(
-    host=DB_HOST,
-    port=int(os.getenv("PG_PORT", "5432")),
-    dbname=os.getenv("PG_DATABASE", "exempt_pipeline"),
-    user=os.getenv("PG_USER", "n8nuser"),
-    password=os.getenv("PG_PASSWORD", ""),
-)
+# This script hardcoded an absolute .env path on one developer's machine and
+# defaulted the user and password, so on any other checkout it would either
+# find no file or connect as a guessed identity. _db resolves .env from both
+# candidate locations and refuses to guess a credential.
+from _db import get_conn  # noqa: E402
 
 EFFECTIVE_DATE = "2023-04-01"
 SOURCE_NOTE = (
@@ -81,7 +75,7 @@ def show(cur, label):
 
 
 def main():
-    conn = psycopg2.connect(**DB_CFG)
+    conn = get_conn()
     conn.autocommit = False
     cur = conn.cursor()
     try:

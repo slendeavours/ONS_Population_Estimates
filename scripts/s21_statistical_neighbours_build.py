@@ -34,27 +34,10 @@ CODE_REMAP = {
 }
 
 
-def load_env():
-    env = {}
-    env_path = Path(__file__).resolve().parent.parent / ".env"
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, v = line.split("=", 1)
-        env[k.strip()] = v.strip()
-    return env
-
-
-def get_conn():
-    env = load_env()
-    password = os.environ.get("PG_PASSWORD") or env.get("PG_PASSWORD")
-    if not password:
-        sys.exit("PG_PASSWORD not set (env var or .env) - refusing to guess")
-    return psycopg2.connect(
-        host=os.environ.get("PG_HOST_OVERRIDE", "localhost"), port=5432,
-        dbname=env.get("PG_DATABASE"),
-        user=os.environ.get("PG_USER") or env.get("PG_USER"), password=password)
+# .env resolution and credentials belong in one place. These scripts each
+# carried their own copy that looked only at the repository root, which is
+# wrong inside the published checkout where .env sits a level up.
+from _db import get_conn  # noqa: E402
 
 
 def halt(msg):
