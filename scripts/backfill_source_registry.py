@@ -432,6 +432,7 @@ SOURCES = [
     ),
     dict(
         source_code="9a",
+        latest_period_loaded="2026-06-01",
         build_script_path="scripts/s9a_drd_build.py",
         verification_checks={"method": "exact reproduction",
                              "rows": 3978,
@@ -483,6 +484,7 @@ SOURCES = [
     ),
     dict(
         source_code="9b",
+        latest_period_loaded="2026-06-01",
         build_script_path="scripts/s9b_crfd_build.py",
         verification_checks={"method": "exact reproduction",
                              "rows": 11248, "periods": 38,
@@ -697,6 +699,7 @@ SOURCES = [
     ),
     dict(
         source_code="17",
+        latest_period_loaded="2025-26",
         source_name="SafeLives MARAC data",
         publisher="SafeLives",
         acquisition_method="manual",
