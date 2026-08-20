@@ -693,7 +693,7 @@ SOURCES = [
             "Standalone: not wired into Workflow 1 and adds no "
             "staging_la_signals column. Reaches the map through its own "
             "hpi_la_prices.json. Covers 295 of 296 English LAs."),
-        latest_period_loaded="April 2026 edition",
+        latest_period_loaded="2026-06-01",
         refresh_tier="B", status="active",
         publish_github=True, publish_map=True,
     ),
