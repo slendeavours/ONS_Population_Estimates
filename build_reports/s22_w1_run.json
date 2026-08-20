@@ -1,0 +1,16 @@
+{
+  "run_id": 12,
+  "rows": 296,
+  "populated": {
+    "ctb_total_dwellings": 296,
+    "ctb_empty_6m_plus": 296,
+    "ctb_empty_homes_premium": 296,
+    "ctb_second_homes": 296,
+    "ctb_lte_rate_pct": 296
+  },
+  "warnings": [
+    "staging_runs sequence was at 10 but staging_la_signals already holds run_id 11; runs 10 and 11 were written by direct SQL with no staging_runs row. Sequence advanced to 11 so the new run does not collide."
+  ],
+  "node5_sql": "build_reports\\s22_w1_node5_revised.sql",
+  "at": "2026-08-13T01:22:43.452767+00:00"
+}

@@ -1,0 +1,234 @@
+{
+  "source_number": 22,
+  "taxbase_year": 2025,
+  "source_numbers_in_use": [
+    "13",
+    "18",
+    "2",
+    "4",
+    "11",
+    "12",
+    "10",
+    "7",
+    "s9b",
+    "21",
+    "17",
+    "3",
+    "19",
+    "20",
+    "14",
+    "6",
+    "s9a",
+    "0",
+    "5",
+    "1",
+    "3b",
+    "w1",
+    "8"
+  ],
+  "src_a": {
+    "release_title": "Council Taxbase 2025 in England",
+    "release_page": "https://www.gov.uk/government/statistics/council-taxbase-2025-in-england",
+    "taxbase_year": 2025,
+    "first_published": "2025-11-06T00:00:00+00:00",
+    "public_updated": "2026-01-21T09:30:00+00:00",
+    "attachment_title": "Council Taxbase: Local authority level data for 2025 (revised)",
+    "url": "https://assets.publishing.service.gov.uk/media/696f605ff6aa424b452e3359/2025_Local_Authority_Drop_Down.xlsx",
+    "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "file_size": 1800242,
+    "path": "C:\\Users\\slewi\\ucws-repo\\data\\raw\\s22_ctb\\2025_Local_Authority_Drop_Down.xlsx",
+    "technical_notes_url": "https://www.gov.uk/government/statistics/council-taxbase-2025-in-england/local-authority-council-taxbase-in-england-2025-technical-notes",
+    "all_attachments": [
+      "Local authority Council Taxbase in England 2025 (revised)",
+      "Local authority Council Taxbase in England 2025: Technical notes (revised)",
+      "Tables 1 to 5: Council Taxbase in England 2025 (revised)",
+      "Council Taxbase: Local authority level data for 2025 (revised)"
+    ]
+  },
+  "src_b": {
+    "release_title": "Live tables on dwelling stock (including vacants)",
+    "release_page": "https://www.gov.uk/government/statistical-data-sets/live-tables-on-dwelling-stock-including-vacants",
+    "attachment_title": "Table 615: vacant dwellings by local authority district: England, from 2004",
+    "url": "https://assets.publishing.service.gov.uk/media/6a2bf816e50716856ed4afdd/Live_Table_615.ods",
+    "content_type": "application/vnd.oasis.opendocument.spreadsheet",
+    "file_size": 311603,
+    "public_updated": "2026-06-25T09:30:03+01:00",
+    "path": "C:\\Users\\slewi\\ucws-repo\\data\\raw\\s22_ctb\\Live_Table_615.ods"
+  },
+  "publication": "Council Taxbase 2025 in England \u2014 Council Taxbase: Local authority level data for 2025 (revised); first published 2025-11-06, revised 2026-01-21",
+  "england": {
+    "total_dwellings": 25817220,
+    "second_homes": 267894,
+    "empty_homes_premium_count": 152928,
+    "empty_total": 542260,
+    "empty_6_months_plus": 309889,
+    "empty_under_6_months": 232371,
+    "unoccupied_exemptions_total": 212004
+  },
+  "reconciliation": [
+    {
+      "figure": "total dwellings",
+      "column": "total_dwellings",
+      "value": 25800000,
+      "quote": "\"In England, there were a total of 25.8 million dwellings as of 10 September 2025\"",
+      "loaded": 25817220,
+      "diff_pct": 0.0667,
+      "ok": true,
+      "target_source": "release page"
+    },
+    {
+      "figure": "empty dwellings (all, excluding exempt)",
+      "column": "empty_total",
+      "value": 542000,
+      "quote": "\"there were 542,000 dwellings recorded as empty for the purposes of council tax as of 10 September 2025\"",
+      "loaded": 542260,
+      "diff_pct": 0.048,
+      "ok": true,
+      "target_source": "release page"
+    },
+    {
+      "figure": "empty homes charged a premium",
+      "column": "empty_homes_premium_count",
+      "value": 153000,
+      "quote": "\"153,000 dwellings being charged an Empty Homes Premium\"",
+      "loaded": 152928,
+      "diff_pct": 0.0471,
+      "ok": true,
+      "target_source": "release page"
+    },
+    {
+      "figure": "second homes",
+      "column": "second_homes",
+      "value": 268000,
+      "quote": "\"There were 268,000 dwellings recorded as second homes for the purposes of council tax\"",
+      "loaded": 267894,
+      "diff_pct": 0.0396,
+      "ok": true,
+      "target_source": "release page"
+    },
+    {
+      "figure": "unoccupied exempt dwellings",
+      "column": "unoccupied_exemptions_total",
+      "value": 212000,
+      "quote": "\"There were 212,000 dwellings that were receiving an exemption that were unoccupied\"",
+      "loaded": 212004,
+      "diff_pct": 0.0019,
+      "ok": true,
+      "target_source": "release page"
+    },
+    {
+      "figure": "empty 6 months plus",
+      "column": "empty_6_months_plus",
+      "value": 309889,
+      "quote": "NOT FOUND on the release page \u2014 no national figure is printed for this measure. Target is the publisher's own England total row in the same workbook.",
+      "loaded": 309889,
+      "diff_pct": 0.0,
+      "ok": true,
+      "target_source": "workbook England row"
+    },
+    {
+      "figure": "empty under 6 months",
+      "column": "empty_under_6_months",
+      "value": 232371,
+      "quote": "NOT FOUND on the release page \u2014 no national figure is printed for this measure. Target is the publisher's own England total row in the same workbook.",
+      "loaded": 232371,
+      "diff_pct": 0.0,
+      "ok": true,
+      "target_source": "workbook England row"
+    }
+  ],
+  "gates": [
+    {
+      "num": 1,
+      "name": "296 rows for the latest taxbase year",
+      "ok": true,
+      "detail": "296 rows for taxbase_year 2025"
+    },
+    {
+      "num": 2,
+      "name": "every lad24cd exists in la_boundaries",
+      "ok": true,
+      "detail": "0 orphan codes"
+    },
+    {
+      "num": 3,
+      "name": "national reconciliation within 0.5%",
+      "ok": true,
+      "detail": "total_dwellings loaded 25,817,220 vs target 25,800,000 (0.0667%); empty_total loaded 542,260 vs target 542,000 (0.048%); empty_homes_premium_count loaded 152,928 vs target 153,000 (0.0471%); second_homes loaded 267,894 vs target 268,000 (0.0396%); unoccupied_exemptions_total loaded 212,004 vs target 212,000 (0.0019%); empty_6_months_plus loaded 309,889 vs target 309,889 (0.0%); empty_under_6_months loaded 232,371 vs target 232,371 (0.0%)"
+    },
+    {
+      "num": 5,
+      "name": "no negative counts, lte_rate_pct within 0-100",
+      "ok": true,
+      "detail": "0 negative CTB counts, 0 negative 615 counts, 0 lte_rate_pct out of range"
+    },
+    {
+      "num": 4,
+      "name": "idempotency: second full load changes nothing",
+      "ok": true,
+      "detail": "before {'empties': (296, 25817220, 309889, 542260, 152928, 267894, 212004, 232371), 'classes': (3256, 212004), 'v615': (7170, 15148635, 5792407), 'breaks': (2,)} / after {'empties': (296, 25817220, 309889, 542260, 152928, 267894, 212004, 232371), 'classes': (3256, 212004), 'v615': (7170, 15148635, 5792407), 'breaks': (2,)}"
+    }
+  ],
+  "table_meta": [
+    {
+      "table": "1.01",
+      "header": "Total",
+      "col": 13,
+      "title": "Table 1.01 Total Number of Dwellings on Valuation List (Line 1)",
+      "field": "total_dwellings"
+    },
+    {
+      "table": "1.11",
+      "header": "Total",
+      "col": 118,
+      "title": "Table 1.11. Number of dwellings in line 7 classed as second homes on 6 October 2025 (Line 11)",
+      "field": "second_homes"
+    },
+    {
+      "table": "1.17",
+      "header": "Total",
+      "col": 178,
+      "title": "Table 1.17. Number of dwellings in line 7 classed as empty and being charged the Empty Homes Premium on 6 October 2025 (Line 14)",
+      "field": "empty_homes_premium_count"
+    },
+    {
+      "table": "1.18",
+      "header": "Total",
+      "col": 188,
+      "title": "Table 1.18. Total number of dwellings in line 7 classed as empty on 6 October 2025 (Line 15)",
+      "field": "empty_total"
+    },
+    {
+      "table": "1.19",
+      "header": "Total",
+      "col": 198,
+      "title": "Table 1.19. Number of dwellings that are classed as empty on 6 October 2025 and have been for more than 6 months (Line 16)",
+      "field": "empty_6_months_plus"
+    },
+    {
+      "table": "2.01",
+      "header": "Class B ... Class W",
+      "col": "5-29",
+      "title": "Table 2.01. Number of dwellings on the Valuation List on 10 September 2025 that were in exempt classes B, D to W",
+      "field": "exemption classes"
+    }
+  ],
+  "recodes_applied": [
+    {
+      "published": "E08000038",
+      "lad24cd": "E08000016",
+      "la_name": "Barnsley"
+    },
+    {
+      "published": "E08000039",
+      "lad24cd": "E08000019",
+      "la_name": "Sheffield"
+    }
+  ],
+  "exemption_classes_built": true,
+  "started_at": "2026-08-13T01:18:50.971015+00:00",
+  "warnings": [
+    "Barnsley published by MHCLG as E08000038, resolved to E08000016 via la_code_lookup (change_type 'recode', 1 April 2025)",
+    "Sheffield published by MHCLG as E08000039, resolved to E08000019 via la_code_lookup (change_type 'recode', 1 April 2025)"
+  ]
+}

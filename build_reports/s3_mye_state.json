@@ -1,0 +1,56 @@
+{
+  "mid_year": 2025,
+  "boundary_year": 2023,
+  "edition": "Mid-2025: 2023 local authority boundaries",
+  "release_date": "2026-07-28",
+  "landing_page": "https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/estimatesofthepopulationforenglandandwales",
+  "edition_page": "https://www.ons.gov.uk/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/estimatesofthepopulationforenglandandwales/mid20252023localauthorityboundaries",
+  "url": "https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/estimatesofthepopulationforenglandandwales/mid20252023localauthorityboundaries/mye25tablesew.xlsx",
+  "filename": "mye25tablesew.xlsx",
+  "path": "C:\\Users\\slewi\\ucws-repo\\data\\raw\\s3_mye\\mye25tablesew.xlsx",
+  "size": 976621,
+  "gates": [
+    {
+      "num": 1,
+      "name": "296 England rows for the new reference year",
+      "ok": true,
+      "detail": "296 rows at reference_year 2025"
+    },
+    {
+      "num": 2,
+      "name": "every lad24cd exists in la_boundaries",
+      "ok": true,
+      "detail": "0 orphan codes"
+    },
+    {
+      "num": 3,
+      "name": "England total reconciles to the publisher's own England row",
+      "ok": true,
+      "detail": "loaded 58,834,812 vs published 58,834,812 (0.0000%)"
+    },
+    {
+      "num": 4,
+      "name": "no non-positive populations",
+      "ok": true,
+      "detail": "0 rows"
+    },
+    {
+      "num": 5,
+      "name": "the previous vintage is retained, not overwritten",
+      "ok": true,
+      "detail": "296 rows still at reference_year 2024"
+    },
+    {
+      "num": 6,
+      "name": "second load changes nothing",
+      "ok": true,
+      "detail": "(592, 117454913) -> (592, 117454913)"
+    }
+  ],
+  "england_published": 58834812,
+  "wales_rows_skipped": 23,
+  "records": 296,
+  "previous_year": 2024,
+  "log_id": 86,
+  "started_at": "2026-08-13T21:11:30.338245+00:00"
+}
