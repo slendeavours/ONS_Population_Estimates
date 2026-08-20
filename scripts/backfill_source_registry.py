@@ -154,7 +154,7 @@ SOURCES = [
             "own England row."),
         latest_period_loaded="Mid-2025: 2023 local authority boundaries",
         refresh_tier="B", status="active",
-        publish_github=True, publish_map=False,
+        publish_github=True, publish_map=True,
     ),
     dict(
         source_code="3b",
@@ -363,7 +363,7 @@ SOURCES = [
             "LAD24 vintages, so the loaded data cannot adjudicate it alone. "
             + CAUTIOUS),
         refresh_tier="C", status="active",
-        publish_github=True, publish_map=False,
+        publish_github=True, publish_map=True,
     ),
     dict(
         source_code="8",
@@ -597,7 +597,7 @@ SOURCES = [
                  "Northamptonshire correctly carry s114_flag = false."],
         completeness_note=("No source documentation file exists. " + CAUTIOUS),
         refresh_tier="C", status="active",
-        publish_github=True, publish_map=False,
+        publish_github=True, publish_map=True,
     ),
     dict(
         source_code="13",

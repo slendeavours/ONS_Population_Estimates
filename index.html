@@ -157,6 +157,7 @@
   #legend-gradient-bar { height: 5px; border-radius: 2px; margin-bottom: 2px; }
   #legend-labels { display: flex; justify-content: space-between; font-size: 9px; color: #C0B9AE; margin-bottom: 3px; }
   #legend-nodata { display: flex; align-items: center; gap: 4px; font-size: 9px; color: #8C8880; }
+  #legend-note { display: none; font-size: 9px; line-height: 1.4; color: #8C8880; margin-top: 4px; max-width: 190px; }
   .nodata-dot { width: 6px; height: 6px; border-radius: 50%; background: #3a3a3a; border: 1px solid #666; display: inline-block; }
   .lg-stress { display: flex; flex-direction: column; gap: 1px; margin-top: 3px; font-size: 9px; color: #8C8880; }
   .lg-stress i { width: 6px; height: 0; border-top: 2px solid; display: inline-block; margin-right: 4px; vertical-align: middle; }
@@ -225,7 +226,7 @@
       <div class="sb-subtitle">England — Exempt Housing Investment Intelligence</div>
       <div class="badges">
         <span class="badge">296 LAs</span>
-        <span class="badge">17 Gov Sources</span>
+        <span class="badge">15 Gov Sources</span>
         <span class="badge solid">Pipeline Verified</span>
       </div>
     </div>
@@ -258,15 +259,15 @@
 
     <div class="sb-section">
       <div class="sources-head" id="sources-head">
-        <div class="sb-label" style="margin-bottom:0;">Verified Data Sources (18)</div>
+        <div class="sb-label" style="margin-bottom:0;">Verified Data Sources (15)</div>
         <span class="arrow">▶</span>
       </div>
       <div class="sources-body">
-        MHCLG Statutory Homelessness · MHCLG RO4 Expenditure · ONS Mid-Year Population ·
-        DfE Care Leavers · MHCLG IMD 2025 · DWP Stat-Xplore ·
-        MHCLG Rough Sleeping · SafeLives MARAC · MHCLG LAHS · VOA LHA Rates ·
-        MoJ Offender Stats · OHID Substance Misuse · CQC Providers · NHS Discharge ·
-        Land Registry HPI · ONS Boundaries · ONS Census 2021
+        MHCLG Statutory Homelessness · MHCLG RO4 Expenditure · MHCLG LAHS Housing Register ·
+        MHCLG Rough Sleeping · MHCLG IMD 2025 · MHCLG Council Taxbase ·
+        MHCLG EFS and S.114 Notices · ONS Mid-Year Population · ONS Open Geography Portal ·
+        DfE Care Leavers · DWP Stat-Xplore HB · VOA LHA Rates ·
+        CQC Care Directory · Land Registry UK HPI · SafeLives MARAC
       </div>
     </div>
 
@@ -288,6 +289,7 @@
       <span class="nodata-dot"></span>
       <span>No data</span>
     </div>
+    <div id="legend-note"></div>
     <div class="lg-stress">
       <span><i style="border-color:#ef4444;"></i>S114</span>
       <span><i style="border-color:#f97316;"></i>EFS</span>
@@ -335,20 +337,20 @@ var LAYER_COLOR_SCALES = {
 var NO_DATA_COLOR = '#333333';
 
 var LAYERS = [
-  { key: 'ta',    dot: '#4ade80', name: 'TA Households',              desc: 'Temporary accommodation demand',      field: 'ta_households_current',       reversed: false, minLabel: 'Lower demand', maxLabel: 'Higher demand' },
-  { key: 'hbsa',  dot: '#3B82F6', name: 'HB Specified Accommodation', desc: 'HB claimants in specified accommodation', field: 'hb_sa_claimants_latest', reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
+  { key: 'ta',    dot: '#4ade80', name: 'TA Households',              desc: 'Temporary accommodation (to Mar 2026)',      field: 'ta_households_current',       reversed: false, minLabel: 'Lower demand', maxLabel: 'Higher demand' },
+  { key: 'hbsa',  dot: '#3B82F6', name: 'HB Specified Accommodation', desc: 'HB specified accommodation (Feb 2026)', field: 'hb_sa_claimants_latest', reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
   { key: 'spend', dot: '#f59e0b', name: 'Homelessness Spend',         desc: 'Total annual spend (2024-25)',        field: 'ro4_total_homelessness_000',  reversed: false, money: true, minLabel: 'Lower spend', maxLabel: 'Higher spend' },
-  { key: 'reg',   dot: '#f97316', name: 'Housing Register',           desc: 'Social housing waiting lists',        field: 'housing_register',            reversed: false, minLabel: 'Smaller', maxLabel: 'Larger' },
-  { key: 'care',  dot: '#ef4444', name: 'Care Leavers',               desc: 'Semi-independent housing need',       field: 'care_leavers_semi_indep',     reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
-  { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing cases',              field: 'marac_cases',                 reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
-  { key: 'rs',    dot: '#06b6d4', name: 'Rough Sleeping',             desc: 'Single-night snapshot',               field: 'rough_sleeping_current',      reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
+  { key: 'reg',   dot: '#f97316', name: 'Housing Register',           desc: 'Social housing waiting lists (2025)',        field: 'housing_register',            reversed: false, minLabel: 'Smaller', maxLabel: 'Larger' },
+  { key: 'care',  dot: '#ef4444', name: 'Care Leavers',               desc: 'Semi-independent need, upper tier (to Mar 2025)',  field: 'care_leavers_semi_indep',     reversed: false, minLabel: 'Fewer', maxLabel: 'More', note: 'Corporate parenting is an upper-tier duty. Districts within a county are not shaded because the duty is not theirs, not because data is missing.' },
+  { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing, force area (2025-26)',  field: 'marac_cases',                 reversed: false, minLabel: 'Lower', maxLabel: 'Higher', note: 'SafeLives publishes by police force area, not by local authority. Every authority in a force area carries the same force-wide total, so these are not authority-level counts.' },
+  { key: 'rs',    dot: '#06b6d4', name: 'Rough Sleeping',             desc: 'Single-night snapshot (autumn 2025)',               field: 'rough_sleeping_current',      reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
   { key: 'imd',   dot: '#a3e635', name: 'Deprivation (IMD)',          desc: 'Index of Multiple Deprivation 2025', field: 'imd_rank_of_average_rank',    reversed: true, minLabel: 'More deprived', maxLabel: 'Less deprived' },
-  { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate (£/week)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
-  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate (£/week)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
+  { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate, £/week (2026-27)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
+  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate, £/week (2026-27)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
   // S11 — the pipeline's only supply-side layer, visually separated in the sidebar
   { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, minLabel: 'Fewer', maxLabel: 'More' },
   // S15 — house prices (supply-side context)
-  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI (all property)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' },
+  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI, all property (Jun 2026)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' },
   // S22 — long-term empty rate. The only empty homes layer: total empties
   // bundles second homes and short-term turnover, so it is held in the
   // database and not mapped.
@@ -656,8 +658,8 @@ function openPanel(p) {
     row('HB Specified Accom', esc(fmtNum(p.hb_sa_claimants_latest))) +
 
     '<div class="pn-section">Cohort Demand</div>' +
-    row('Care Leavers', esc(fmtNum(p.care_leavers_semi_indep))) +
-    row('MARAC Cases', esc(fmtNum(p.marac_cases))) +
+    row('Care Leavers (upper tier)', esc(fmtNum(p.care_leavers_semi_indep))) +
+    row('MARAC Cases (force area)', esc(fmtNum(p.marac_cases))) +
     row('MARAC Rate (per 10k)', esc(typeof p.marac_rate_per_10k === 'number' ? p.marac_rate_per_10k.toFixed(1) : '—')) +
 
     '<div class="pn-section">Expenditure (2024-25)</div>' +
@@ -757,6 +759,9 @@ function updateLegend() {
     maxEl.textContent = '';
     document.getElementById('legend-labels').style.display = 'none';
   }
+  var noteEl = document.getElementById('legend-note');
+  noteEl.textContent = layer.note || '';
+  noteEl.style.display = layer.note ? 'block' : 'none';
 }
 
 /* ---------- Postcode lookup ---------- */
