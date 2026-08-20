@@ -829,8 +829,13 @@ SOURCES = [
         publication_window="As supplied",
         geography_level="LAD24",
         confidential=True, publish_github=False, publish_map=False,
+        latest_period_loaded="2026-08-04",
         completeness_note=(
-            "Detail is deliberately withheld — commercial in confidence, held "
+            "Three editions are held. The most recent expanded coverage from "
+            "119 to 125 areas, mapping to 155 local authorities against 150 "
+            "before, and changed no rate: every area carried over is priced "
+            "identically to the prior edition. Detail is deliberately "
+            "withheld — commercial in confidence, held "
             "in exempt_pipeline only and never exported to the public "
             "repository, the signals JSON or the map. The nulls in this row "
             "are policy, not documentation gaps. The counterparty name "
