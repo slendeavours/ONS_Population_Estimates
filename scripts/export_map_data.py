@@ -12,9 +12,18 @@ This script reproduces the export deterministically:
   data/boundaries/la_boundaries.geojson         geometry + the same properties
   data/signals/latest.json                      run metadata
 
-hb_sa_claimants_latest is NOT a staging_la_signals column. It is joined from
-la_hb_accom_type_caseload (S8b), SA category, latest available month. That
-join is the field's only provenance and is why a naive export dropped it.
+Two exported fields are NOT staging_la_signals columns and must be joined:
+
+  hb_sa_claimants_latest   la_hb_accom_type_caseload (S8b), SA, latest month
+  avg_price_all            la_house_prices (S15), latest period
+  annual_change_pct        la_house_prices (S15), latest period
+
+Those joins are each field's only provenance, which is why a naive export
+dropped them. Both S15 fields were missing entirely until 2026-08-20: the
+map's "Avg House Price" layer reads avg_price_all, so that layer had been
+rendering nothing, and the popup's "Annual Change" row always showed a dash.
+Both are named in the hard-stop check at the end of main() so a future export
+cannot drop them silently.
 
 Writes files only. Adds no map layer; index.html decides what renders.
 """
@@ -107,7 +116,8 @@ def main():
 
     # hb_sa_claimants_latest is not a staging column; join it from S8b.
     cur.execute("""
-        SELECT s.*, h.claimants AS hb_sa_claimants_latest
+        SELECT s.*, h.claimants AS hb_sa_claimants_latest,
+               hp.avg_price_all, hp.annual_change_pct
           FROM staging_la_signals s
           LEFT JOIN (
                 SELECT lad24cd, claimants
@@ -117,6 +127,11 @@ def main():
                                   FROM la_hb_accom_type_caseload
                                  WHERE accom_type = 'SA')
           ) h ON h.lad24cd = s.lad24cd
+          LEFT JOIN (
+                SELECT lad24cd, avg_price_all, annual_change_pct
+                  FROM la_house_prices
+                 WHERE period = (SELECT MAX(period) FROM la_house_prices)
+          ) hp ON hp.lad24cd = s.lad24cd
          WHERE s.run_id = %s
          ORDER BY s.la_name
     """, (run_id,))
@@ -132,6 +147,9 @@ def main():
                 v = float(v)
             out[c] = v
         out["hb_sa_claimants_latest"] = r["hb_sa_claimants_latest"]
+        for c in ("avg_price_all", "annual_change_pct"):
+            v = r[c]
+            out[c] = float(v) if v is not None else None
         return out
 
     generated = datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -170,9 +188,9 @@ def main():
          "feature_count": len(features)}, indent=2), encoding="utf-8")
 
     print(f"run_id                 : {run_id}")
-    print(f"signal columns exported: {len(signal_cols) + 1} "
+    print(f"signal columns exported: {len(signal_cols) + 3} "
           f"({len(signal_cols)} from staging_la_signals + "
-          f"hb_sa_claimants_latest joined from S8b)")
+          f"hb_sa_claimants_latest from S8b + 2 from S15)")
     print(f"signals rows           : {len(rows)}")
     print(f"geojson features       : {len(features)}")
     for p in (signals_path, gj_path, latest_path):
@@ -181,7 +199,8 @@ def main():
     missing = [c for c in ("drd_bed_days_lost", "drd_pct_delayed_1plus_days",
                            "crfd_days", "pip_total_claimants",
                            "pip_enhanced_daily_living", "pip_rate_per_1000",
-                           "hb_sa_claimants_latest",
+                           "hb_sa_claimants_latest", "avg_price_all",
+                           "annual_change_pct",
                            "ctb_total_dwellings", "ctb_empty_6m_plus",
                            "ctb_empty_homes_premium", "ctb_second_homes",
                            "ctb_lte_rate_pct")
