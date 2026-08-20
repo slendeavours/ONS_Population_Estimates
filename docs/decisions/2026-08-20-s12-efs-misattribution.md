@@ -37,7 +37,7 @@ code and none is expected in a LAD-keyed table, so their absence is correct.
 
 None. Liverpool has never received Exceptional Financial Support and appears on
 no edition of the page, so `efs_flag` was false before and remains false. The
-LandAid paper omits the fiscal-risk paragraph on that basis, correctly.
+An external paper omits the fiscal-risk paragraph on that basis, correctly.
 
 The error mattered for any national or London comparison, where one borough's
 distress was recorded against a neighbouring borough.

@@ -66,7 +66,7 @@ confidential and is excluded by the same query that produces the count.
 Liverpool, Sefton, St Helens and Wirral all carried 5,504, because that is the
 Merseyside total. The map said nothing about this, so a reader would take it as
 Liverpool's own count. The layer now states it in the legend and the popup row
-is labelled "MARAC Cases (force area)". This mirrors the caveat the LandAid
+is labelled "MARAC Cases (force area)". This mirrors the caveat any external
 paper is required to carry.
 
 **Care leaver accommodation is an upper-tier duty.** 132 of 296 districts carry

@@ -8,7 +8,7 @@ download, no login required:
 https://www.ons.gov.uk/peoplepopulationandcommunity/wellbeing/datasets/clusteringsimilarlocalauthoritiesandstatisticalnearestneighboursintheuk
 
 Connection: Postgres exempt_pipeline on localhost:5432 (PG_HOST/PG_USER/PG_PASSWORD
-from .env - the established host-side access pattern, see scripts/spb_extract.py).
+from .env - resolved by scripts/_db.py, the reference implementation).
 """
 import os
 import sys

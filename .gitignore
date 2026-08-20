@@ -26,14 +26,14 @@ outputs/*
 !outputs/node_docs/
 SKILLS/
 
-# Liverpool assurance work. verify/src holds published source files pulled down
-# for the 2026-08-20 reconciliation: 63MB, re-fetchable from the publisher, and
-# ignored on the same basis as data/raw. outputs holds the rendered paper, which
-# is regenerated from extract.py and build_paper.py. The scripts, template and
-# extracted data.json are tracked, because those are the source.
-Liverpool/verify/src/
-# Liverpool paper output goes to ucws-repo/outputs, outside this repository
-# entirely, so no rule is needed for it here.
+# Source assurance downloads. scripts/verify/src holds published source files
+# pulled down for the 2026-08-20 reconciliation: 63MB, re-fetchable from the
+# publisher, and ignored on the same basis as data/raw.
+scripts/verify/src/
+# W1 node SQL exported from n8ndb for inspection. n8ndb is the only source of
+# truth for node queries; a checked-in copy silently goes stale, which cost a
+# long debugging session on 2026-08-20. Never commit one.
+scripts/verify/w1_live/
 
 # S20 commercial rate card. The registry marks source 20 confidential with
 # publish_github false: the figures are held in exempt_pipeline only and must

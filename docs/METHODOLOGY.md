@@ -98,7 +98,7 @@ Two MHCLG publishers, both resolved from their landing pages at run time. No fil
 pre-correction values for rough sleeping, care leavers, MARAC and both NHS
 discharge measures. Anything reading staging rather than the base tables was
 serving those old numbers, including the exported signals JSON the demand map
-loads. The LandAid Liverpool paper was rebuilt to read base tables directly for
+loads. An external paper built on this data was rebuilt to read base tables for
 this reason.
 
 **Run 18 (2026-08-20) supersedes it** and carries every correction: 269

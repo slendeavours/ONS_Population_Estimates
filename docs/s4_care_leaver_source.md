@@ -32,7 +32,7 @@ Liverpool in the year to March 2025 that is 188 + 10 + 10 = 208. Holding the two
 means any output can show the split rather than leaving the 20-person gap between the two
 measures unexplained.
 
-**Where each measure is used.** External documents (the LandAid paper, its summary and deck)
+**Where each measure is used.** External documents built on this data
 quote `semi_independent_published` and state the breakdown in words. The demand map layer shows
 `semi_independent`, the wider aggregate, which is the pipeline's data-layer measure. The two
 therefore differ by design, and each product says which it uses.
