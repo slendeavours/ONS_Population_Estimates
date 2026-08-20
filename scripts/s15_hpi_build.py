@@ -17,13 +17,9 @@ def _require_env(name):
                  f"or .env. This script will not guess a credential.")
     return value
 
-DB_CFG = dict(
-    host=os.environ.get("PG_HOST", "localhost"),
-    port=int(os.environ.get("PG_PORT", "5432")),
-    dbname=os.environ.get("PG_DATABASE", "exempt_pipeline"),
-    user=_require_env("PG_USER"),
-    password=_require_env("PG_PASSWORD"),
-)
+# This script never loaded .env at all; it read os.environ only, so it worked
+# from a shell that happened to have the variables exported and nowhere else.
+from _db import get_conn  # noqa: E402
 
 EDITION = "April 2026"
 _TMP = os.path.join(os.environ.get("TEMP", os.environ.get("TMP", "/tmp")), "s15_hpi")
@@ -99,7 +95,7 @@ def load_csv(path):
 def main():
     started_at = datetime.datetime.now(datetime.timezone.utc)
 
-    conn = psycopg2.connect(**DB_CFG)
+    conn = get_conn()
     conn.autocommit = False
     cur = conn.cursor()
 

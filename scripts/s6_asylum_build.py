@@ -28,9 +28,12 @@ from dotenv import load_dotenv
 # Resolved relative to this file so the script is portable and no local path
 # is baked into a public repository. Repository root first, then its parent,
 # which is where the shared .env lives.
+# _HERE was the repository root while this script sat there; it has been
+# scripts/ since the 2026-08-20 tidy, so the levels shifted by one and .env
+# stopped resolving.
 _HERE = Path(__file__).resolve().parent
-load_dotenv(_HERE / ".env")
 load_dotenv(_HERE.parent / ".env")
+load_dotenv(_HERE.parent.parent / ".env")
 
 # ---------------------------------------------------------------------------
 # Configuration

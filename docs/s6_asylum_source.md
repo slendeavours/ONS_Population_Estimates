@@ -239,7 +239,7 @@ misattribute.
 
 ## Refresh procedure
 
-1. Run `python s6_asylum_build.py` from the repository root. Discovery,
+1. Run `python scripts/s6_asylum_build.py` from the repository root. Discovery,
    download, parse, resolve, validate, upsert and logging all happen in one
    transaction.
 2. The script discovers the current edition from both landing pages. No URL or
@@ -247,13 +247,13 @@ misattribute.
 3. All 13 verification checks must pass. Any failure rolls the whole
    transaction back and exits non-zero — partial or suspect data is never left
    behind.
-4. Update the anchor constants in `s6_asylum_verify.py` when a new edition
+4. Update the anchor constants in `scripts/s6_asylum_verify.py` when a new edition
    lands: `ANCHOR_PERIOD`, `ANCHORS_ENGLAND`, `ANCHORS_NON_ENGLAND`,
    `ANCHOR_UK_TOTAL`, `PUBLISHED_LA_UNIVERSE`, `PUBLISHED_UNDER_100`. Source
    them from that release's "How many people are in the UK asylum system?"
    narrative page.
 5. If a new series break appears, add it to `SERIES_BREAKS` in
-   `s6_asylum_build.py` and update the first fully comparable period here.
+   `scripts/s6_asylum_build.py` and update the first fully comparable period here.
 
 ## Scope
 

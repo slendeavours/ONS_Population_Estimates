@@ -17,7 +17,7 @@ Two query series using the recodes pattern:
 1. **Total caseload** — measure × geography × date (no daily living filter)
 2. **Enhanced daily living** — measure × geography × date × daily living award type (Enhanced only)
 
-Representative query bodies saved to repo root: `s19_query_total.json`, `s19_query_enhanced_dl.json`.
+Representative query bodies saved to `scripts/`: `s19_query_total.json`, `s19_query_enhanced_dl.json`.
 
 ## Logic
 1. Build query with explicit member URI maps in `recodes`; dimensions reference field IDs only (not valueset URIs — avoids DUPLICATE_RECODES error)

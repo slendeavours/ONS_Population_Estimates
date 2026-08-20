@@ -208,8 +208,8 @@ map layer, no composite index. Same pattern as S19 PIP.
 
 ## Files
 
-- ETL script: `ONS_Population_Estimates/s6_asylum_build.py`
-- Verification suite: `ONS_Population_Estimates/s6_asylum_verify.py`
+- ETL script: `scripts/s6_asylum_build.py`
+- Verification suite: `scripts/s6_asylum_verify.py`
 - Source summary: `docs/s6_asylum_source.md`
 - Anomalies (regenerated each run): `docs/s6_source_anomalies.md`
 - Decision record: `docs/decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md`

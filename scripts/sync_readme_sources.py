@@ -73,7 +73,7 @@ def build_block():
           "`index.html` renders it as a choropleth. They are different "
           "states: S19 PIP is in the signals JSON with no map layer, and S15 "
           "house prices are a map layer fed by their own "
-          "`hpi_la_prices.json` with no signals column. A source that is "
+          "the signals export with no staging column. A source that is "
           "\"no\" in both columns is loaded in Postgres and queryable there.",
           "",
           END]

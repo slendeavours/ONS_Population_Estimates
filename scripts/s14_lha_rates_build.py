@@ -30,17 +30,13 @@ from math import radians, cos, sin, asin, sqrt
 # CONFIGURATION
 # ============================================================================
 
-# Load .env file if it exists
-env_file = Path('.env')
-if env_file.exists():
-    for line in env_file.read_text().split('\n'):
-        line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            key, value = line.split('=', 1)
-            key = key.strip()
-            value = value.strip()
-            if key not in os.environ:
-                os.environ[key] = value
+# .env was resolved relative to the working directory, so this script found
+# credentials only when run from one particular folder, and defaulted the user
+# when it did not. _db resolves both candidate locations and refuses to guess.
+from _db import ENV, get_conn  # noqa: E402
+
+for _k, _v in ENV.items():
+    os.environ.setdefault(_k, _v)
 
 DWP_CSV_URL = "https://assets.publishing.service.gov.uk/media/69d654a2e1430e837a86f64a/england-rates-2026-to-2027.csv"
 VOA_BRMA_PAGE = "https://www.gov.uk/government/publications/broad-rental-market-area-boundary-layer-for-geographical-information-system-gis-applicable-may-2020"
@@ -115,15 +111,7 @@ def fuzzy_match_ratio(s1: str, s2: str) -> float:
 
 def get_db_connection():
     """Get Postgres connection."""
-    if not DB_PASSWORD:
-        raise ValueError("EXEMPT_PIPELINE_DB_PASSWORD not set. Prompt user.")
-    return psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASSWORD
-    )
+    return get_conn()
 
 def fetch_html(url: str) -> str:
     """Fetch HTML from URL."""

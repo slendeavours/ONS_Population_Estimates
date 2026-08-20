@@ -54,7 +54,7 @@ SIGNAL_SOURCE = [
 ]
 
 # Map layer fields that are NOT staging_la_signals columns. S15 reaches the
-# map through its own hpi_la_prices.json, so it has a layer and no staging
+# map through the signals export, so it has a layer and no staging
 # column — the mirror image of S19, which has staging columns and no layer.
 NON_SIGNAL_LAYER_SOURCE = {
     "avg_price_all": "15",

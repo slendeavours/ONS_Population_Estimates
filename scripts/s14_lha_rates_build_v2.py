@@ -26,15 +26,25 @@ from math import radians, cos, sin, asin, sqrt
 # LOAD ENV FILE
 # ============================================================================
 
-env_file = Path('.env')
-if env_file.exists():
-    for line in env_file.read_text().split('\n'):
-        line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            key, value = line.split('=', 1)
-            key, value = key.strip(), value.strip()
-            if key not in os.environ:
-                os.environ[key] = value
+# This file is 425 lines of top-level script with no main guard, so importing
+# it runs the whole S14 build and rebuilds the tables. That happened by accident
+# on 2026-08-20 during a routine import check. Wrapping the flow in a function
+# would mean re-indenting the entire file; refusing the import is four lines and
+# turns a silent rebuild into a loud error.
+if __name__ != "__main__":
+    raise ImportError(
+        "s14_lha_rates_build_v2.py is a script, not a module: importing it "
+        "rebuilds the S14 tables. Run it as "
+        "`python scripts/s14_lha_rates_build_v2.py`."
+    )
+
+# .env was resolved relative to the working directory, so this script found
+# credentials only when run from one particular folder, and defaulted the user
+# when it did not. _db resolves both candidate locations and refuses to guess.
+from _db import ENV, get_conn  # noqa: E402
+
+for _k, _v in ENV.items():
+    os.environ.setdefault(_k, _v)
 
 # ============================================================================
 # CONFIGURATION
@@ -56,12 +66,7 @@ print(f"\nDatabase: {DB_USER}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
 # ============================================================================
 
 def get_db_connection():
-    if not DB_PASSWORD:
-        raise ValueError("Database password not found")
-    return psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, database=DB_NAME,
-        user=DB_USER, password=DB_PASSWORD
-    )
+    return get_conn()
 
 def haversine_km(lon1, lat1, lon2, lat2):
     lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])

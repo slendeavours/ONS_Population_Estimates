@@ -152,9 +152,17 @@ def main():
             out[c] = float(v) if v is not None else None
         return out
 
+    # The HPI period travels with the data. index.html shows it beside the
+    # annual change, and previously read it from a separate hpi_la_prices.json
+    # fetched off raw.githubusercontent. That file went stale and, being merged
+    # after the signals, silently overwrote these columns with older figures.
+    cur.execute("SELECT to_char(MAX(period), 'YYYY-MM') AS p FROM la_house_prices")
+    hpi_period = cur.fetchone()["p"]
+
     generated = datetime.datetime.now(datetime.timezone.utc).isoformat()
     meta = {"generated_at": generated, "run_id": str(run_id),
-            "feature_count": str(len(rows)), "source": "exempt_pipeline"}
+            "feature_count": str(len(rows)), "source": "exempt_pipeline",
+            "hpi_period": hpi_period}
 
     signals_path = REPO / "data" / "signals" / "staging_la_signals_latest.json"
     signals_path.write_text(json.dumps(

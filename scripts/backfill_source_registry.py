@@ -300,10 +300,10 @@ SOURCES = [
         join_path=("Code-first cascade: direct match against la_boundaries, "
                    "then forward via la_code_lookup. Name-based matching is "
                    "never reached."),
-        build_script_path="s6_asylum_build.py",
+        build_script_path="scripts/s6_asylum_build.py",
         node_docs_path="docs/nodes/s6_node1..s6_node9",
         source_doc_path="docs/s6_asylum_source.md",
-        verification_checks={"script": "s6_asylum_verify.py", "checks": 13,
+        verification_checks={"script": "scripts/s6_asylum_verify.py", "checks": 13,
                              "gate": "any failure rolls the whole transaction "
                                      "back and exits non-zero"},
         caveats=[
@@ -637,9 +637,11 @@ SOURCES = [
                  "weekly as monthly * 12 / 52.",
                  "152 BRMAs, England only — Scotland, Wales and Northern "
                  "Ireland are excluded."],
+        build_script_path="scripts/s14_lha_rates_build.py",
         completeness_note=(
-            "The build script s14_lha_rates_build.py is not in the published "
-            "tree, so build_script_path is null here. refresh_tier is C "
+            "The build script moved into scripts/ with the 2026-08-20 root "
+            "tidy and is recorded here now; it was previously null because the "
+            "script sat loose at the repository root. refresh_tier is C "
             "because the edition URL is supplied by hand, not because the "
             "source is unimportant."),
         latest_period_loaded="2026-27",
@@ -671,12 +673,12 @@ SOURCES = [
         target_table="la_house_prices", geography_level="LAD24",
         join_path=("lad24cd via la_code_lookup, plus hard recodes for "
                    "post-boundary-change Barnsley and Sheffield."),
-        build_script_path="s15_hpi_build.py",
+        build_script_path="scripts/s15_hpi_build.py",
         node_docs_path=("s19_node1_fetch_collection_page.md .. "
                         "s19_node6_log_run.md (misnamed: these are S15's node "
                         "docs, left over from the S19 to S15 renumbering)"),
         source_doc_path="s15_hpi_source.md",
-        verification_checks={"script": "s15_hpi_build.py", "checks": 6,
+        verification_checks={"script": "scripts/s15_hpi_build.py", "checks": 6,
                              "gate": "all checks must PASS before the run is "
                                      "logged; on FAIL the script exits 1 and "
                                      "no log entry is written"},
@@ -692,7 +694,8 @@ SOURCES = [
         completeness_note=(
             "Standalone: not wired into Workflow 1 and adds no "
             "staging_la_signals column. Reaches the map through its own "
-            "hpi_la_prices.json. Covers 295 of 296 English LAs."),
+            "the signals export, joined at MAX(period). Covers 295 of 296 "
+            "English LAs."),
         latest_period_loaded="2026-06-01",
         refresh_tier="B", status="active",
         publish_github=True, publish_map=True,

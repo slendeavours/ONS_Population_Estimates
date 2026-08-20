@@ -506,10 +506,10 @@ def build_and_fetch(discovery, geo):
         },
         "dimensions": [[geo_field_id], [date_field_id], [dl_field_id]],
     }
-    (REPO_ROOT / "s19_query_total.json").write_text(
+    (REPO_ROOT / "scripts" / "s19_query_total.json").write_text(
         json.dumps(q1_sample, indent=2), encoding="utf-8"
     )
-    (REPO_ROOT / "s19_query_enhanced_dl.json").write_text(
+    (REPO_ROOT / "scripts" / "s19_query_enhanced_dl.json").write_text(
         json.dumps(q2_sample, indent=2), encoding="utf-8"
     )
     print(f"  Saved query JSONs (sample of first {BATCH_SIZE} LAs)")

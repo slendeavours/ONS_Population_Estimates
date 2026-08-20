@@ -261,7 +261,7 @@ knowing to write the join.
 ## 11. `la_housing_register.reasonable_preference` — schema artefact, not a load bug
 
 NULL in all 3,256 stored rows because it is **empty in the source extract too**
-— all 3,471 rows of `lahs_waiting_list_2015_2025.csv`, every year 2015–2025.
+— all 3,471 rows of `data/reference/lahs_waiting_list_2015_2025.csv`, every year 2015–2025.
 The column was declared in the extraction and never populated. Nothing was lost
 in loading. Whether LAHS publishes a reasonable-preference figure that could
 fill it is a separate question and has not been established.

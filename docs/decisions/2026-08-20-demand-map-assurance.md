@@ -25,19 +25,34 @@ so no copy of a node query can be committed and later be mistaken for current.
 Backups under `build_reports/` remain provenance records of what a node was at a
 point in time. They are not to be executed.
 
-## 2. The map's house price layer had never worked
+## 2. House prices came from a second, stale source
 
-`avg_price_all` is not a `staging_la_signals` column; it lives in
-`la_house_prices` and had to be joined on export, exactly as
-`hb_sa_claimants_latest` is joined from S8b. It never was. The "Avg House Price"
-layer read a field that was not in either exported file, so it rendered nothing.
-`annual_change_pct` was missing for the same reason, so the popup's "Annual
-Change" row always showed a dash.
+**Correction.** This section first recorded that the house price layer "had
+never worked" because `avg_price_all` was absent from both exported files. That
+was wrong, and the error was mine: I searched `index.html` for relative `data/`
+paths and missed a third fetch to an absolute URL.
 
-Both are now joined from `la_house_prices` at MAX(period) and, more importantly,
-both are named in the hard-stop check at the end of `export_map_data.py`. That
-guard already existed; the two fields had simply never been added to it, which
-is why a silent omission survived. 293 of 296 authorities carry a price.
+The layer worked. It was fed by `hpi_la_prices.json` at the repository root,
+pulled from `raw.githubusercontent.com` at runtime. The real defect was worse.
+That file was generated 2026-07-14 from the 2026-04 edition and had not been
+regenerated since, and because it was merged **after** the signals it silently
+overwrote the columns it shared with them. Liverpool showed £183,615 and 3.6 per
+cent against the database's £185,307 and 7.2 per cent. A stale file quietly
+winning over fresh data is harder to notice than a blank layer.
+
+`avg_price_all` and `annual_change_pct` genuinely were missing from the export,
+so adding them was right; they are now joined from `la_house_prices` at
+MAX(period) and named in the hard-stop check at the end of
+`export_map_data.py`. 293 of 296 authorities carry a price.
+
+The third fetch is now removed. House prices arrive with every other measure in
+the signals file, so the layer refreshes on each export and cannot diverge. The
+HPI period travels in the export metadata as `hpi_period`, which is what the
+tooltip shows. `hpi_la_prices.json` was deleted with the root tidy.
+
+**The lesson is about the search, not the layer.** A grep for relative paths
+does not find an absolute one. When establishing what a page loads, enumerate
+every `fetch`, not every path that looks like the ones already known.
 
 ## 3. The source count was wrong in three different places
 

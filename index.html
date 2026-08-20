@@ -317,7 +317,6 @@
 var MAPBOX_TOKEN = ['pk', 'eyJ1IjoiZW5kZWF2b3VycyIsImEiOiJjbXJjcHF3YmwwMzhyMndyOWs5MWQ3NzJxIn0', 'Meur0Rwn_YaN9ghtr5lxmQ'].join('.');
 var BOUNDARIES_URL = 'https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/data/boundaries/la_boundaries.geojson';
 var SIGNALS_URL = 'https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/data/signals/staging_la_signals_latest.json';
-var HPI_URL = 'https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/hpi_la_prices.json';
 
 var LAYER_COLOR_SCALES = {
   ta_households_current: ['#f0fdf4', '#dcfce7', '#bbf7d0', '#4ade80', '#22c55e', '#16a34a', '#166534'],
@@ -409,12 +408,10 @@ function fail(msg) {
 
 Promise.all([
   fetch(BOUNDARIES_URL).then(function (r) { if (!r.ok) throw new Error('boundaries HTTP ' + r.status); return r.json(); }),
-  fetch(SIGNALS_URL).then(function (r) { if (!r.ok) throw new Error('signals HTTP ' + r.status); return r.json(); }),
-  fetch(HPI_URL).then(function (r) { if (!r.ok) throw new Error('hpi HTTP ' + r.status); return r.json(); })
+  fetch(SIGNALS_URL).then(function (r) { if (!r.ok) throw new Error('signals HTTP ' + r.status); return r.json(); })
 ]).then(function (results) {
   geojson = results[0];
   var raw = results[1];
-  var hpi = results[2];
   var signals = Array.isArray(raw) ? raw : (raw.signals || []);
   if (!geojson.features || !geojson.features.length) throw new Error('Boundary file contains no features');
   if (!signals.length) throw new Error('Signals file contains no rows');
@@ -422,8 +419,9 @@ Promise.all([
   var byCode = {};
   signals.forEach(function (s) { byCode[s.lad24cd] = s; });
 
-  var hpiData = hpi.data || {};
-  var hpiEdition = hpi.edition || '';
+  // avg_price_all and annual_change_pct are exported with the signals, so the
+  // house price layer refreshes with every export like every other measure.
+  var hpiEdition = (raw.metadata && raw.metadata.hpi_period) || '';
 
   geojson.features.forEach(function (f) {
     var p = f.properties;
@@ -434,12 +432,7 @@ Promise.all([
         p[k] = sig[k];
       });
     }
-    var hp = hpiData[p.lad24cd];
-    if (hp) {
-      p.avg_price_all = hp.avg_price_all;
-      p.annual_change_pct = hp.annual_change_pct;
-      p.hpi_edition = hpiEdition;
-    }
+    p.hpi_edition = hpiEdition;
     p.la_name = p.la_name || p.lad24nm || p.lad24cd;
     laIndex[p.lad24cd] = { code: p.lad24cd, name: p.la_name, bbox: featureBbox(f), props: p };
   });

@@ -20,9 +20,9 @@ The top of this list is the documentation debt.
 | `source_doc_path` | 16 | a source documentation file — the single largest gap for undocumented sources |
 | `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
 | `revises_back_series` | 14 | — |
-| `build_script_path` | 13 | the build script, if it is in the published tree |
 | `join_path` | 13 | the build script's geography resolution step |
 | `revision_note` | 13 | — |
+| `build_script_path` | 12 | the build script, if it is in the published tree |
 | `detected_period_type` | 11 | — |
 | `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
 | `n8n_workflow_name` | 10 | the n8n workflow that runs the source, where one does |
@@ -35,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 310 null fields across 26 published sources.
+Total: 309 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -386,7 +386,6 @@ Total: 310 null fields across 26 published sources.
 | `auth_env_var` | the build script, where the source needs a credential |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `build_script_path` | the build script, if it is in the published tree |
 | `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
 | `verification_checks` | the source's verification suite and its documented check count |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
@@ -396,7 +395,7 @@ Total: 310 null fields across 26 published sources.
 | `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** The build script s14_lha_rates_build.py is not in the published tree, so build_script_path is null here. refresh_tier is C because the edition URL is supplied by hand, not because the source is unimportant.
+**Note.** The build script moved into scripts/ with the 2026-08-20 root tidy and is recorded here now; it was previously null because the script sat loose at the repository root. refresh_tier is C because the edition URL is supplied by hand, not because the source is unimportant.
 
 ### S15
 
@@ -411,7 +410,7 @@ Total: 310 null fields across 26 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `detected_period_type` | — |
 
-**Note.** Standalone: not wired into Workflow 1 and adds no staging_la_signals column. Reaches the map through its own hpi_la_prices.json. Covers 295 of 296 English LAs.
+**Note.** Standalone: not wired into Workflow 1 and adds no staging_la_signals column. Reaches the map through its own the signals export, joined at MAX(period). Covers 295 of 296 English LAs.
 
 ### S17
 

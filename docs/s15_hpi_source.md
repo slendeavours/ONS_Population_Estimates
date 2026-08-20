@@ -11,7 +11,7 @@
 | Target table | `la_house_prices` (grain: lad24cd × period) |
 | MIN_PERIOD | 2022-01-01 |
 | First load | April 2026 edition, loaded 2026-07-14 (Claude Code run, `pipeline_run_log`) |
-| Refresh | Re-run `s15_hpi_build.py` when a new edition is published |
+| Refresh | Re-run `scripts/s15_hpi_build.py` when a new edition is published |
 
 ## What it provides
 

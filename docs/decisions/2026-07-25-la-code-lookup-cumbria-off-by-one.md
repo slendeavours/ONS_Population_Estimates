@@ -57,7 +57,7 @@ here.
 S6 does **not** write to `la_code_lookup`. Correcting a shared table as a side
 effect of loading one source would silently change other sources' geography
 without their verification suites running. Instead S6 carries a build-local
-resolution layer, `BUILD_LOCAL_RECODES` in `s6_asylum_build.py`, applied ahead
+resolution layer, `BUILD_LOCAL_RECODES` in `scripts/s6_asylum_build.py`, applied ahead
 of the lookup in the cascade and reported in the run log as match method
 `build_local_pending_remediation`.
 
@@ -122,7 +122,7 @@ In practice, for any build:
 
 1. Remediation task corrects E07000027 and inserts E07000028 and E07000189.
 2. Full-table audit reports zero remaining mismatches against ONS.
-3. Delete `BUILD_LOCAL_RECODES` from `s6_asylum_build.py`.
+3. Delete `BUILD_LOCAL_RECODES` from `scripts/s6_asylum_build.py`.
 4. Re-run S6 and test against the criteria below.
 
 ### Primary criterion — the data must not move
@@ -139,7 +139,7 @@ localises the problem to specific periods and local authorities.
 
 The checksum is `md5` over `period_ending : lad24cd : support_type :
 accommodation_type : people`, ordered, across the whole table. It is computed
-by `checksum()` in `s6_asylum_build.py` and reported by Check 7 on every run.
+by `checksum()` in `scripts/s6_asylum_build.py` and reported by Check 7 on every run.
 
 ### Secondary criteria — the cascade report
 
