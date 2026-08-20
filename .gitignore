@@ -18,7 +18,43 @@ s19_cache/
 # Local tooling
 .claude/
 .vscode/
+
+# Deliverables. Some carry commercial rate card figures (S20), which must never
+# reach this remote. The node docs under outputs/node_docs/ are tracked and stay
+# tracked; everything else in outputs/ is local only.
+outputs/*
+!outputs/node_docs/
 SKILLS/
+
+# Liverpool assurance work. verify/src holds published source files pulled down
+# for the 2026-08-20 reconciliation: 63MB, re-fetchable from the publisher, and
+# ignored on the same basis as data/raw. outputs holds the rendered paper, which
+# is regenerated from extract.py and build_paper.py. The scripts, template and
+# extracted data.json are tracked, because those are the source.
+Liverpool/verify/src/
+Liverpool/outputs/
+
+# S20 commercial rate card. The registry marks source 20 confidential with
+# publish_github false: the figures are held in exempt_pipeline only and must
+# never reach this remote. The rate files carry per-area weekly rates outright
+# and the build and prompt files quote them, so the whole prefix is excluded
+# rather than picked over file by file. These sat outside the repository until
+# the 2026-08-20 consolidation moved them in; this rule is what keeps that
+# move safe.
+#
+# The prefix is deliberately neutral. Source 20's completeness_note records
+# that the counterparty is named by its own table and file names, so a pattern
+# matching those names would disclose it here. The files are named for the
+# source number instead.
+s20_ratecard_*
+
+# Same reason: these reference the S20 table and column names directly, which
+# the standing rule treats as disclosive in itself. Held locally, not tracked,
+# pending a decision on renaming the database objects to neutral names.
+scripts/yada_run2_build.py
+scripts/yada_run2_deliverables.py
+claude_code_prompt_s6_asylum.md
+s14_lha_rates_claude_code_prompt.md
 
 # Database dumps - never commit, even accidentally
 *.sql
