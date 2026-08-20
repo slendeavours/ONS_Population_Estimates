@@ -55,7 +55,8 @@ def build(path, accom_col, count_col):
         if accom == 'Total':
             continue
         key = (r['new_la_code'], int(r['time_period']))
-        rec = out.setdefault(key, dict(semi=0, semi_pub=0, ind=0, fam=0, com=0,
+        rec = out.setdefault(key, dict(semi=0, semi_pub=0, foyers=0, suplodg=0,
+                                       ind=0, fam=0, com=0,
                                        uns=0, oth=0, nk=0, supp=False,
                                        name=r['la_name']))
         v, was_supp = cell(r[count_col])
@@ -66,6 +67,10 @@ def build(path, accom_col, count_col):
                 rec['supp'] = True
             if accom == PUBLISHED:
                 rec['semi_pub'] += n
+            elif accom == 'Foyers':
+                rec['foyers'] += n
+            elif accom == 'Supported lodgings':
+                rec['suplodg'] += n
         elif accom in IND:
             rec['ind'] += n
         elif accom in FAM:
@@ -117,6 +122,8 @@ for ddl in [
     "ALTER TABLE care_leaver_accommodation ADD COLUMN IF NOT EXISTS semi_independent_published INTEGER",
     "ALTER TABLE care_leaver_accommodation ADD COLUMN IF NOT EXISTS total_published INTEGER",
     "ALTER TABLE care_leaver_accommodation ADD COLUMN IF NOT EXISTS suppressed_flag BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE care_leaver_accommodation ADD COLUMN IF NOT EXISTS foyers INTEGER",
+    "ALTER TABLE care_leaver_accommodation ADD COLUMN IF NOT EXISTS supported_lodgings INTEGER",
 ]:
     cur.execute(ddl)
 conn.commit()
@@ -139,8 +146,8 @@ for (code, yr), v in merged.items():
           (lad24cd, reporting_year, age_group, total_care_leavers, semi_independent,
            independent_living, with_family, community_home, unsuitable, other,
            not_known, semi_independent_published, total_published, suppressed_flag,
-           uasc_impact_flag, source, loaded_at)
-        VALUES (%s,%s,'17-21',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE,%s,now())
+           foyers, supported_lodgings, uasc_impact_flag, source, loaded_at)
+        VALUES (%s,%s,'17-21',%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,FALSE,%s,now())
         ON CONFLICT (lad24cd, reporting_year, age_group) DO UPDATE SET
           total_care_leavers=EXCLUDED.total_care_leavers,
           semi_independent=EXCLUDED.semi_independent,
@@ -153,10 +160,13 @@ for (code, yr), v in merged.items():
           semi_independent_published=EXCLUDED.semi_independent_published,
           total_published=EXCLUDED.total_published,
           suppressed_flag=EXCLUDED.suppressed_flag,
+          foyers=EXCLUDED.foyers,
+          supported_lodgings=EXCLUDED.supported_lodgings,
           source=EXCLUDED.source,
           loaded_at=now()
     """, (lad, yr, v['total'], v['semi'], v['ind'], v['fam'], v['com'], v['uns'],
-          v['oth'], v['nk'], v['semi_pub'], v.get('total_pub'), v['supp'], src))
+          v['oth'], v['nk'], v['semi_pub'], v.get('total_pub'), v['supp'],
+          v['foyers'], v['suplodg'], src))
     written += cur.rowcount
 conn.commit()
 print('rows written: %d (of which county rows: %d)' % (written, counties))

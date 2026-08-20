@@ -23,7 +23,19 @@ This is the single most important thing to know about this table.
 | Column | Definition | Use |
 |---|---|---|
 | `semi_independent_published` | DfE's published category **Semi-independent, transitional accommodation**, and nothing else | **Default for anything external.** Reproducible directly from DfE |
-| `semi_independent` | Semi-independent transitional **plus Foyers plus Supported lodgings** | Internal analysis where the wider supported-accommodation population is the right denominator |
+| `semi_independent` | Semi-independent transitional **plus `foyers` plus `supported_lodgings`** | The data layer and the demand map. The wider supported-accommodation population |
+| `foyers` | DfE **Foyers** category, held separately | Component of `semi_independent`; lets the aggregate be broken down |
+| `supported_lodgings` | DfE **Supported lodgings** category, held separately | Component of `semi_independent`; lets the aggregate be broken down |
+
+By identity, `semi_independent = semi_independent_published + foyers + supported_lodgings`. For
+Liverpool in the year to March 2025 that is 188 + 10 + 10 = 208. Holding the two components
+means any output can show the split rather than leaving the 20-person gap between the two
+measures unexplained.
+
+**Where each measure is used.** External documents (the LandAid paper, its summary and deck)
+quote `semi_independent_published` and state the breakdown in words. The demand map layer shows
+`semi_independent`, the wider aggregate, which is the pipeline's data-layer measure. The two
+therefore differ by design, and each product says which it uses.
 
 The wider aggregate is a deliberate pipeline definition, not a DfE one. It is a reasonable measure of supported accommodation for care leavers, but a reader who checks DfE will not find it.
 
