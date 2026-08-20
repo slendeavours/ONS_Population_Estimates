@@ -48,14 +48,6 @@ Liverpool/outputs/
 # source number instead.
 s20_ratecard_*
 
-# Same reason: these reference the S20 table and column names directly, which
-# the standing rule treats as disclosive in itself. Held locally, not tracked,
-# pending a decision on renaming the database objects to neutral names.
-scripts/yada_run2_build.py
-scripts/yada_run2_deliverables.py
-claude_code_prompt_s6_asylum.md
-s14_lha_rates_claude_code_prompt.md
-
 # Database dumps - never commit, even accidentally
 *.sql
 *.dump
