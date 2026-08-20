@@ -418,9 +418,10 @@ return [{
 
 ```python
 import base64
+import os
 
-username = "admin"
-password = "secret123"
+username = os.environ["API_USERNAME"]
+password = os.environ["API_PASSWORD"]
 
 # Create Basic Auth header
 credentials = f"{username}:{password}"

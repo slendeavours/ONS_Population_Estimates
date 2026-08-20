@@ -531,7 +531,7 @@ Configure in credentials:
   host: "db.example.com",
   database: "mydb",
   user: "user",
-  password: "pass",
+  password: "<password>",
   // Connection pool settings
   min: 2,
   max: 10,
