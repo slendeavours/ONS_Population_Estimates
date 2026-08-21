@@ -102,7 +102,7 @@ management is per *source* as well as per column.
 
 ## Where the controls live
 
-- `scripts/verify_source_registry.py` — 18 gates. Exit 0 clean, 2 known-red
+- `scripts/verify_source_registry.py` — 21 gates. Exit 0 clean, 2 known-red
   only, 1 stop.
 - `scripts/push.py` — the only sanctioned push. Scan, verify, then push, in one
   place so the order cannot be forgotten. `--install-hook` gates a bare

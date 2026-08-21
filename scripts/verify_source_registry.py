@@ -57,6 +57,52 @@ NOT_NULL_COLS = ["source_code", "source_name", "publisher",
                  "acquisition_method", "cadence", "refresh_tier", "status"]
 KNOWN_RUN_STATUSES = {"success", "complete"}
 
+# The derived objects the pipeline reads, and the columns each of them is
+# relied on to carry. A view is a separate object from the tables behind it:
+# it has its own lifetime, nothing about a healthy base table implies the view
+# over it still stands, and a DROP leaves no mark on the tables it read. Gates
+# 19-21 are the only thing in this suite that looks at them at all.
+#
+# Extra columns are allowed - adding one is an additive change. Losing a
+# declared one is not, because something downstream is already selecting it.
+DERIVED_VIEWS = {
+    "v_la_empty_homes_rates": (
+        "lad24cd", "la_name", "taxbase_year", "total_dwellings",
+        "empty_total", "empty_6_months_plus", "empty_homes_premium_count",
+        "second_homes", "lte_rate_pct"),
+    "v_la_pip_rates": (
+        "lad24cd", "month", "pip_total_claimants",
+        "pip_enhanced_daily_living", "population",
+        "population_reference_year", "pip_rate_per_1000"),
+    "v_la_rate_triangulation": (
+        "lad24cd", "la_name", "brma_name", "lha_sar_weekly",
+        "lha_1bed_weekly", "ratecard_1bed_weekly", "ratecard_2bed_weekly",
+        "ratecard_3bed_weekly", "ratecard_4bed_weekly",
+        "ratecard_5bed_weekly", "ratecard_6bed_weekly",
+        "ratecard_area_count", "rate_card_date", "spread_1bed_vs_sar",
+        "ratio_1bed_vs_sar", "spread_1bed_vs_lha1bed"),
+    "v_la_statutory_homelessness": (
+        "lad24cd", "period", "total_assessments", "owed_duty",
+        "prevention_duty", "relief_duty", "households_in_ta",
+        "support_needs_total"),
+    "vw_drd_discharge_delays_lad": (
+        "reporting_period", "lad24cd", "lad24nm", "total_bed_days_lost",
+        "pct_delayed_1plus_days"),
+    "vw_la_asylum_support_totals": (
+        "period_ending", "lad24cd", "la_name", "total_supported",
+        "dispersal", "initial_accommodation", "contingency_all",
+        "section_95", "source_edition"),
+    "vw_mh_crfd_lad": (
+        "reporting_period", "lad24cd", "la_name", "measure_id",
+        "measure_name", "measure_value"),
+    "vw_source_due": (
+        "source_code", "source_name", "cadence", "refresh_tier", "status",
+        "last_success_at", "next_due_at", "days_overdue", "due_status"),
+}
+# The view whose pinning gate 21 asserts, and the table it must agree with.
+TRIANGULATION_VIEW = "v_la_rate_triangulation"
+RATE_CARD_TABLE = "commercial_rate_card"
+
 results = []
 
 
@@ -762,6 +808,114 @@ def main():
          f"{mapped_las} authorities mapped; rows with no rate at the latest "
          f"financial year: {unmatched}"
          + (f"; unmatched BRMA name(s): {orphan_names}" if orphan_names else ""))
+
+    # ---- Gate 19: every derived view exists and returns rows ---------------
+    # On 2026-08-21 a YADA build died on: relation "v_la_rate_triangulation"
+    # does not exist. The view had been dropped some time after the 2026-08-20
+    # S20 object rename and never rebuilt. The two renamed tables survived, so
+    # every count, key and coverage check in this suite went green against
+    # perfectly healthy base tables while the object the build actually reads
+    # was gone. The only thing that detected it was the crash, which is
+    # detection after the fact rather than before it.
+    #
+    # Nothing about a base table implies the view over it. This gate reads the
+    # catalogue for the object, then reads the object itself: a view can exist
+    # and still be unrunnable, because Postgres tracks table dependencies but
+    # not function ones, so dropping a function a view calls leaves the view
+    # in place and broken. An unrunnable view fails here as a gate rather than
+    # aborting the suite - hence the savepoint.
+    missing_views, empty_views, broken_views, present = [], [], [], {}
+    for view in sorted(DERIVED_VIEWS):
+        cur.execute("""
+            SELECT c.relkind FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = 'public' AND c.relname = %s
+               AND c.relkind IN ('v', 'm')
+        """, (view,))
+        row = cur.fetchone()
+        if not row:
+            missing_views.append(view)
+            continue
+        present[view] = row[0]
+        cur.execute("SAVEPOINT view_probe")
+        try:
+            cur.execute(f"SELECT COUNT(*) FROM {view}")
+            n = cur.fetchone()[0]
+            cur.execute("RELEASE SAVEPOINT view_probe")
+        except Exception as exc:
+            cur.execute("ROLLBACK TO SAVEPOINT view_probe")
+            cur.execute("RELEASE SAVEPOINT view_probe")
+            broken_views.append(f"{view} ({str(exc).strip().splitlines()[0]})")
+            continue
+        if n == 0:
+            empty_views.append(view)
+    gate(19, "every derived view exists and returns rows",
+         not (missing_views or empty_views or broken_views),
+         f"{len(present)} of {len(DERIVED_VIEWS)} declared views present"
+         + (f"; absent: {missing_views}" if missing_views else "")
+         + (f"; unrunnable: {broken_views}" if broken_views else "")
+         + (f"; present but empty: {empty_views}" if empty_views else "")
+         + ("" if (missing_views or empty_views or broken_views)
+            else "; all returned at least one row"))
+
+    # ---- Gate 20: no derived view has lost a column it is read for ---------
+    # The shape half of the same failure. A view that is rebuilt from a stale
+    # or half-edited definition comes back existing and populated, so gate 19
+    # passes, while a column something downstream selects is simply not there.
+    # That fails at read time in whatever reads it next, which is the same
+    # too-late detection gate 19 was written to end.
+    #
+    # pg_attribute rather than information_schema.columns: the latter does not
+    # report materialised views, and a view converted to one would silently
+    # report as having no columns at all.
+    shape_breaks = []
+    for view in sorted(present):
+        cur.execute("""
+            SELECT attname FROM pg_attribute
+             WHERE attrelid = %s::regclass AND attnum > 0 AND NOT attisdropped
+        """, ("public." + view,))
+        actual = {r[0] for r in cur.fetchall()}
+        lost = sorted(set(DERIVED_VIEWS[view]) - actual)
+        if lost:
+            shape_breaks.append(f"{view} no longer has {lost}")
+    gate(20, "every derived view still carries the columns it is read for",
+         not shape_breaks,
+         f"{sum(len(v) for k, v in DERIVED_VIEWS.items() if k in present)} "
+         f"declared columns checked across {len(present)} present view(s); "
+         + ("; ".join(shape_breaks) if shape_breaks
+            else "none missing (extra columns are allowed)"))
+
+    # ---- Gate 21: the triangulation view is pinned to the current card -----
+    # The view carries one rate_card_date for every row by construction: it
+    # selects the card's own max date and joins only that edition. Three
+    # editions are loaded, so a view rebuilt from a definition that lost the
+    # pin would fan every authority out across all three and read as though
+    # the older rates were current. Row counts cannot see that - the count
+    # goes up, which looks like coverage improving.
+    #
+    # Asserted against the table rather than a written-down date, so loading a
+    # new card does not need this gate edited. Dates only in the output: the
+    # figures behind this view are commercial and this suite prints to logs.
+    cur.execute("SELECT to_regclass(%s)", ("public." + RATE_CARD_TABLE,))
+    card_present = cur.fetchone()[0] is not None
+    if TRIANGULATION_VIEW not in present or not card_present:
+        absent = ([TRIANGULATION_VIEW] if TRIANGULATION_VIEW not in present
+                  else []) + ([] if card_present else [RATE_CARD_TABLE])
+        gate(21, "the rate triangulation view is pinned to the current card",
+             None, f"not assessed: {', '.join(absent)} absent - see gate 19")
+    else:
+        cur.execute(f"SELECT DISTINCT rate_card_date FROM {TRIANGULATION_VIEW}")
+        view_dates = sorted(r[0] for r in cur.fetchall() if r[0] is not None)
+        cur.execute(f"SELECT MAX(rate_card_date), COUNT(DISTINCT rate_card_date)"
+                    f" FROM {RATE_CARD_TABLE}")
+        latest_card, n_editions = cur.fetchone()
+        gate(21, "the rate triangulation view is pinned to the current card",
+             len(view_dates) == 1 and view_dates[0] == latest_card,
+             f"{RATE_CARD_TABLE} holds {n_editions} edition(s), latest "
+             f"{latest_card}; the view carries "
+             + (f"the single date {view_dates[0]}" if len(view_dates) == 1
+                else f"{len(view_dates)} distinct dates {view_dates}"
+                     if view_dates else "no date at all"))
 
     cur.close()
     conn.close()
