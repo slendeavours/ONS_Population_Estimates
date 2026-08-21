@@ -726,6 +726,43 @@ def main():
             else "present and enabled; writers declare themselves with "
                  "SET ucws.registry_writer = 'on'"))
 
+
+    # ---- Gate 18: every mapped authority resolves to an LHA rate ------------
+    # W1 node 5 joins brma_lha_rates to la_brma_mapping on brma_name, a text
+    # key with two publishers behind it: the mapping carries the VOA boundary
+    # spelling and the rates carry DWP's. On 2026-08-20 a rebuild wrote 37
+    # mapping rows as "X & Y" while the rates held "X and Y", and the join
+    # silently returned NULL for those authorities. Row counts stayed right,
+    # both tables looked healthy, and the one authority being spot-checked had
+    # no ampersand in its name. Nothing would have surfaced it until a reader
+    # noticed an empty rate.
+    #
+    # The same rebuild dropped Ashford entirely by reading the DWP file's first
+    # data row as a header, so the rate row simply did not exist. Both failures
+    # are invisible to a count and visible to this join.
+    cur.execute("""
+        SELECT COUNT(*) FILTER (WHERE b.brma_name IS NULL) AS unmatched,
+               COUNT(DISTINCT m.lad24cd)                   AS las
+          FROM la_brma_mapping m
+          LEFT JOIN brma_lha_rates b
+                 ON b.brma_name = m.brma_name
+                AND b.financial_year = (SELECT MAX(financial_year)
+                                          FROM brma_lha_rates)
+    """)
+    unmatched, mapped_las = cur.fetchone()
+    cur.execute("""SELECT DISTINCT m.brma_name FROM la_brma_mapping m
+                    LEFT JOIN brma_lha_rates b
+                           ON b.brma_name = m.brma_name
+                          AND b.financial_year = (SELECT MAX(financial_year)
+                                                    FROM brma_lha_rates)
+                    WHERE b.brma_name IS NULL ORDER BY 1 LIMIT 8""")
+    orphan_names = [r[0] for r in cur.fetchall()]
+    gate(18, "every authority with a BRMA mapping resolves to an LHA rate",
+         unmatched == 0,
+         f"{mapped_las} authorities mapped; rows with no rate at the latest "
+         f"financial year: {unmatched}"
+         + (f"; unmatched BRMA name(s): {orphan_names}" if orphan_names else ""))
+
     cur.close()
     conn.close()
 

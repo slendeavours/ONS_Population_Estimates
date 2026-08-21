@@ -86,11 +86,12 @@ resp.raise_for_status()
 # Parse CSV
 lines = resp.text.strip().split('\n')
 print(f"Total lines: {len(lines)}")
-print(f"Line 0 (title): {lines[0][:60]}")
-print(f"Line 1 (headers): {lines[1][:60]}")
+print(f"Line 0 (headers): {lines[0][:60]}")
 
-# Line 0 is title, Line 1 is headers, data starts line 2
-reader = csv.reader(lines[2:])
+# Row 0 is the column header row; data starts at row 1. Read as "row 0 title,
+# row 1 headers, data from row 2" until 2026-08-20, which silently dropped the
+# first BRMA alphabetically and loaded 151 of 152.
+reader = csv.reader(lines[1:])
 
 brma_rates = []
 for row in reader:

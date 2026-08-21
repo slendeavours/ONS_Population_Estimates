@@ -145,16 +145,16 @@ def task1_parse_dwp_csv() -> List[Dict]:
     # Parse CSV manually to handle formatting
     lines = csv_text.strip().split('\n')
 
-    # Row 0 is title, row 1 is headers, data starts row 2
-    title_row = lines[0]
-    print(f"Title row: {title_row}")
-
-    headers = lines[1].split(',')
-    headers = [h.strip('"').strip() for h in headers]
-    print(f"Headers: {headers}\n")
+    # Row 0 is the column header row; data starts at row 1. This was read as
+    # "row 0 title, row 1 headers, data from row 2" until 2026-08-20, which
+    # silently dropped the first BRMA alphabetically and loaded 151 of 152.
+    # Verified against the DWP CSV: row 0 is BRMA,Monthly UC LHA rates ... ,
+    # row 1 is Ashford.
+    headers = [h.strip('"').strip() for h in lines[0].split(',')]
+    print("Headers:", headers)
 
     brma_rates = []
-    for i, line in enumerate(lines[2:], start=3):
+    for i, line in enumerate(lines[1:], start=2):
         # Parse CSV line handling quoted fields
         reader = csv.reader(StringIO(line))
         row = next(reader)
