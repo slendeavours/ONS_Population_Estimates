@@ -21,6 +21,9 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 - `docs/S6_BUILD_SUMMARY.md` carries a note that it describes the 25 July build and is left as written, pointing at the source doc for current state. A record edited later is no longer evidence of anything.
 - `docs/decisions/README.md` status refreshed to 21 gates, and **the index now says it is behind the folder** — nine records from 2026-08-20 and 2026-08-21 are listed but not yet assigned a status, because saying "closed" without checking is the failure the index exists to prevent.
 
+### Changed
+- **W1 re-run as run 19, and the map data exported from it.** Run 18 (2026-08-20) predated today's S11 refresh. Diffed column by column against run 18: **one column moved, `supported_living_locations`, on 74 authorities** — 46 up, 28 down, national 4,743 → 4,765, which is the shape a monthly CQC directory refresh should have. Every national headline is unchanged (TA 130,775, YoY +13.29%, rough sleeping 4,793, housing register 1,340,527, HB SA caseload 229,785), because S11 feeds no national aggregate. S6 contributes nothing to staging by design — it is standalone, adds no column, no tenant type and no map layer. Exported signals and GeoJSON verified to agree on every shared property across all 296 features.
+
 ### Notes
 - Eight manual source checks recorded in `source_check_log` with `check_method = 'manual'` for sources with no automated detector. Sources judged not due from cadence alone were **not** logged: a cadence inference is not a check. S12 is logged `revision_detected` — Bradford is loaded at £127.1m against a published £113.0m, and the 2026-27 and 2025-26 GOV.UK pages contradict each other on Croydon's 2025-26 figure, so no side was taken.
 - The S9b detector reports a false `new_edition`: it excludes periods *after* the current month, so NHS Digital's empty forward-calendar page for the current month passes the guard. Not yet fixed.
