@@ -6,6 +6,7 @@ Imported by s6_asylum_build.py; not run standalone.
 
 import datetime
 import os
+import pathlib
 from collections import defaultdict
 
 import pandas as pd
@@ -142,7 +143,8 @@ def check_3_anchors(cur):
     return _record("Check 3 - Anchor set", ok, "\n".join(lines))
 
 
-def check_4_load_fidelity(cur, england, unalloc, non_eng, reg_rows):
+def check_4_load_fidelity(cur, england, unalloc, non_eng, reg_rows,
+                          reg_period):
     """Parsed dataframe must equal what landed, per period, tolerance 0."""
     lines, ok = [], True
 
@@ -177,13 +179,23 @@ def check_4_load_fidelity(cur, england, unalloc, non_eng, reg_rows):
             "la_asylum_support_unallocated")
     compare("asylum_support_non_england  ", non_eng, "asylum_support_non_england")
 
-    cur.execute("SELECT count(*) FROM la_immigration_groups")
+    # Count at the snapshot period being loaded, not across the whole table.
+    # An unfiltered count only held while parse_reg_02 stamped every edition
+    # with the same hardcoded date and so overwrote the previous snapshot in
+    # place. Now that the period comes from the edition the table accumulates
+    # one snapshot per edition, which is what period_ending is in the key for.
+    cur.execute("SELECT count(*) FROM la_immigration_groups "
+                "WHERE period_ending = %s", (reg_period,))
     n = cur.fetchone()[0]
+    cur.execute("SELECT count(DISTINCT period_ending) FROM la_immigration_groups")
+    snapshots = cur.fetchone()[0]
     if n != len(reg_rows):
         ok = False
-        lines.append(f"la_immigration_groups: parsed {len(reg_rows)} vs table {n}")
+        lines.append(f"la_immigration_groups at {reg_period}: "
+                     f"parsed {len(reg_rows)} vs table {n}")
     else:
-        lines.append(f"la_immigration_groups       : {n:,} rows - exact")
+        lines.append(f"la_immigration_groups       : {n:,} rows at "
+                     f"{reg_period} - exact ({snapshots} snapshot(s) retained)")
     return _record("Check 4 - Load fidelity", ok, "\n".join(lines))
 
 
@@ -356,7 +368,7 @@ def check_8_asy_d09(cur, paths):
     return ok_a and ok_b
 
 
-def check_9_cross_source(cur):
+def check_9_cross_source(cur, reg_period):
     """Reg_02 supported-asylum total vs Asy_D11 aggregate, post-resolution."""
     cur.execute("""
         WITH reg AS (
@@ -374,7 +386,7 @@ def check_9_cross_source(cur):
                count(*) FILTER (WHERE a.lad24cd IS NULL),
                count(*) FILTER (WHERE r.lad24cd IS NULL)
           FROM reg r FULL OUTER JOIN asy a ON a.lad24cd = r.lad24cd
-    """, (ANCHOR_PERIOD, ANCHOR_PERIOD))
+    """, (reg_period, reg_period))
     matched, exact, only_reg, only_asy = cur.fetchone()
 
     cur.execute("""
@@ -389,7 +401,7 @@ def check_9_cross_source(cur):
         SELECT r.lad24cd, r.people, a.people
           FROM reg r JOIN asy a ON a.lad24cd = r.lad24cd
          WHERE r.people IS DISTINCT FROM a.people
-    """, (ANCHOR_PERIOD, ANCHOR_PERIOD))
+    """, (reg_period, reg_period))
     div = cur.fetchall()
 
     # The two LAs the resolution cascade acted on.
@@ -401,7 +413,7 @@ def check_9_cross_source(cur):
          WHERE g.pathway='supported_asylum' AND g.sub_pathway='total'
            AND g.period_ending=%s AND g.lad24cd IN ('E08000016','E08000019')
          ORDER BY b.lad24nm
-    """, (ANCHOR_PERIOD,))
+    """, (reg_period,))
     recoded = cur.fetchall()
 
     ok = not div
@@ -418,7 +430,7 @@ def check_9_cross_source(cur):
     return _record("Check 9 - Cross-source Reg_02 vs Asy_D11", ok, "\n".join(lines))
 
 
-def check_10_reg02_internal(cur):
+def check_10_reg02_internal(cur, reg_period):
     cur.execute("""
         WITH p AS (
             SELECT lad24cd,
@@ -430,11 +442,11 @@ def check_10_reg02_internal(cur):
         )
         SELECT lad24cd, parts, total FROM p
          WHERE parts IS DISTINCT FROM total
-    """, (ANCHOR_PERIOD,))
+    """, (reg_period,))
     rows = cur.fetchall()
     unexpected = [r for r in rows if r[0] not in REG02_TOTAL_EXEMPT]
     cur.execute("SELECT count(DISTINCT lad24cd) FROM la_immigration_groups "
-                "WHERE period_ending=%s", (ANCHOR_PERIOD,))
+                "WHERE period_ending=%s", (reg_period,))
     total_las = cur.fetchone()[0]
 
     # Name the suppressed-pathway LAs explicitly and show their arithmetic,
@@ -454,7 +466,7 @@ def check_10_reg02_internal(cur):
          GROUP BY b.lad24nm, g.lad24cd
         HAVING bool_or(g.suppressed)
          ORDER BY b.lad24nm
-    """, (ANCHOR_PERIOD,))
+    """, (reg_period,))
     suppressed_las = cur.fetchall()
 
     ok = not unexpected
@@ -514,9 +526,14 @@ def check_11_collisions(collisions):
 
 
 def _write_anomalies(merges, dupes, rows_in_scope=None, rows_landed=None):
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                        "docs", "s6_source_anomalies.md")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    # Repo root, not the script's own directory. This resolved from the
+    # script directory until 2026-09-04, which was correct while the script
+    # sat at the repo root and wrote to scripts/docs/ silently after the
+    # 2026-08-20 move, leaving docs/s6_source_anomalies.md frozen at the
+    # 26 July run. Same defect class as the .env resolution gate 11 covers.
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    path = repo_root / "docs" / "s6_source_anomalies.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
     absorbed = sum(len(rows) - 1 for _k, rows, _kind in merges + dupes)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("# S6 source anomalies\n\n")
@@ -636,7 +653,13 @@ def check_12_view_integrity(cur):
 
 def run_all(cur, paths, d11_edition, reg_edition, geo, england, unalloc,
             non_eng, reg_rows, collisions, checksum_fn, reload_fn=None,
-            stats=None):
+            stats=None, reg_period=None):
+    # Reg_02 is a snapshot: checks 9 and 10 must read it at the period the
+    # discovered edition actually describes, not at the fixed anchor. The
+    # anchor stays fixed for the Asy_D11 time-series checks.
+    if reg_period is None:
+        raise ValueError("reg_period is required: the Reg_02 snapshot "
+                         "period must come from the loaded edition.")
     global _results
     _results = []
     print("\n" + "=" * 78)
@@ -646,14 +669,15 @@ def run_all(cur, paths, d11_edition, reg_edition, geo, england, unalloc,
     check_1_coverage(cur, england)
     check_2_referential(cur)
     check_3_anchors(cur)
-    check_4_load_fidelity(cur, england, unalloc, non_eng, reg_rows)
+    check_4_load_fidelity(cur, england, unalloc, non_eng, reg_rows,
+                          reg_period)
     check_5_reasonableness(cur)
     check_6_suppression(cur)
     if reload_fn is not None:
         check_7_idempotency(cur, reload_fn, checksum_fn)
     check_8_asy_d09(cur, paths)
-    check_9_cross_source(cur)
-    check_10_reg02_internal(cur)
+    check_9_cross_source(cur, reg_period)
+    check_10_reg02_internal(cur, reg_period)
     check_11_collisions(collisions)
     check_12_view_integrity(cur)
 

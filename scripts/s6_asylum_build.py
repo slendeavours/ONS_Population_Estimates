@@ -11,6 +11,7 @@ Structure: discover, download, parse, resolve geography, validate, upsert, log.
 Every download URL is discovered from its GOV.UK landing page at run time.
 """
 
+import calendar
 import datetime
 import os
 import re
@@ -437,6 +438,25 @@ def parse_asy_d11(path, edition, geo):
             collisions, stats)
 
 
+def _edition_period(edition):
+    """Turn a 'year ending June 2026' edition label into 2026-06-30.
+
+    Reg_02 is a single snapshot, so its period is whichever edition was
+    discovered and must be derived from that edition. It was fixed at
+    ANCHOR_PERIOD in source until 2026-09-04, which stamped the June 2026
+    snapshot with the March 2026 date and overwrote the March snapshot in
+    place. Check 9 caught it; nothing in the row counts would have.
+    """
+    m = re.search(r"year ending\s+(\w+)\s+(\d{4})", edition or "", re.I)
+    if not m:
+        sys.exit(f"HARD STOP: cannot derive a period from Reg_02 edition "
+                 f"{edition!r}. The snapshot period comes from the edition "
+                 f"and is never assumed.")
+    year = int(m.group(2))
+    month = datetime.datetime.strptime(m.group(1).title(), "%B").month
+    return datetime.date(year, month, calendar.monthrange(year, month)[1])
+
+
 def parse_reg_02(path, edition, geo):
     print("\n" + "=" * 78)
     print("STEP 4 - PARSE Reg_02")
@@ -445,7 +465,8 @@ def parse_reg_02(path, edition, geo):
     cols = list(df.columns)
     print(f"  raw rows: {len(df):,}   columns: {len(cols)}")
 
-    period = ANCHOR_PERIOD
+    period = _edition_period(edition)
+    print(f"  snapshot period  : {period} (from edition {edition!r})")
     rows = []
     skipped = []
     for r in df.itertuples(index=False):
@@ -656,7 +677,8 @@ def main():
         results = verify.run_all(
             cur, paths, d11_edition, reg_edition, geo,
             england, unalloc, non_eng, reg_rows, collisions, checksum,
-            reload_fn=reload_fn, stats=stats)
+            reload_fn=reload_fn, stats=stats,
+            reg_period=_edition_period(reg_edition))
 
         failed = [r for r in results if not r["passed"]]
         if failed:

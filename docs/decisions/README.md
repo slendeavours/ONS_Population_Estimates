@@ -5,8 +5,17 @@ a record that gets quietly edited later is no longer evidence of anything.
 This index is the reconciliation. **Read it first** — it says which findings
 are settled and which are still live.
 
-Status as at **2026-08-16**. The verification suite exits **0**, all **18**
+Status as at **2026-09-04**. The verification suite exits **0**, all **21**
 gates pass, and `known_red.json` is empty.
+
+> **This index is behind the folder.** Nine records written on 2026-08-20 and
+> 2026-08-21 are not yet reconciled into the Closed table below:
+> repo-scope, demand-map-assurance, nojekyll, s12-efs-misattribution,
+> s20-neutral-object-names, s3b-tenure-rebasing-error,
+> derived-view-dropped-unnoticed and s14-brma-join-break. They are listed here
+> rather than assigned a status, because saying "closed" without checking is
+> the exact failure this index exists to prevent. Reconciling them is an open
+> task of its own.
 
 ## Still open
 
@@ -53,6 +62,7 @@ Resolved by the same reload as item 1.
 
 | Record | What it settled |
 | --- | --- |
+| [2026-09-04-s6-reg02-hardcoded-snapshot-period.md](2026-09-04-s6-reg02-hardcoded-snapshot-period.md) | Reg_02's snapshot period was fixed in source, so each S6 refresh overwrote the previous snapshot in place. Caught by Check 9 on the first refresh; no row count, key or coverage test was sensitive to it. Period now derived from the edition. |
 | [2026-08-16-s114-attribution-and-gate-14.md](2026-08-16-s114-attribution-and-gate-14.md) | S.114 notices attributed to the issuing authority, never propagated. Gate 14 narrowed to require an unresolved code to declare itself. Last red gate cleared. |
 | [2026-08-16-s1-reconstruction-markers-and-revision.md](2026-08-16-s1-reconstruction-markers-and-revision.md) | S1 extraction rebuilt; `period` is a financial-year quarter; markers corrected for the reproducible quarters; `support_needs_total` corrected across all seven. **Partly open — see above.** |
 | [2026-08-16-data-quality-derived-from-every-column.md](2026-08-16-data-quality-derived-from-every-column.md) | `data_quality` derived from all 33 signal columns rather than 4. Gate 16 added. |
@@ -69,7 +79,7 @@ Resolved by the same reload as item 1.
 | [2026-07-22-hb-accom-type-publication-lag.md](2026-07-22-hb-accom-type-publication-lag.md) | S8b publication lag is monthly, not quarterly. |
 | [2026-07-12-s11-cqc-la-mapping-method.md](2026-07-12-s11-cqc-la-mapping-method.md) | CQC locations mapped by point-in-polygon. |
 
-## The recurring defect, across nine of these records
+## The recurring defect, across ten of these records
 
 **State from evidence, never from intent.** Every instance took the same shape:
 something recorded what was *meant* to be true and nothing checked whether it
@@ -82,7 +92,9 @@ zero. `data_quality` certifying 4 columns while claiming to cover the row.
 A `falling_strongly` label over an absent measure. A known-red entry outliving
 its defect and absorbing the next real failure. A hand-edited registry field
 that reverts for 12 sources and persists for 15. A backup note asserting work
-was outstanding when it had been running for three weeks.
+was outstanding when it had been running for three weeks. A snapshot period
+fixed at the date of the build that wrote it, silently destroying a quarter of
+history on every refresh.
 
 The countermeasure is the same each time: derive the claim from the data, and
 have a gate assert it.

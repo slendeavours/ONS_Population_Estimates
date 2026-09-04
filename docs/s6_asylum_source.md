@@ -8,9 +8,9 @@
 | **Series** | Immigration system statistics, quarterly release | Regional and local authority data on immigration groups |
 | **Table code** | `Asy_D11` | `Reg_02` |
 | **Publication page** | `https://www.gov.uk/government/statistical-data-sets/immigration-system-statistics-data-tables` | `https://www.gov.uk/government/statistical-data-sets/immigration-system-statistics-regional-and-local-authority-data` |
-| **Format** | `.xlsx`, 1.28 MB | `.ods`, 266 KB |
-| **Edition loaded** | year ending March 2026 | year ending March 2026 |
-| **Shape** | Quarterly time series | Single snapshot |
+| **Format** | `.xlsx`, 1.33 MB | `.ods`, 272 KB |
+| **Edition loaded** | year ending June 2026 | year ending June 2026 |
+| **Shape** | Quarterly time series | Snapshot per edition, retained |
 | **Native geography** | LAD code published in the file | LTLA (ONS code) |
 | **Refresh cadence** | Quarterly, roughly 8 weeks after quarter end | Quarterly |
 
@@ -24,34 +24,39 @@ independent per-period reconciliation reference for Checks 8a and 8b.
 
 ## Date range and floor
 
-Asy_D11 carries 2014 Q1 to 2026 Q1. S6 loads **2018 Q1 forward — 33 quarters,
-2018-03-31 to 2026-03-31**.
+Asy_D11 carries 2014 Q1 to 2026 Q2. S6 loads **2018 Q1 forward — 34 quarters,
+2018-03-31 to 2026-06-30**.
 
 The floor is applied because Section 4 carries no local authority geography
 before 2018: those rows are published as a single national aggregate marked
 `N/A - Section 4 (pre-2018)`. Earlier quarters cannot be aggregated consistently
 across support types, so loading them would produce an England series that
-silently omits one support type. 5,006 of 28,439 rows are excluded; 23,433
+silently omits one support type. 5,006 of 29,645 rows are excluded; 24,639
 remain in scope.
 
 ## Tables
 
 | Table | Rows | People | Natural key |
 |---|---:|---:|---|
-| `la_asylum_support` | 20,926 | 2,164,730 | `(period_ending, lad24cd, support_type, accommodation_type)` |
+| `la_asylum_support` | 21,953 | 2,245,677 | `(period_ending, lad24cd, support_type, accommodation_type)` |
 | `la_asylum_support_unallocated` | 84 | 225,515 | `(period_ending, support_type, accommodation_type, na_reason)` |
-| `asylum_support_non_england` | 2,374 | 330,601 | `(period_ending, lad_code, support_type, accommodation_type)` |
-| `la_immigration_groups` | 3,552 | 615,954 | `(period_ending, lad24cd, pathway, sub_pathway)` |
+| `asylum_support_non_england` | 2,553 | 342,947 | `(period_ending, lad_code, support_type, accommodation_type)` |
+| `la_immigration_groups` | 7,104 | 1,225,707 | `(period_ending, lad24cd, pathway, sub_pathway)` |
 | `asylum_series_breaks` | 2 | — | `break_id` |
-| `vw_la_asylum_support_totals` | 7,868 | — | view |
+| `vw_la_asylum_support_totals` | 8,157 | — | view |
+
+`la_immigration_groups` holds **one snapshot per edition** — 3,552 rows each at
+2026-03-31 and 2026-06-30. It held one until 2026-09-04, because the loader
+stamped every edition with a date fixed in source and so overwrote the previous
+snapshot in place. See the note under Reg_02 below.
 
 ### Row count reconciliation
 
 ```
- 23,433  rows in scope (Asy_D11, 2018-01-01 forward)
+ 24,639  rows in scope (Asy_D11, 2018-01-01 forward)
 -    49  absorbed by SUM aggregation across 35 collision keys
          (34 reorganisation merges, 1 duplicate key)
-= 23,384  rows landed across the three Asy_D11 tables
+= 24,590  rows landed across the three Asy_D11 tables
 ```
 
 People totals are unaffected — aggregation preserves `SUM`. Per-key detail is in
@@ -247,13 +252,52 @@ misattribute.
 3. All 13 verification checks must pass. Any failure rolls the whole
    transaction back and exits non-zero — partial or suspect data is never left
    behind.
-4. Update the anchor constants in `scripts/s6_asylum_verify.py` when a new edition
-   lands: `ANCHOR_PERIOD`, `ANCHORS_ENGLAND`, `ANCHORS_NON_ENGLAND`,
-   `ANCHOR_UK_TOTAL`, `PUBLISHED_LA_UNIVERSE`, `PUBLISHED_UNDER_100`. Source
-   them from that release's "How many people are in the UK asylum system?"
-   narrative page.
+4. **Two kinds of constant live in `scripts/s6_asylum_verify.py` and they move
+   differently.** `ANCHOR_PERIOD`, `ANCHORS_ENGLAND`, `ANCHORS_NON_ENGLAND`,
+   `ANCHOR_UK_TOTAL`, `PUBLISHED_LA_UNIVERSE` and `PUBLISHED_UNDER_100` are a
+   *reconciliation anchor*: a period whose published figures have been sourced
+   by hand from that release's "How many people are in the UK asylum system?"
+   narrative page. They do not have to move every quarter, because Asy_D11 is a
+   full time series and each new edition still contains the anchored period —
+   an unchanged anchor that still reconciles is evidence the back series was
+   not silently revised.
+
+   What that buys is limited, and the limit should be stated rather than
+   assumed: **checks 3, 5, 8a and 8b verify the anchored period, not the newest
+   one.** A quarter loaded without re-anchoring is verified by checks 1, 2, 4,
+   6, 7, 9, 10, 11 and 12 — including the Reg_02 cross-source reconciliation at
+   its own period — but its England and UK headline totals have not been
+   compared against anything the Home Office published in prose.
+
+   Re-anchor when you want that comparison on the newest quarter, and expect to
+   source six figures by hand to do it. As of 2026-09-04 the anchor is
+   2026-03-31 while the loaded series runs to 2026-06-30.
+
+   Reg_02's period is **not** one of these constants and must never be
+   hardcoded — see below.
 5. If a new series break appears, add it to `SERIES_BREAKS` in
    `scripts/s6_asylum_build.py` and update the first fully comparable period here.
+
+### Reg_02's period comes from the edition, never from a constant
+
+Reg_02 is a single snapshot per edition, so its `period_ending` is a property of
+whichever file was discovered. `parse_reg_02` derives it from the edition label
+through `_edition_period()`, which hard-stops on a label it cannot parse rather
+than falling back to an assumed date.
+
+It was fixed at `ANCHOR_PERIOD` until 2026-09-04. Because every edition was
+stamped with the same date, each refresh **overwrote the previous snapshot in
+place** — the row count stayed at 3,552, every key stayed unique, coverage
+stayed complete, and a quarter of history disappeared with no signal at all.
+The first refresh after the original build is what exposed it: Check 9 failed
+with 263 of 286 authorities divergent, because it was comparing a June snapshot
+against March Asy_D11.
+
+Two lessons worth keeping. **One constant was doing two jobs** — a fixed
+verification anchor and a moving data period — and only the second was wrong.
+And **a cross-source gate earns its keep on the second edition, not the first**:
+nothing internal to Reg_02 could have caught this, because Reg_02 on its own
+reconciled perfectly every time.
 
 ## Scope
 

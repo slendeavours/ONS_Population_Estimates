@@ -1,5 +1,14 @@
 # S6 Build Summary — Home Office Asylum Support by Local Authority
 
+> **This describes the original build of 25 July 2026 and is left as written.**
+> The figures below were true of that build and are not the current state of the
+> tables. S6 was refreshed to the year-ending-June-2026 edition on 2026-09-04:
+> 34 quarters to 2026-06-30, `la_asylum_support` 21,953 rows, and
+> `la_immigration_groups` now holding one snapshot per edition rather than one
+> in total. For the current state and for what that refresh exposed, see
+> [`s6_asylum_source.md`](s6_asylum_source.md).
+
+
 ## Sources
 
 ### S6a — Asy_D11 (primary)

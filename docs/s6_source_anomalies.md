@@ -5,10 +5,10 @@ Anomalies found in the Home Office source files during the S6 load, and the aggr
 ## Row count reconciliation
 
 ```
- 23,433  rows in scope (Asy_D11, 2018-01-01 forward)
+ 24,639  rows in scope (Asy_D11, 2018-01-01 forward)
 -    49  absorbed by SUM aggregation across 35 collision keys
          (34 reorganisation merges, 1 duplicate key)
-=23,384  rows landed across la_asylum_support, la_asylum_support_unallocated and asylum_support_non_england
+=24,590  rows landed across la_asylum_support, la_asylum_support_unallocated and asylum_support_non_england
 ```
 
 People totals are unaffected: aggregation preserves `SUM`. The per-key row counts below make the 49 derivable rather than asserted.
