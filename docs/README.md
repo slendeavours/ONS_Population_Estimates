@@ -2,7 +2,7 @@
 
 <!-- repo-meta
 status: active
-last-reviewed: 2026-08-16
+last-reviewed: 2026-09-04
 type: tool
 consumed-by: map.slendeavours.org, n8n exempt_pipeline workflows
 -->
