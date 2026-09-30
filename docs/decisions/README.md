@@ -19,7 +19,7 @@ gates pass, and `known_red.json` is empty.
 
 ## Still open
 
-Three things are registered but unresolved. Each is discoverable from the data
+Five things are registered but unresolved. Each is discoverable from the data
 as well as from here.
 
 ### 1. The S1 A1 back-series revision — seven quarters
@@ -57,6 +57,14 @@ no committed extraction code, so the extraction likely has to be written first.
 corrected only for 2025Q2 and 2025Q3, the quarters that reproduce exactly and
 therefore the only ones where the verdict is evidence rather than inference.
 Resolved by the same reload as item 1.
+
+### 4. Two database defects found in the reference-CSV reconciliation
+
+`ro4_housing_expenditure.hra_admin_prevention_relief_net_exp_000` holds
+TA administration net spend (unused by the map), and `la_housing_register`
+keeps one arbitrary predecessor row for eleven reorganised authorities,
+2015 to 2023 (2025 unaffected). See
+`2026-09-30-reference-csvs-out-of-step.md`.
 
 ## Closed
 
