@@ -54,3 +54,15 @@ database carries the same label. Not changed, to keep parity with the database.
   treating a variance as a defect.
 - Check which release a source file is. Three releases of the same RO4 workbook
   differ in how many authorities they cover, and the file name does not say.
+
+## Addendum, same day
+
+Assessed after the record was written. The map reads `la_housing_register` at
+the latest year only, and reads none of `hra_admin_prevention_relief_net_exp_000`,
+`total_housing_gross_exp_000` or `total_housing_net_exp_000`, so all three
+database defects are latent, not live. Item 3 above is an incomplete refresh:
+eight authorities have a homelessness total but a NULL housing total, and
+Islington (-£320k) and Leicester (+£2.2m) differ from the third release. The
+database's statutory homelessness tables were compared with the corrected CSVs
+for both quarters and agree on every checked column.
+

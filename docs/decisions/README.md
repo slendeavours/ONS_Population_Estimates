@@ -5,21 +5,14 @@ a record that gets quietly edited later is no longer evidence of anything.
 This index is the reconciliation. **Read it first** — it says which findings
 are settled and which are still live.
 
-Status as at **2026-09-04**. The verification suite exits **0**, all **21**
-gates pass, and `known_red.json` is empty.
-
-> **This index is behind the folder.** Nine records written on 2026-08-20 and
-> 2026-08-21 are not yet reconciled into the Closed table below:
-> repo-scope, demand-map-assurance, nojekyll, s12-efs-misattribution,
-> s20-neutral-object-names, s3b-tenure-rebasing-error,
-> derived-view-dropped-unnoticed and s14-brma-join-break. They are listed here
-> rather than assigned a status, because saying "closed" without checking is
-> the exact failure this index exists to prevent. Reconciling them is an open
-> task of its own.
+Status as at **2026-09-30**. The verification suite exits **0**, all **21**
+gates pass, and `known_red.json` is empty. The eight records of 2026-08-20
+and 2026-08-21 were reconciled on 2026-09-30, each checked against the
+live database, git tree or Pages runs rather than taken from its own text.
 
 ## Still open
 
-Five things are registered but unresolved. Each is discoverable from the data
+Four things are registered but unresolved; the three in item 4 are latent. Each is discoverable from the data
 as well as from here.
 
 ### 1. The S1 A1 back-series revision — seven quarters
@@ -58,18 +51,34 @@ corrected only for 2025Q2 and 2025Q3, the quarters that reproduce exactly and
 therefore the only ones where the verdict is evidence rather than inference.
 Resolved by the same reload as item 1.
 
-### 4. Two database defects found in the reference-CSV reconciliation
+### 4. Three latent database defects, none affecting the map
 
-`ro4_housing_expenditure.hra_admin_prevention_relief_net_exp_000` holds
-TA administration net spend (unused by the map), and `la_housing_register`
-keeps one arbitrary predecessor row for eleven reorganised authorities,
-2015 to 2023 (2025 unaffected). See
+Found in the 2026-09-30 reference-CSV reconciliation; assessed the same day.
+Nothing reads any of them, so none is urgent. See
 `2026-09-30-reference-csvs-out-of-step.md`.
+
+- `la_housing_register` keeps one arbitrary predecessor row for eleven
+  reorganised authorities, 2015 to 2023. The map reads the latest year only,
+  so it matters only if someone builds a waiting-list trend.
+- `ro4_housing_expenditure.hra_admin_prevention_relief_net_exp_000` holds TA
+  administration net spend. Unread; ignore unless something starts using it.
+- `total_housing_gross_exp_000` and `_net` were not refreshed with the rest of
+  the third release: eight authorities are NULL and Islington and Leicester
+  differ. Unread by the map.
 
 ## Closed
 
 | Record | What it settled |
 | --- | --- |
+| [2026-09-30-telford-no-housing-register.md](2026-09-30-telford-no-housing-register.md) | Telford has no housing register; its reported 0 is not applicable. Set to NULL, run 20 exported, map shows No data. |
+| [2026-08-21-s14-brma-join-break.md](2026-08-21-s14-brma-join-break.md) | An accidental import rebuilt S14 and left a name-spelling mismatch and a consumed header row. 152 rate rows and 0 ampersand mappings verified live 2026-09-30. Gate 18 added. |
+| [2026-08-21-derived-view-dropped-unnoticed.md](2026-08-21-derived-view-dropped-unnoticed.md) | A derived view dropped by the S20 rename and found only by a downstream crash. View present, 155 rows, one rate card date, verified live. Gates 19 to 21 added; two gate-19 branches (zero-row, unrunnable view) remain unexercised. |
+| [2026-08-20-s3b-tenure-rebasing-error.md](2026-08-20-s3b-tenure-rebasing-error.md) | Census tenure wrong for the four 2023 unitaries. Cumberland verified at 125,424, the published figure. |
+| [2026-08-20-s20-neutral-object-names.md](2026-08-20-s20-neutral-object-names.md) | S20 tables and views renamed so the counterparty is not disclosed. `commercial_rate_card` and `commercial_rate_area_mapping` are the neutral names and exist live. |
+| [2026-08-20-s12-efs-misattribution.md](2026-08-20-s12-efs-misattribution.md) | EFS rows attributed to Hammersmith and Fulham belonged to Haringey. Verified: Haringey holds both rows (£40.6m, £84.0m), Hammersmith and Fulham none. |
+| [2026-08-20-repo-scope.md](2026-08-20-repo-scope.md) | The repository is the reproducibility record, not business analysis; 27 files removed and history purged. Verified: no removed path is tracked. |
+| [2026-08-20-nojekyll.md](2026-08-20-nojekyll.md) | Jekyll broke Pages publication on n8n `{{` syntax; `.nojekyll` added. Verified: file present, latest Pages builds succeeded (2026-09-30). |
+| [2026-08-20-demand-map-assurance.md](2026-08-20-demand-map-assurance.md) | Map re-exported from corrected data (run 18): stale workflow backup, stale house-price file, source count, MARAC and care-leaver labelling. Canvas was never rendered for a visual check (no WebGL in the browser pane). |
 | [2026-09-04-s6-reg02-hardcoded-snapshot-period.md](2026-09-04-s6-reg02-hardcoded-snapshot-period.md) | Reg_02's snapshot period was fixed in source, so each S6 refresh overwrote the previous snapshot in place. Caught by Check 9 on the first refresh; no row count, key or coverage test was sensitive to it. Period now derived from the edition. |
 | [2026-08-16-s114-attribution-and-gate-14.md](2026-08-16-s114-attribution-and-gate-14.md) | S.114 notices attributed to the issuing authority, never propagated. Gate 14 narrowed to require an unresolved code to declare itself. Last red gate cleared. |
 | [2026-08-16-s1-reconstruction-markers-and-revision.md](2026-08-16-s1-reconstruction-markers-and-revision.md) | S1 extraction rebuilt; `period` is a financial-year quarter; markers corrected for the reproducible quarters; `support_needs_total` corrected across all seven. **Partly open — see above.** |
