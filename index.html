@@ -337,8 +337,8 @@ var NO_DATA_COLOR = '#333333';
 
 var LAYERS = [
   { key: 'ta',    dot: '#4ade80', name: 'TA Households',              desc: 'Temporary accommodation (to Mar 2026)',      field: 'ta_households_current',       reversed: false, minLabel: 'Lower demand', maxLabel: 'Higher demand' },
-  { key: 'hbsa',  dot: '#3B82F6', name: 'HB Specified Accommodation', desc: 'HB specified accommodation (Feb 2026)', field: 'hb_sa_claimants_latest', reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
-  { key: 'spend', dot: '#f59e0b', name: 'Homelessness Spend',         desc: 'Total annual spend (2024-25)',        field: 'ro4_total_homelessness_000',  reversed: false, money: true, minLabel: 'Lower spend', maxLabel: 'Higher spend' },
+  { key: 'hbsa',  dot: '#3B82F6', name: 'HB Specified Accommodation', desc: 'HB specified accommodation (Mar 2026)', field: 'hb_sa_claimants_latest', reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
+  { key: 'spend', dot: '#f59e0b', name: 'Homelessness Spend',         desc: 'Total annual spend (2025-26, first release)',        field: 'ro4_total_homelessness_000',  reversed: false, money: true, minLabel: 'Lower spend', maxLabel: 'Higher spend' },
   { key: 'reg',   dot: '#f97316', name: 'Housing Register',           desc: 'Social housing waiting lists (2025)',        field: 'housing_register',            reversed: false, minLabel: 'Smaller', maxLabel: 'Larger' },
   { key: 'care',  dot: '#ef4444', name: 'Care Leavers',               desc: 'Semi-independent need, upper tier (to Mar 2025)',  field: 'care_leavers_semi_indep',     reversed: false, minLabel: 'Fewer', maxLabel: 'More', note: 'Corporate parenting is an upper-tier duty. Districts within a county are not shaded because the duty is not theirs, not because data is missing.' },
   { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing, force area (2025-26)',  field: 'marac_cases',                 reversed: false, minLabel: 'Lower', maxLabel: 'Higher', note: 'SafeLives publishes by police force area, not by local authority. Every authority in a force area carries the same force-wide total, so these are not authority-level counts.' },
@@ -349,7 +349,7 @@ var LAYERS = [
   // S11 — the pipeline's only supply-side layer, visually separated in the sidebar
   { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, minLabel: 'Fewer', maxLabel: 'More' },
   // S15 — house prices (supply-side context)
-  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI, all property (Jun 2026)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' },
+  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI, all property (Jul 2026)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' },
   // S22 — long-term empty rate. The only empty homes layer: total empties
   // bundles second homes and short-term turnover, so it is held in the
   // database and not mapped.
@@ -655,7 +655,7 @@ function openPanel(p) {
     row('MARAC Cases (force area)', esc(fmtNum(p.marac_cases))) +
     row('MARAC Rate (per 10k)', esc(typeof p.marac_rate_per_10k === 'number' ? p.marac_rate_per_10k.toFixed(1) : '—')) +
 
-    '<div class="pn-section">Expenditure (2024-25)</div>' +
+    '<div class="pn-section">Expenditure (2025-26, first release)</div>' +
     row('B&B Spend', esc(fmtMoney000(p.ro4_bb_spend_000))) +
     row('Nightly Paid Spend', esc(fmtMoney000(p.ro4_nightly_spend_000))) +
     row('Total Homelessness', esc(fmtMoney000(p.ro4_total_homelessness_000))) +
