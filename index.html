@@ -336,24 +336,24 @@ var LAYER_COLOR_SCALES = {
 var NO_DATA_COLOR = '#333333';
 
 var LAYERS = [
-  { key: 'ta',    dot: '#4ade80', name: 'TA Households',              desc: 'Temporary accommodation (to Mar 2026)',      field: 'ta_households_current',       reversed: false, minLabel: 'Lower demand', maxLabel: 'Higher demand' },
-  { key: 'hbsa',  dot: '#3B82F6', name: 'HB Specified Accommodation', desc: 'HB specified accommodation (Mar 2026)', field: 'hb_sa_claimants_latest', reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
-  { key: 'spend', dot: '#f59e0b', name: 'Homelessness Spend',         desc: 'Total annual spend (2025-26, first release)',        field: 'ro4_total_homelessness_000',  reversed: false, money: true, minLabel: 'Lower spend', maxLabel: 'Higher spend' },
-  { key: 'reg',   dot: '#f97316', name: 'Housing Register',           desc: 'Social housing waiting lists (2025)',        field: 'housing_register',            reversed: false, minLabel: 'Smaller', maxLabel: 'Larger' },
-  { key: 'care',  dot: '#ef4444', name: 'Care Leavers',               desc: 'Semi-independent need, upper tier (to Mar 2025)',  field: 'care_leavers_semi_indep',     reversed: false, minLabel: 'Fewer', maxLabel: 'More', note: 'Corporate parenting is an upper-tier duty. Districts within a county are not shaded because the duty is not theirs, not because data is missing.' },
-  { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing, force area (2025-26)',  field: 'marac_cases',                 reversed: false, minLabel: 'Lower', maxLabel: 'Higher', note: 'SafeLives publishes by police force area, not by local authority. Every authority in a force area carries the same force-wide total, so these are not authority-level counts.' },
-  { key: 'rs',    dot: '#06b6d4', name: 'Rough Sleeping',             desc: 'Single-night snapshot (autumn 2025)',               field: 'rough_sleeping_current',      reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
-  { key: 'imd',   dot: '#a3e635', name: 'Deprivation (IMD)',          desc: 'Index of Multiple Deprivation 2025', field: 'imd_rank_of_average_rank',    reversed: true, minLabel: 'More deprived', maxLabel: 'Less deprived' },
-  { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate, £/week (2026-27)',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
-  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate, £/week (2026-27)',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
+  { key: 'ta',    dot: '#4ade80', name: 'TA Households',              desc: 'Temporary accommodation (to Mar 2026)', tpl: 'Temporary accommodation ({p})',      field: 'ta_households_current',       reversed: false, minLabel: 'Lower demand', maxLabel: 'Higher demand' },
+  { key: 'hbsa',  dot: '#3B82F6', name: 'HB Specified Accommodation', desc: 'HB specified accommodation (Mar 2026)', tpl: 'HB specified accommodation ({p})', field: 'hb_sa_claimants_latest', reversed: false, minLabel: 'Lower', maxLabel: 'Higher' },
+  { key: 'spend', dot: '#f59e0b', name: 'Homelessness Spend',         desc: 'Total annual spend (2025-26, first release)', tpl: 'Total annual spend ({p})',        field: 'ro4_total_homelessness_000',  reversed: false, money: true, minLabel: 'Lower spend', maxLabel: 'Higher spend' },
+  { key: 'reg',   dot: '#f97316', name: 'Housing Register',           desc: 'Social housing waiting lists (2025)', tpl: 'Social housing waiting lists ({p})',        field: 'housing_register',            reversed: false, minLabel: 'Smaller', maxLabel: 'Larger' },
+  { key: 'care',  dot: '#ef4444', name: 'Care Leavers',               desc: 'Semi-independent need, upper tier (to Mar 2025)', tpl: 'Semi-independent need, upper tier ({p})',  field: 'care_leavers_semi_indep',     reversed: false, minLabel: 'Fewer', maxLabel: 'More', note: 'Corporate parenting is an upper-tier duty. Districts within a county are not shaded because the duty is not theirs, not because data is missing.' },
+  { key: 'dv',    dot: '#ec4899', name: 'Domestic Violence (MARAC)',  desc: 'Urgent rehousing, force area (2025-26)', tpl: 'Urgent rehousing, force area ({p})',  field: 'marac_cases',                 reversed: false, minLabel: 'Lower', maxLabel: 'Higher', note: 'SafeLives publishes by police force area, not by local authority. Every authority in a force area carries the same force-wide total, so these are not authority-level counts.' },
+  { key: 'rs',    dot: '#06b6d4', name: 'Rough Sleeping',             desc: 'Single-night snapshot (autumn 2025)', tpl: 'Single-night snapshot ({p})',               field: 'rough_sleeping_current',      reversed: false, minLabel: 'Fewer', maxLabel: 'More' },
+  { key: 'imd',   dot: '#a3e635', name: 'Deprivation (IMD)',          desc: 'Index of Multiple Deprivation 2025', tpl: 'Index of Multiple Deprivation {p}', field: 'imd_rank_of_average_rank',    reversed: true, minLabel: 'More deprived', maxLabel: 'Less deprived' },
+  { key: 'lhasar', dot: '#84cc16', name: 'LHA Shared Rate',           desc: 'Shared accommodation rate, £/week (2026-27)', tpl: 'Shared accommodation rate, £/week ({p})',  field: 'lha_sar_weekly',              reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
+  { key: 'lha1b',  dot: '#eab308', name: 'LHA 1-Bed Rate',            desc: '1-bed LHA rate, £/week (2026-27)', tpl: '1-bed LHA rate, £/week ({p})',             field: 'lha_1bed_weekly',             reversed: false, moneyWeek: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' },
   // S11 — the pipeline's only supply-side layer, visually separated in the sidebar
-  { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations',      field: 'supported_living_locations',  reversed: false, divider: true, minLabel: 'Fewer', maxLabel: 'More' },
+  { key: 'cqcsl',  dot: '#c9a96e', name: 'Care Providers (SL)',       desc: 'CQC supported living locations', tpl: 'CQC supported living locations ({p})',      field: 'supported_living_locations',  reversed: false, divider: true, minLabel: 'Fewer', maxLabel: 'More' },
   // S15 — house prices (supply-side context)
-  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI, all property (Jul 2026)',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' },
+  { key: 'hpi',    dot: '#D4B483', name: 'Avg House Price',           desc: 'Land Registry HPI, all property (Jul 2026)', tpl: 'Land Registry HPI, all property ({p})',    field: 'avg_price_all',              reversed: false, moneyPrice: true, fixedBreaks: [150000, 200000, 250000, 300000, 400000], minLabel: 'Affordable', maxLabel: 'Expensive' },
   // S22 — long-term empty rate. The only empty homes layer: total empties
   // bundles second homes and short-term turnover, so it is held in the
   // database and not mapped.
-  { key: 'lte',    dot: '#8b5cf6', name: 'Long-Term Empty Rate',      desc: 'Dwellings empty 6+ months (CTB 2025)', field: 'ctb_lte_rate_pct',          reversed: false, ratePct: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' }
+  { key: 'lte',    dot: '#8b5cf6', name: 'Long-Term Empty Rate',      desc: 'Dwellings empty 6+ months (CTB 2025)', tpl: 'Dwellings empty 6+ months (CTB {p})', field: 'ctb_lte_rate_pct',          reversed: false, ratePct: true, minLabel: 'Lower rate', maxLabel: 'Higher rate' }
 ];
 
 var map, geojson, laIndex = {}, activeLayer = LAYERS[0];
@@ -422,6 +422,8 @@ Promise.all([
   // avg_price_all and annual_change_pct are exported with the signals, so the
   // house price layer refreshes with every export like every other measure.
   var hpiEdition = (raw.metadata && raw.metadata.hpi_period) || '';
+  PERIODS = (raw.metadata && raw.metadata.periods) || {};
+  applyPeriods();
 
   geojson.features.forEach(function (f) {
     var p = f.properties;
@@ -655,12 +657,12 @@ function openPanel(p) {
     row('MARAC Cases (force area)', esc(fmtNum(p.marac_cases))) +
     row('MARAC Rate (per 10k)', esc(typeof p.marac_rate_per_10k === 'number' ? p.marac_rate_per_10k.toFixed(1) : '—')) +
 
-    '<div class="pn-section">Expenditure (2025-26, first release)</div>' +
+    '<div class="pn-section">Expenditure (' + esc(per('ro4_total_homelessness_000', '2025-26, first release')) + ')</div>' +
     row('B&B Spend', esc(fmtMoney000(p.ro4_bb_spend_000))) +
     row('Nightly Paid Spend', esc(fmtMoney000(p.ro4_nightly_spend_000))) +
     row('Total Homelessness', esc(fmtMoney000(p.ro4_total_homelessness_000))) +
 
-    '<div class="pn-section">LHA Rates (2026-27)</div>' +
+    '<div class="pn-section">LHA Rates (' + esc(per('lha_sar_weekly', '2026-27')) + ')</div>' +
     row('BRMA', esc(p.lha_brma_name || '—')) +
     row('Shared Rate', esc(fmtMoneyWeek(p.lha_sar_weekly))) +
     row('1-Bed Rate', esc(fmtMoneyWeek(p.lha_1bed_weekly))) +
@@ -672,7 +674,7 @@ function openPanel(p) {
     row('Avg Price (All)', esc(fmtMoneyPrice(p.avg_price_all))) +
     row('Annual Change', typeof p.annual_change_pct === 'number' ? esc(fmtPct(p.annual_change_pct)) : '—', typeof p.annual_change_pct === 'number' ? (p.annual_change_pct >= 0 ? 'pos' : 'neg') : '') +
 
-    '<div class="pn-section">Empty Homes (Council Taxbase 2025)</div>' +
+    '<div class="pn-section">Empty Homes (Council Taxbase ' + esc(per('ctb_lte_rate_pct', '2025')) + ')</div>' +
     row('Long-Term Empty Rate', esc(fmtRatePct(p.ctb_lte_rate_pct))) +
     row('Empty 6+ Months', esc(fmtNum(p.ctb_empty_6m_plus))) +
     row('Charged Empty Homes Premium', esc(fmtNum(p.ctb_empty_homes_premium))) +
@@ -698,6 +700,21 @@ document.getElementById('panel-close').addEventListener('click', function () {
     selectedId = null;
   }
 });
+
+/* ---------- Periods ----------
+   Each layer's period comes from the export (metadata.periods), read from the
+   database with the same MAX() rule Workflow 1 uses. The typed desc is only a
+   fallback for a signals file exported before periods existed. */
+var PERIODS = {};
+function per(field, fallback) { return PERIODS[field] || fallback; }
+function applyPeriods() {
+  LAYERS.forEach(function (l) {
+    if (!l.tpl || !PERIODS[l.field]) return;
+    l.desc = l.tpl.replace('{p}', PERIODS[l.field]);
+    var el = document.querySelector('.layer-row[data-key="' + l.key + '"] .layer-desc');
+    if (el) el.textContent = l.desc;
+  });
+}
 
 /* ---------- Layer switcher ---------- */
 function buildLayerList() {

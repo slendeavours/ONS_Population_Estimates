@@ -31,6 +31,7 @@ Writes files only. Adds no map layer; index.html decides what renders.
 import datetime
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -98,6 +99,57 @@ def _contract_backstop():
           f"{len(warnings)} warning(s)")
 
 
+MON = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split()
+
+
+def layer_periods(cur):
+    """The period each map layer shows, read with the same MAX() rule W1 uses.
+
+    index.html used to carry these as typed text, and after the October 2026
+    refresh three layer labels and a popup heading named the previous edition
+    while the data was the new one. The labels now travel with the data, and a
+    layer without a period stops the export rather than publishing a guess.
+    """
+    def one(sql):
+        cur.execute(sql)
+        row = cur.fetchone()
+        return list(row.values())[0] if isinstance(row, dict) else row[0]
+
+    p = {}
+    # Financial-year quarter: 2025Q4 is January to March 2026.
+    q = one("SELECT MAX(period) FROM la_statutory_homelessness")
+    if q:
+        y, n = int(q[:4]), int(q[-1])
+        p["ta_households_current"] = f"to {MON[[5, 8, 11, 2][n - 1]]} {y + (n == 4)}"
+    m = one("SELECT MAX(month) FROM la_hb_accom_type_caseload")
+    if m:
+        p["hb_sa_claimants_latest"] = f"{MON[int(m[4:]) - 1]} {m[:4]}"
+    fy = one("SELECT MAX(financial_year) FROM ro4_housing_expenditure")
+    if fy:
+        src = one(f"SELECT MIN(source) FROM ro4_housing_expenditure WHERE financial_year = '{fy}'") or ""
+        rel = re.search(r"(first|second|third) release", src)
+        p["ro4_total_homelessness_000"] = fy + (f", {rel.group(0)}" if rel else "")
+    p["housing_register"] = str(one("SELECT MAX(reporting_year) FROM la_housing_register") or "") or None
+    cl = one("SELECT MAX(reporting_year) FROM care_leaver_accommodation WHERE age_group = '17-21'")
+    p["care_leavers_semi_indep"] = f"to Mar {cl}" if cl else None   # DfE reporting year ends 31 March
+    p["marac_cases"] = one("SELECT MAX(financial_year) FROM marac_cases")
+    rs = one("SELECT MAX(snapshot_year) FROM la_rough_sleeping")
+    p["rough_sleeping_current"] = f"autumn {rs}" if rs else None
+    p["imd_rank_of_average_rank"] = "2025"          # la_imd_2025 holds one edition by design
+    lha = one("SELECT MAX(financial_year) FROM brma_lha_rates")
+    p["lha_sar_weekly"] = p["lha_1bed_weekly"] = lha
+    cqc = one("SELECT MAX(source_file_date) FROM cqc_locations")
+    p["supported_living_locations"] = f"{MON[cqc.month - 1]} {cqc.year}" if cqc else None
+    hp = one("SELECT MAX(period) FROM la_house_prices")
+    p["avg_price_all"] = f"{MON[hp.month - 1]} {hp.year}" if hp else None
+    p["ctb_lte_rate_pct"] = str(one("SELECT MAX(taxbase_year) FROM la_council_taxbase_empties") or "") or None
+
+    missing = [k for k, v in p.items() if not v]
+    if missing:
+        sys.exit(f"HARD STOP: no period for map layer field(s) {missing}; the map would label them wrongly")
+    return p
+
+
 def main():
     _contract_backstop()
     conn = psycopg2.connect(**DB_CFG)
@@ -160,9 +212,10 @@ def main():
     hpi_period = cur.fetchone()["p"]
 
     generated = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    periods = layer_periods(cur)
     meta = {"generated_at": generated, "run_id": str(run_id),
             "feature_count": str(len(rows)), "source": "exempt_pipeline",
-            "hpi_period": hpi_period}
+            "hpi_period": hpi_period, "periods": periods}
 
     signals_path = REPO / "data" / "signals" / "staging_la_signals_latest.json"
     signals_path.write_text(json.dumps(
