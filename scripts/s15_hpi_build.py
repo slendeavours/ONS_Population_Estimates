@@ -21,7 +21,7 @@ def _require_env(name):
 # from a shell that happened to have the variables exported and nowhere else.
 from _db import get_conn  # noqa: E402
 
-EDITION = "April 2026"
+EDITION = "July 2026"
 _TMP = os.path.join(os.environ.get("TEMP", os.environ.get("TMP", "/tmp")), "s15_hpi")
 FILE1 = os.path.join(_TMP, "avg_prices.csv")
 FILE2 = os.path.join(_TMP, "avg_prices_property_type.csv")
@@ -65,15 +65,7 @@ INSERT INTO la_house_prices (
     avg_price_terraced, avg_price_flat
 )
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-ON CONFLICT (lad24cd, period) DO UPDATE SET
-    avg_price_all      = EXCLUDED.avg_price_all,
-    avg_price_all_sa   = EXCLUDED.avg_price_all_sa,
-    annual_change_pct  = EXCLUDED.annual_change_pct,
-    avg_price_detached = EXCLUDED.avg_price_detached,
-    avg_price_semi     = EXCLUDED.avg_price_semi,
-    avg_price_terraced = EXCLUDED.avg_price_terraced,
-    avg_price_flat     = EXCLUDED.avg_price_flat,
-    loaded_at          = NOW();
+ON CONFLICT (lad24cd, period) DO NOTHING;
 """
 
 
@@ -185,8 +177,18 @@ def main():
         print("No unresolved area codes.")
 
     # --- Upsert in batches of 500 ---
+    # Insert only. Every edition republishes the whole back series with small revisions;
+    # existing rows are left as loaded (history is additive) and the revisions are counted, not applied.
+    cur.execute("SELECT lad24cd, period, avg_price_all FROM la_house_prices")
+    held = {(r[0], r[1]): r[2] for r in cur.fetchall()}
+    revised = sum(1 for m in merged_rows if (m[0], m[1]) in held and m[2] is not None and held[(m[0], m[1])] is not None
+                  and abs(float(held[(m[0], m[1])]) - m[2]) > 0.005)
+    new_rows = [m for m in merged_rows if (m[0], m[1]) not in held]
+    print(f"Already held: {len(merged_rows) - len(new_rows)} rows ({revised} carry a revised avg_price_all in this edition, left unchanged). "
+          f"New: {len(new_rows)} rows, periods {sorted({m[1] for m in new_rows})[:3]}...")
     batch_size = 500
-    total = len(merged_rows)
+    total = len(new_rows)
+    merged_rows = new_rows
     for i in range(0, total, batch_size):
         batch = merged_rows[i : i + batch_size]
         psycopg2.extras.execute_batch(cur, UPSERT, batch, page_size=batch_size)

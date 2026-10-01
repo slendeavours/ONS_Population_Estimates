@@ -121,6 +121,61 @@ DETECTORS = {
         note="performance-{month}-{year} publication pages; "
              "docs/nodes/s9b_node1_fetch_mhsds_monthly.md",
     ),
+    # --- Finder detectors. These three sources had no detector, so every run
+    # reported check_failed ("mechanics not documented") even though the
+    # registry documents how each is published. Each finder returns the newest
+    # edition the publisher offers as 'YYYY-MM' or 'YYYY-MM-DD'; the loaded side
+    # comes from the target table itself (loaded_sql), or from a stated
+    # constant where the table does not record its own vintage.
+    "15": dict(method="govuk_content_api", finder="s15",
+               loaded_sql="SELECT to_char(MAX(period), 'YYYY-MM') FROM la_house_prices",
+               note="UK HPI monthly release titles in the UK House Price Index "
+                    "reports collection; the title month is the data month"),
+    "24": dict(method="govuk_content_api", finder="s24",
+               loaded_sql="SELECT MAX(snapshot_date)::text FROM rsh_registered_providers",
+               note="'List of registered providers' attachment titles on the RSH "
+                    "register page (GOV.UK content API); snapshot date is in the title"),
+    # la_boundaries does not record its own vintage, so the loaded side is
+    # stated here: LAD May 2024 BGC (registry known_gotchas for S7). A newer
+    # vintage is reported, never adopted: changing vintage re-bases every join.
+    # --- The remaining twelve sources. Each reads the publisher's own release listing; where a source
+    # cannot be detected from outside (S20) or only half can (S12), the note says so.
+    "1b": dict(method="govuk_content_api", finder="s1b",
+               loaded_sql="SELECT MAX(period) FROM la_homelessness_support_needs",
+               note="Same quarterly release as S1 (Table A3 is a sheet in the detailed LA tables)"),
+    "3": dict(method="api_probe", finder="s3",
+              loaded_sql="SELECT MAX(reference_year)::text FROM la_population",
+              note="ONS MYE dataset listing (the /data JSON the registry api_endpoint points at), newest "
+                   "mid<year> edition, as s3_mye_refresh.py resolves it"),
+    "3b": dict(method="api_probe", finder="s3b", loaded_const="2023-01-05",
+               note="NOMIS dataset NM_2072_1 (TS054) LastUpdated. Census 2021 is static, so the baseline is the "
+                    "publisher's LastUpdated seen on 2026-10-01 and any later value is reported"),
+    "4": dict(method="api_probe", finder="s4",
+              note="DfE Explore Education Statistics content API, latest release of Children looked after in England"),
+    "6": dict(method="govuk_content_api", finder="s6",
+              note="Home Office immigration system statistics data tables, newest 'year ending <month year>' in the change history"),
+    "12": dict(method="govuk_content_api", finder="s12",
+               note="EFS half only: 'Exceptional Financial Support ... for <year>' documents in the GOV.UK collection. "
+                    "S.114 notices are issued by individual councils and cannot be watched from here"),
+    "14": dict(method="govuk_content_api", finder="s14",
+               note="'Universal Credit Local Housing Allowance rates: <year> to <year>' publication on GOV.UK"),
+    "17": dict(method="landing_page", finder="s17",
+               note="Newest YYYY-YY label on the SafeLives latest MARAC data page; the page is the only signal"),
+    "20": dict(method="manual", finder="s20",
+               note="Private rate card, supplied by Scott when he gets a newer copy; nothing is published. Detects "
+                    "only a newer s20_ratecard_rates_<date>.csv in the repo or data/reference than the registry's "
+                    "latest_period_loaded"),
+    "21": dict(method="api_probe", finder="s21", loaded_norm="month_year",
+               note="ONS dataset page releaseDate for the nearest-neighbours workbook"),
+    "22": dict(method="govuk_content_api", finder="s22",
+               note="'Council Taxbase <year> in England' releases in the council taxbase statistics collection"),
+    "23": dict(method="govuk_content_api", finder="s23",
+               note="'Registered provider social housing stock and rents in England <y1> to <y2>' in the RSH collection; "
+                    "stock is at 31 March of the second year"),
+    "7": dict(method="api_probe", finder="s7", loaded_const="2024-05",
+              note="ArcGIS REST service list on the Open Geography Portal, "
+                   "Local_Authority_Districts_*_BGC services; adopting a new "
+                   "vintage is a deliberate decision, never a routine refresh"),
 }
 
 
@@ -477,6 +532,246 @@ def edition_loaded(table, edition):
         conn.close()
 
 
+def _month_year(text):
+    """('YYYY-MM', month, year) from the first 'Month YYYY' in text, else None."""
+    abbr = [mo[:3] for mo in MONTHS]
+    for m in re.finditer(r"([a-z]{3,9})\W+(\d{4})", text.lower()):
+        word = m.group(1)
+        if word[:3] in abbr and (word in MONTHS or len(word) == 3):
+            return f"{int(m.group(2)):04d}-{abbr.index(word[:3]) + 1:02d}"
+    return None
+
+
+def find_s15():
+    """Newest 'UK House Price Index for <Month> <Year>' release."""
+    status, body = fetch("https://www.gov.uk/api/content/government/collections/"
+                         "uk-house-price-index-reports")
+    docs = (json.loads(body).get("links", {}) or {}).get("documents", []) or []
+    hits = [(_month_year(d["title"]), d["title"], (d.get("public_updated_at") or "")[:10])
+            for d in docs if re.match(r"^UK House Price Index for \w+ \d{4}$", d.get("title", ""))]
+    hits = [h for h in hits if h[0]]
+    if not hits:
+        raise ValueError("no 'UK House Price Index for <Month> <Year>' title in the collection; "
+                         "the publisher has probably retitled the series")
+    best = max(hits)
+    return status, best[0], f"'{best[1]}' published {best[2]}"
+
+
+def find_s24():
+    """Newest dated 'List of registered providers' attachment on the RSH page."""
+    status, body = fetch("https://www.gov.uk/api/content/government/publications/"
+                         "registered-providers-of-social-housing")
+    atts = (json.loads(body).get("details", {}) or {}).get("attachments", []) or []
+    dates = []
+    for a in atts:
+        t = a.get("title") or ""
+        m = re.search(rf"list of registered providers\W+(\d{{1,2}}) ({MONTH_RE}) (\d{{4}})", t.lower())
+        if m:
+            dates.append((f"{int(m.group(3)):04d}-{MONTHS.index(m.group(2)) + 1:02d}-{int(m.group(1)):02d}", t))
+    if not dates:
+        raise ValueError("no dated 'List of registered providers' attachment on the page")
+    best = max(dates)
+    return status, best[0], f"'{best[1][:70]}'"
+
+
+def find_s7():
+    """Newest Local Authority Districts BGC (UK) vintage in the ArcGIS service list."""
+    status, body = fetch("https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services?f=json")
+    vint = []
+    for s in json.loads(body).get("services", []):
+        n = s.get("name", "")
+        if re.match(r"^Local_Authority_Districts", n, re.I) and "BGC" in n.upper() and "UK" in n.upper():
+            v = _month_year(n.replace("_", " ").replace("(", " ").replace(")", " "))
+            if v:
+                vint.append((v, n))
+    if not vint:
+        raise ValueError("no Local_Authority_Districts *_BGC service in the service list")
+    best = max(vint)
+    return status, best[0], f"service '{best[1]}'; {len(set(v for v, _ in vint))} vintages offered"
+
+
+def _content(path):
+    status, body = fetch("https://www.gov.uk/api/content" + path)
+    return status, json.loads(body)
+
+
+def _collection_docs(slug):
+    status, d = _content(f"/government/collections/{slug}")
+    return status, (d.get("links", {}) or {}).get("documents", []) or []
+
+
+def find_s1b():
+    status, rel = govuk_collection("homelessness-statistics",
+                                   r"^Statutory homelessness in England: \w+ to \w+ \d{4}$")
+    per = [(title_period_s1(t), t) for t, _, _ in rel if title_period_s1(t)]
+    if not per:
+        raise ValueError("no statutory homelessness quarter title could be parsed")
+    best = max(per)
+    return status, best[0], f"'{best[1][:70]}'"
+
+
+def find_s3():
+    base = "https://www.ons.gov.uk"
+    land = ("/peoplepopulationandcommunity/populationandmigration/populationestimates/datasets/"
+            "estimatesofthepopulationforenglandandwales")
+    status, body = fetch(base + land + "/data")
+    ed = []
+    for d in json.loads(body).get("datasets", []):
+        m = re.search(r"/mid(\d{4})(\d{4})localauthorityboundaries$", d.get("uri", ""))
+        if m:
+            ed.append((m.group(1), d["uri"]))
+    if not ed:
+        raise ValueError("no mid<year><boundary>localauthorityboundaries edition on the ONS listing")
+    best = max(ed)
+    return status, best[0], f"edition {best[1].rsplit('/', 1)[-1]}"
+
+
+def find_s3b():
+    status, body = fetch("https://www.nomisweb.co.uk/api/v01/dataset/def.sdmx.json?search=*TS054*")
+    for k in json.loads(body)["structure"]["keyfamilies"]["keyfamily"]:
+        if k["id"] == "NM_2072_1":
+            for a in k.get("annotations", {}).get("annotation", []):
+                if a.get("annotationtitle") == "LastUpdated":
+                    return status, a["annotationtext"][:10], "NOMIS NM_2072_1 LastUpdated"
+    raise ValueError("NM_2072_1 or its LastUpdated annotation not found")
+
+
+def find_s4():
+    status, body = fetch("https://content.explore-education-statistics.service.gov.uk/api/publications/"
+                         "children-looked-after-in-england-including-adoptions")
+    d = json.loads(body)
+    lr = d.get("latestRelease") or {}
+    m = re.search(r"(\d{4})", lr.get("slug", "") or lr.get("title", ""))
+    if not m:
+        raise ValueError(f"latestRelease carries no year: {lr}")
+    return status, m.group(1), f"'{lr.get('title')}', next release {d.get('nextReleaseDate')}"
+
+
+def find_s6():
+    status, d = _content("/government/statistical-data-sets/immigration-system-statistics-data-tables")
+    notes = " ".join(c.get("note", "") for c in d.get("details", {}).get("change_history", []))
+    ends = []
+    for mon, yr in re.findall(rf"year ending ({MONTH_RE}) (\d{{4}})", notes.lower()):
+        m = MONTHS.index(mon) + 1
+        last = datetime.date(int(yr) + (m == 12), m % 12 + 1, 1) - datetime.timedelta(days=1)
+        ends.append(last.isoformat())
+    if not ends:
+        raise ValueError("no 'year ending <month year>' in the change history")
+    return status, max(ends), f"change history updated {d.get('public_updated_at', '')[:10]}"
+
+
+def find_s12():
+    status, docs = _collection_docs("exceptional-financial-support-for-local-authorities")
+    yrs = [(f"{m.group(1)}-{m.group(2)}", x["title"], (x.get("public_updated_at") or "")[:10])
+           for x in docs for m in [re.search(r"for (\d{4})-(\d{2})$", x.get("title", ""))] if m]
+    if not yrs:
+        raise ValueError("no 'Exceptional Financial Support ... for <year>' title in the collection")
+    best = max(yrs)
+    return status, best[0], f"'{best[1][:60]}' updated {best[2]}"
+
+
+def find_s14():
+    url = ("https://www.gov.uk/api/search.json?q=" + urllib.parse.quote("Universal Credit Local Housing Allowance rates")
+           + "&count=20&fields=title,link,public_timestamp")
+    status, body = fetch(url)
+    yrs = [(f"{m.group(1)}-{m.group(2)[2:]}", r["title"], r["public_timestamp"][:10])
+           for r in json.loads(body).get("results", [])
+           for m in [re.match(r"^Universal Credit Local Housing Allowance rates: (\d{4}) to (\d{4})$", r.get("title", ""))] if m]
+    if not yrs:
+        raise ValueError("no 'Universal Credit Local Housing Allowance rates: <y> to <y>' result")
+    best = max(yrs)
+    return status, best[0], f"'{best[1]}' published {best[2]}"
+
+
+def find_s17():
+    status, body = fetch("https://safelives.org.uk/practice-support/resources-marac-meetings/latest-marac-data/")
+    text = re.sub(r"<[^>]+>", " ", body)
+    labels = re.findall(r"\b(20\d\d-\d\d)\b", text)
+    if not labels:
+        raise ValueError("no YYYY-YY year label on the SafeLives page; the layout has probably changed")
+    return status, max(labels), f"{len(set(labels))} year labels on the page"
+
+
+def find_s20():
+    here = Path(__file__).resolve().parent.parent
+    dates = []
+    for d in (here, here / "data" / "reference"):
+        for f in d.glob("s20_ratecard_rates_*.csv"):
+            m = re.search(r"(\d{4}-\d{2}-\d{2})", f.name)
+            if m:
+                dates.append((m.group(1), f.name))
+    if not dates:
+        raise ValueError("no s20_ratecard_rates_<date>.csv file found")
+    best = max(dates)
+    return 200, best[0], f"newest file supplied: {best[1]}"
+
+
+def find_s21():
+    status, body = fetch("https://www.ons.gov.uk/peoplepopulationandcommunity/wellbeing/datasets/"
+                         "clusteringsimilarlocalauthoritiesandstatisticalnearestneighboursintheuk/data")
+    rd = (json.loads(body).get("description", {}) or {}).get("releaseDate", "")[:10]
+    if not rd:
+        raise ValueError("no releaseDate on the ONS dataset page")
+    return status, rd[:7], f"releaseDate {rd}"
+
+
+def find_s22():
+    status, docs = _collection_docs("council-taxbase-statistics")
+    yrs = [(m.group(1), x["title"], (x.get("public_updated_at") or "")[:10]) for x in docs
+           for m in [re.match(r"^Council Taxbase (\d{4}) in England$", x.get("title", ""))] if m]
+    if not yrs:
+        raise ValueError("no 'Council Taxbase <year> in England' title in the collection")
+    best = max(yrs)
+    return status, best[0], f"'{best[1]}' updated {best[2]}"
+
+
+def find_s23():
+    status, docs = _collection_docs("registered-provider-social-housing-stock-and-rents-in-england")
+    eds = [(f"{m.group(2)}-03-31", x["title"], (x.get("public_updated_at") or "")[:10]) for x in docs
+           for m in [re.search(r"England (\d{4}) to (\d{4})$", x.get("title", ""))] if m]
+    if not eds:
+        raise ValueError("no 'stock and rents in England <y1> to <y2>' title in the collection")
+    best = max(eds)
+    return status, best[0], f"'{best[1][:70]}' updated {best[2]}"
+
+
+FINDERS = {"s15": find_s15, "s24": find_s24, "s7": find_s7, "s1b": find_s1b, "s3": find_s3, "s3b": find_s3b,
+           "s4": find_s4, "s6": find_s6, "s12": find_s12, "s14": find_s14, "s17": find_s17, "s20": find_s20,
+           "s21": find_s21, "s22": find_s22, "s23": find_s23}
+
+
+def check_finder(row, det, reg):
+    """Compare the newest edition a finder sees with what the target table holds."""
+    try:
+        status, period, desc = FINDERS[det["finder"]]()
+        row["http_status"] = status
+    except Exception as e:
+        row.update(outcome="check_failed",
+                   error_detail=f"{type(e).__name__}: {str(e)[:200]}")
+        return row
+    row["detected_period"] = period
+    row["fingerprint_after"] = hashlib.sha256(f"{period}|{desc}".encode()).hexdigest()[:32]
+    if det.get("loaded_sql"):
+        conn = get_conn()
+        try:
+            cur = conn.cursor()
+            cur.execute(det["loaded_sql"])
+            loaded = (cur.fetchone() or [None])[0]
+        finally:
+            conn.close()
+    else:
+        loaded = det.get("loaded_const") or (reg.get("latest_period_loaded") or "").strip() or None
+    if loaded and det.get("loaded_norm") == "month_year":
+        loaded = _month_year(str(loaded))
+    row["notes"] = f"{det['note']}; newest {period} ({desc}); loaded {loaded}"
+    if not loaded:
+        row.update(outcome="check_failed",
+                   error_detail="the target table holds no period to compare against")
+        return row
+    row["outcome"] = "new_edition" if period > str(loaded)[:len(period)] else "no_change"
+    return row
+
+
 def check_govuk(row, det, reg):
     """Detect via the GOV.UK release list rather than the publisher's files."""
     try:
@@ -608,6 +903,8 @@ def check_one(code, reg):
     # Routing comes before the landing-page guard: an API-probe or collection
     # detector needs no landing page, and requiring one would fail a check
     # that has everything it needs.
+    if det.get("finder"):
+        return check_finder(row, det, reg)
     if det.get("date_field"):
         return check_statxplore(row, det, reg)
     if det.get("collection"):

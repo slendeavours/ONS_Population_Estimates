@@ -78,6 +78,8 @@ MONTHS = [
      "id": "str:value:hb_new:F_HB_NEW_DATE:NEW_DATE_NAME:C_HB_NEW_DATE:202601"},
     {"yyyymm": "202602", "label": "202602 (Feb-26)",
      "id": "str:value:hb_new:F_HB_NEW_DATE:NEW_DATE_NAME:C_HB_NEW_DATE:202602"},
+    {"yyyymm": "202603", "label": "202603 (Mar-26)",
+     "id": "str:value:hb_new:F_HB_NEW_DATE:NEW_DATE_NAME:C_HB_NEW_DATE:202603"},
 ]
 
 DB_ID = "str:database:hb_new"
@@ -278,7 +280,12 @@ def phase2_etl():
         total_upserted = 0
         months_loaded = []
 
-        for month in MONTHS:
+        # Additive: a month already in the table is never fetched or rewritten.
+        cur.execute("SELECT DISTINCT month FROM la_hb_accom_type_caseload")
+        held = {r[0] for r in cur.fetchall()}
+        todo = [m for m in MONTHS if m["yyyymm"] not in held]
+        print(f"  Months already held, skipped: {sorted(held & {m['yyyymm'] for m in MONTHS})}; to load: {[m['yyyymm'] for m in todo]}")
+        for month in todo:
             print(f"\n  Month: {month['label']}")
             for accom in ACCOM_MEMBERS:
                 print(f"    Accom: {accom['code']} ({accom['label']})...")
@@ -304,9 +311,7 @@ def phase2_etl():
                     SELECT r.lad24cd, r.month, r.accom_type, r.claimants
                     FROM json_to_recordset(%s::json)
                         AS r(lad24cd text, month text, accom_type text, claimants int)
-                    ON CONFLICT (lad24cd, month, accom_type) DO UPDATE SET
-                        claimants = EXCLUDED.claimants,
-                        loaded_at = NOW();
+                    ON CONFLICT (lad24cd, month, accom_type) DO NOTHING;
                 """, (batch_json,))
                 upserted = cur.rowcount
                 total_upserted += upserted

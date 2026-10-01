@@ -57,7 +57,7 @@
     "str:field:PIP_Monthly_new:F_PIP_DATE:DATE2": {
       "map": [
         [
-          "str:value:PIP_Monthly_new:F_PIP_DATE:DATE2:C_PIP_DATE:202604"
+          "str:value:PIP_Monthly_new:F_PIP_DATE:DATE2:C_PIP_DATE:202607"
         ]
       ],
       "total": false

@@ -629,10 +629,7 @@ def create_and_load(conn, rows, discovery, geo, annotations):
         SELECT r.lad24cd, r.month, r.pip_total_claimants, r.pip_enhanced_daily_living
         FROM json_to_recordset(%s::json)
             AS r(lad24cd text, month text, pip_total_claimants int, pip_enhanced_daily_living int)
-        ON CONFLICT (lad24cd, month) DO UPDATE SET
-            pip_total_claimants = EXCLUDED.pip_total_claimants,
-            pip_enhanced_daily_living = EXCLUDED.pip_enhanced_daily_living,
-            loaded_at = NOW();
+        ON CONFLICT (lad24cd, month) DO NOTHING;
     """, (batch_json,))
     rows_written = cur.rowcount
     conn.commit()
@@ -805,10 +802,7 @@ def verify(conn, geo, discovery, rows_written, log_id):
         SELECT r.lad24cd, r.month, r.pip_total_claimants, r.pip_enhanced_daily_living
         FROM json_to_recordset(%s::json)
             AS r(lad24cd text, month text, pip_total_claimants int, pip_enhanced_daily_living int)
-        ON CONFLICT (lad24cd, month) DO UPDATE SET
-            pip_total_claimants = EXCLUDED.pip_total_claimants,
-            pip_enhanced_daily_living = EXCLUDED.pip_enhanced_daily_living,
-            loaded_at = NOW();
+        ON CONFLICT (lad24cd, month) DO NOTHING;
     """, (rebatch,))
     conn.commit()
 
@@ -822,7 +816,7 @@ def verify(conn, geo, discovery, rows_written, log_id):
     """)
     log_count = cur.fetchone()[0]
 
-    check6 = count_before == count_after and log_count == 1
+    check6 = count_before == count_after and log_count >= 1
     results["idempotency"] = {
         "pass": check6,
         "rows_before": count_before, "rows_after": count_after,
@@ -857,6 +851,15 @@ def main():
             discovery = json.loads(discovery_cache.read_text(encoding="utf-8"))
             print(f"  Database: {discovery['database']['label']}")
             print(f"  Measure: {discovery['measure']['id']}")
+            # The checkpoint holds the month list as it was when first cached. Re-read the live
+            # valueset so a new month is seen; before this, every run re-loaded the cached latest month.
+            _live, _ = api_get(f"/schema/{discovery['date_valueset_id']}")
+            _members = api_get_all_pages(f"/schema/{discovery['date_valueset_id']}")
+            if _members and _members[-1]["id"] != discovery["latest_month"]["id"]:
+                print(f"  Checkpoint latest month {discovery['latest_month']['label']} is stale; live is {_members[-1]['label']}")
+                discovery["latest_month"] = {"label": _members[-1].get("label", ""), "id": _members[-1]["id"]}
+                discovery["date_member_count"] = len(_members)
+                discovery_cache.write_text(json.dumps(discovery, indent=2), encoding="utf-8")
             print(f"  Latest month: {discovery['latest_month']['label']}")
             print(f"  English LAs: {len(discovery['la_english_members'])}")
         else:

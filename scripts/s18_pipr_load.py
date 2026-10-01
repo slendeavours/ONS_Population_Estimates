@@ -210,16 +210,10 @@ def main():
                                       mean_rent, rent_index, annual_pct_change,
                                       provisional, source)
         VALUES %s
-        ON CONFLICT (lad24cd, period, breakdown_type, category) DO UPDATE SET
-            mean_rent         = EXCLUDED.mean_rent,
-            rent_index        = EXCLUDED.rent_index,
-            annual_pct_change = EXCLUDED.annual_pct_change,
-            provisional       = EXCLUDED.provisional,
-            source            = EXCLUDED.source,
-            loaded_at         = NOW()
+        ON CONFLICT (lad24cd, period, breakdown_type, category) DO NOTHING
     """, records, page_size=5000)
     cur.execute("SELECT COUNT(*) FROM la_private_rents")
-    print(f"la_private_rents rows: {cur.fetchone()[0]} (upserted {len(records)})")
+    print(f"la_private_rents rows: {cur.fetchone()[0]} (offered {len(records)}; existing (lad24cd, period, breakdown, category) rows are never rewritten)")
 
     conn.commit()
     conn.close()
