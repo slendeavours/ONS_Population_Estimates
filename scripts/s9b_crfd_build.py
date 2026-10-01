@@ -43,6 +43,7 @@ STAGING = "nhs_mh_crfd_repro"
 
 MEASURE = "MHS26"
 ENGLAND_PREFIXES = ("E06", "E07", "E08", "E09")
+HARD_RECODES = {"E08000038": "E08000016", "E08000039": "E08000019"}   # Barnsley, Sheffield (SI 1328/2024)
 SUPPRESSION = {"*", "-", "..", ""}
 
 INSERT_COLS = ["reporting_period", "lad24cd", "la_name", "measure_id",
@@ -114,6 +115,9 @@ def parse(url, period):
         code = line[idx["PRIMARY_LEVEL"]].strip()
         if not code.startswith(ENGLAND_PREFIXES):
             continue
+        # The July 2026 file publishes Barnsley and Sheffield on their 2025 codes; the table keys them on
+        # the pre-2025 codes (the la_boundaries vintage). Resolve at extraction, as the other loaders do.
+        code = HARD_RECODES.get(code, code)
         if line[idx["SECONDARY_LEVEL"]].strip().upper() != "NONE":
             continue
 
