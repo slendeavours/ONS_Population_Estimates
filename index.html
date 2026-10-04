@@ -516,7 +516,7 @@ function initMap() {
       source: 'las',
       paint: {
         'fill-color': fillColorExpr(activeLayer),
-        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.82]
+        'fill-opacity': fillOpacityExpr(false)
       }
     });
 
@@ -608,6 +608,23 @@ function wireMapEvents() {
   });
 }
 
+/* While an area is selected, every other area fades so the selection stands out. */
+function fillOpacityExpr(dimmed) {
+  if (!dimmed) return ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0.82];
+  return ['case',
+    ['boolean', ['feature-state', 'selected'], false], 0.9,
+    ['boolean', ['feature-state', 'hover'], false], 0.35,
+    0.15
+  ];
+}
+
+function setDimmed(dimmed) {
+  map.setPaintProperty('la-fill', 'fill-opacity', fillOpacityExpr(dimmed));
+  map.setPaintProperty('la-stress', 'line-opacity', dimmed
+    ? ['case', ['boolean', ['feature-state', 'selected'], false], 1, 0.25]
+    : 1);
+}
+
 function selectLA(code, flyTo) {
   var entry = laIndex[code];
   if (!entry) return;
@@ -616,10 +633,34 @@ function selectLA(code, flyTo) {
   }
   selectedId = code;
   map.setFeatureState({ source: 'las', id: code }, { selected: true });
-  if (flyTo) {
-    map.fitBounds(entry.bbox, { padding: 80, maxZoom: 10, duration: 1200 });
-  }
+  setDimmed(true);
   openPanel(entry.props);
+  showBesidePanel(entry.bbox, flyTo);
+}
+
+/* Moves the map so the selected area sits in the space left of the detail panel.
+   A search zooms in to the area; a click only pans (zooming out if it won't fit). */
+function showBesidePanel(bbox, zoomIn) {
+  var canvas = map.getCanvas();
+  var w = canvas.clientWidth, h = canvas.clientHeight;
+  var panelW = document.getElementById('panel').offsetWidth;
+  var pad = Math.min(80, w / 8, h / 8);
+  // On narrow screens the panel covers almost everything, so don't try to fit beside it.
+  var right = (w - panelW > 200) ? panelW + pad : pad;
+  var padding = { top: pad, bottom: pad, left: pad, right: right };
+  if (!zoomIn) {
+    // Leave the map alone if the area is already fully in view beside the panel.
+    var a = map.project([bbox[0][0], bbox[1][1]]), b = map.project([bbox[1][0], bbox[0][1]]);
+    if (a.x >= 0 && a.y >= 0 && b.x <= w - right + pad && b.y <= h) return;
+  }
+  var cam = map.cameraForBounds(bbox, { padding: padding, maxZoom: zoomIn ? 10 : map.getZoom() });
+  if (!cam) return;
+  if (!zoomIn) cam.zoom = Math.min(cam.zoom, map.getZoom());
+  // Centre the area in the free space rather than the middle of the whole map.
+  map.easeTo({
+    center: cam.center, zoom: cam.zoom, offset: [(pad - right) / 2, 0],
+    duration: zoomIn ? 1200 : 600
+  });
 }
 
 /* ---------- Detail panel ---------- */
@@ -698,6 +739,7 @@ document.getElementById('panel-close').addEventListener('click', function () {
   if (selectedId !== null && map) {
     map.setFeatureState({ source: 'las', id: selectedId }, { selected: false });
     selectedId = null;
+    setDimmed(false);
   }
 });
 
