@@ -265,7 +265,7 @@ Total Homelessness       £[X.X]m
 Population               [value]
 Deprivation Rank         [value] / 296  (1 = most deprived)
 [If s114_flag true:]     ⚠ SECTION 114 NOTICE
-[If efs_flag true:]      ⚠ EMERGENCY FINANCIAL SUPPORT
+[If efs_flag true:]      ⚠ EXCEPTIONAL FINANCIAL SUPPORT
 ```
 
 - Section headers: DM Sans, 9px, uppercase, letter-spacing 0.12em, gold muted
