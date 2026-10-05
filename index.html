@@ -625,7 +625,9 @@ function setDimmed(dimmed) {
     : 1);
 }
 
-function selectLA(code, flyTo) {
+// camera: true zooms to the area, false pans only if the panel hides it,
+// 'none' leaves the camera to the caller.
+function selectLA(code, camera) {
   var entry = laIndex[code];
   if (!entry) return;
   if (selectedId !== null) {
@@ -635,7 +637,15 @@ function selectLA(code, flyTo) {
   map.setFeatureState({ source: 'las', id: code }, { selected: true });
   setDimmed(true);
   openPanel(entry.props);
-  showBesidePanel(entry.bbox, flyTo);
+  if (camera !== 'none') showBesidePanel(entry.bbox, camera === true);
+}
+
+// Width the detail panel takes from the map, plus a margin. On narrow screens the
+// panel covers almost everything, so nothing is reserved for it.
+function panelReserve(pad) {
+  var w = map.getCanvas().clientWidth;
+  var panelW = document.getElementById('panel').offsetWidth;
+  return (w - panelW > 200) ? panelW + pad : pad;
 }
 
 /* Moves the map so the selected area sits in the space left of the detail panel.
@@ -643,10 +653,8 @@ function selectLA(code, flyTo) {
 function showBesidePanel(bbox, zoomIn) {
   var canvas = map.getCanvas();
   var w = canvas.clientWidth, h = canvas.clientHeight;
-  var panelW = document.getElementById('panel').offsetWidth;
   var pad = Math.min(80, w / 8, h / 8);
-  // On narrow screens the panel covers almost everything, so don't try to fit beside it.
-  var right = (w - panelW > 200) ? panelW + pad : pad;
+  var right = panelReserve(pad);
   var padding = { top: pad, bottom: pad, left: pad, right: right };
   if (!zoomIn) {
     // Leave the map alone if the area is already fully in view beside the panel.
@@ -834,11 +842,16 @@ function postcodeSearch() {
       }
       var res = data.result;
       msg.textContent = res.postcode + ' — ' + (res.admin_district || '');
-      map.flyTo({ center: [res.longitude, res.latitude], zoom: 12, duration: 1600 });
       var laCode = res.codes && res.codes.admin_district;
       if (laCode && laIndex[laCode]) {
-        selectLA(laCode, false);
+        selectLA(laCode, 'none');
       }
+      // Land the postcode in the space beside the panel when it is open. flyTo
+      // ignores `offset`, so shift the target centre by the same pixels at zoom 12.
+      var shift = document.getElementById('panel').classList.contains('open') ? panelReserve(0) / 2 : 0;
+      var m = mapboxgl.MercatorCoordinate.fromLngLat([res.longitude, res.latitude]);
+      m.x += shift / (512 * Math.pow(2, 12));
+      map.flyTo({ center: m.toLngLat(), zoom: 12, duration: 1600 });
       closeSidebarOnMobile();
     })
     .catch(function () {
