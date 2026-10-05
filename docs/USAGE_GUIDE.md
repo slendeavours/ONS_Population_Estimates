@@ -94,7 +94,7 @@ The panel shows every figure held for the selected authority, whichever layer is
 - **Empty Homes (Council Taxbase)**: long-term empty rate, homes empty six months or more, homes charged the empty homes premium, second homes.
 - **Context**: population and deprivation rank (out of 296).
 
-Where it applies, a warning at the bottom flags a **Section 114 notice** or Exceptional Financial Support (labelled **Emergency Financial Support** in the panel).
+Where it applies, a warning at the bottom flags a **Section 114 notice** or **Exceptional Financial Support**.
 
 A dash (—) means the figure isn't held for that authority. For example, some councils haven't yet reported the latest RO4 spend, and districts have no care leaver figure.
 

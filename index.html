@@ -735,7 +735,7 @@ function openPanel(p) {
 
   var flags = '';
   if (p.s114_flag === true || p.s114_flag === 'true') flags += '<div class="pn-flag s114">⚠ SECTION 114 NOTICE</div>';
-  if (p.efs_flag === true || p.efs_flag === 'true') flags += '<div class="pn-flag efs">⚠ EMERGENCY FINANCIAL SUPPORT</div>';
+  if (p.efs_flag === true || p.efs_flag === 'true') flags += '<div class="pn-flag efs">⚠ EXCEPTIONAL FINANCIAL SUPPORT</div>';
   if (flags) html += '<div class="pn-flags">' + flags + '</div>';
 
   document.getElementById('panel-body').innerHTML = html;
