@@ -1,7 +1,7 @@
 """Gates for the S1 edition-history table.
 
 Prints `GATE n name: PASS/FAIL`; exits 1 on any FAIL. Gates 1-3 cover the
-table shape and immutability. Later steps add gates 4-11.
+table shape and immutability, 4-5 the backfill. Later steps add gates 6-11.
 
 Usage:
     python scripts/s1_editions_verify.py
@@ -10,6 +10,7 @@ The UPDATE/DELETE gates run inside a savepoint that is always rolled back and
 the whole run ends in a rollback, so the table is left unchanged.
 """
 import sys
+from datetime import date
 from pathlib import Path
 
 import psycopg2
@@ -129,7 +130,6 @@ def _raises(fn, exc):
 
 
 def gate_3a_three_way_tie(cur):
-    from datetime import date
     name = "latest_edition: 3 tied editions, middle differs, raises"
     if not table_exists(cur):
         return report("3a", name, False, f"{TABLE} absent")
@@ -144,7 +144,6 @@ def gate_3a_three_way_tie(cur):
 
 
 def gate_3b_mixed_dates(cur):
-    from datetime import date
     name = "latest_edition: dated and undated mixed, raises"
     if not table_exists(cur):
         return report("3b", name, False, f"{TABLE} absent")
@@ -174,6 +173,93 @@ def gate_3c_empty_recs(cur):
     report("3c", name, ok and n == 0, f"{msg}; rows={n}")
 
 
+def gate_3d_bad_supersedes(cur):
+    name = "insert_edition: supersedes must name an existing edition"
+    if not table_exists(cur):
+        return report("3d", name, False, f"{TABLE} absent")
+
+    def body(cur):
+        lad = _first_lad(cur)
+        insert_edition(cur, _rec(lad, 1), "2099Q1",
+                       **_kw("t", date(2099, 1, 1), "h0"))
+        bad = dict(_kw("t", date(2099, 2, 1), "h1"), supersedes=7)
+        r = _raises(lambda: insert_edition(cur, _rec(lad, 2), "2099Q1", **bad),
+                    SystemExit)
+        good = dict(_kw("t", date(2099, 2, 1), "h1"), supersedes=1)
+        ed = insert_edition(cur, _rec(lad, 2), "2099Q1", **good)
+        cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
+                    "WHERE period = '2099Q1'")
+        return r, ed, cur.fetchone()[0]
+    (ok, msg), ed, n = _in_savepoint(cur, body)
+    report("3d", name, ok and "supersedes" in msg and ed == 2 and n == 2,
+           f"{msg}; valid supersedes -> edition {ed}, rows={n}")
+
+
+def gate_4_coverage(cur):
+    name = "every quarter has edition 1 and 296 authorities per edition"
+    if not table_exists(cur):
+        return report(4, name, False, f"{TABLE} absent")
+    cur.execute("SELECT DISTINCT period FROM public.la_statutory_homelessness")
+    periods = sorted(r[0] for r in cur.fetchall())
+    cur.execute(f"""SELECT period, edition, COUNT(DISTINCT lad24cd), COUNT(*)
+                    FROM public.{TABLE} GROUP BY 1, 2""")
+    eds = {}
+    for p, e, n, rows in cur.fetchall():
+        eds.setdefault(p, {})[e] = (n, rows)
+    bad = []
+    for p in periods:
+        e = eds.get(p, {})
+        if 1 not in e:
+            bad.append(f"{p}: no edition 1")
+        bad += [f"{p} ed{k}: {v[0]} authorities/{v[1]} rows"
+                for k, v in e.items() if v != (296, 296)]
+    cur.execute(f"SELECT COUNT(*) FROM public.{TABLE}")
+    total = cur.fetchone()[0]
+    report(4, name, bool(periods) and not bad,
+           f"periods={len(periods)} rows={total} "
+           + ("; ".join(bad[:5]) if bad else "ok"))
+
+
+def gate_5_latest_equals_live(cur):
+    name = "latest edition equals live table on the six measures"
+    if not table_exists(cur):
+        return report(5, name, False, f"{TABLE} absent")
+    cur.execute("SELECT DISTINCT period FROM public.la_statutory_homelessness")
+    periods = sorted(r[0] for r in cur.fetchall())
+    cols = ", ".join(("lad24cd",) + MEASURES[:6])
+    bad = []
+    for p in periods:
+        try:
+            ed = latest_edition(cur, p)
+        except (LookupError, ValueError) as e:
+            bad.append(f"{p}: {e}")
+            continue
+        q = (f"SELECT COUNT(*) FROM (SELECT {cols} FROM public.{TABLE} "
+             "WHERE period = %s AND edition = %s EXCEPT "
+             f"SELECT {cols} FROM public.la_statutory_homelessness "
+             "WHERE period = %s) x")
+        q2 = (f"SELECT COUNT(*) FROM (SELECT {cols} FROM "
+              "public.la_statutory_homelessness WHERE period = %s EXCEPT "
+              f"SELECT {cols} FROM public.{TABLE} "
+              "WHERE period = %s AND edition = %s) x")
+        cur.execute(q, (p, ed, p))
+        a = cur.fetchone()[0]
+        cur.execute(q2, (p, p, ed))
+        b = cur.fetchone()[0]
+        if a or b:
+            bad.append(f"{p} ed{ed}: {a} edition-only, {b} live-only rows")
+    cur.execute(f"""SELECT edition, total_assessments FROM public.{TABLE}
+                    WHERE period = '2025Q2' AND lad24cd = 'E06000001'
+                    ORDER BY edition""")
+    hart = cur.fetchall()
+    if hart != [(1, 138), (2, 159)]:
+        bad.append(f"Hartlepool 2025Q2 total_assessments {hart}, "
+                   "expected [(1, 138), (2, 159)]")
+    report(5, name, bool(periods) and not bad,
+           "; ".join(bad[:5]) if bad else f"{len(periods)} periods match; "
+           "Hartlepool 138 -> 159")
+
+
 def main():
     conn = get_conn()
     try:
@@ -184,6 +270,9 @@ def main():
             gate_3a_three_way_tie(cur)
             gate_3b_mixed_dates(cur)
             gate_3c_empty_recs(cur)
+            gate_3d_bad_supersedes(cur)
+            gate_4_coverage(cur)
+            gate_5_latest_equals_live(cur)
     finally:
         conn.rollback()
         conn.close()
