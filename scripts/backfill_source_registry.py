@@ -1033,7 +1033,26 @@ SOURCES = [
             "(_corrected), and homelessness_quarter_urls additionally records "
             "_revised assets for four quarters that GOV.UK still serves but no "
             "longer links. edition_variant and source_url on every row record "
-            "which file that row came from."),
+            "which file that row came from. Revisions are now stored as "
+            "editions in la_homelessness_support_needs_editions (append-only, "
+            "key lad24cd + period + category_code + edition; 174,640 rows); "
+            "la_homelessness_support_needs is the latest-edition layer, "
+            "refreshed by scripts/s1b_editions.py refresh-latest. Latest is "
+            "the edition no other edition supersedes. Edition 1 is each "
+            "quarter as loaded; 2025Q2 edition 2 is the MHCLG revision of 30 "
+            "April 2026; 2023Q2 to 2024Q4 edition 2 is the registry 'revised' "
+            "file, the same file S1 holds, which is newer than the "
+            "release-page file the quarter was first built from. Per quarter "
+            "1,648 to 2,078 of 9,176 cells changed in 209 to 269 "
+            "authorities, almost all A3 count revisions. 'One or more "
+            "support needs' equals la_statutory_homelessness."
+            "support_needs_total for 296 of 296 authorities in each of the "
+            "seven quarters. The loader scripts/s1b_support_needs_build.py "
+            "still resolves and prefers the release-page file, so a later "
+            "edition must be loaded with scripts/s1b_editions.py load, and "
+            "refresh-latest is specific to the 2026-10-06 reload and must be "
+            "generalised before the next quarterly load. See "
+            "docs/decisions/2026-10-06-s1b-edition-history.md."),
         detected_period_type="reference_period",
         # Which cohorts present as homeless is the closest published proxy for
         # referral mix (HSS); for UCWS it indicates the support profile of the

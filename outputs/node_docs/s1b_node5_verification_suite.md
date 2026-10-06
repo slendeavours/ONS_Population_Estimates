@@ -19,8 +19,8 @@ python scripts/s1b_support_needs_verify.py
 | 3 | Code resolution | Every `publisher_la_code` resolves through `la_code_lookup`, and the stored `lad24cd` equals what the lookup gives; recodes listed individually |
 | 4 | Per-row provenance | `source_url`, `source_edition` and `release_page_url` populated on every row; editions reported per quarter |
 | 5 | Suppression | No row carries both a value and a flag; none carries neither; no flagged row holds a zero |
-| 6 | Idempotency | Re-upsert every row inside a transaction, compare an md5 content checksum either side, always roll back |
-| 7 | Reconciliation | LA rows summed against the publisher's England row |
+| 6 | Live rows equal the latest edition, and reloading it is idempotent | Re-extract each period's latest edition from its recorded local file, compare cell for cell (NULL-safe) with the live rows, then re-upsert inside a transaction, compare an md5 content hash (excluding `loaded_at`) either side, always roll back |
+| 7 | Reconciliation | LA rows summed against the publisher's England row, read from the latest edition's local file |
 
 ## Gate 5 — the query that would catch a silent coercion
 
@@ -42,6 +42,8 @@ The last query is the one that matters: a suppressed cell that became a zero
 would appear there. It must return 0.
 
 ## Gate 6 — writing without committing
+
+*Updated 2026-10-06.* The live table holds the latest edition of each quarter, which for revised quarters is not the file the release page links. The original gate re-resolved the page-linked file, so it overwrote a revision the page does not link (2025Q2 revised) and failed, and its self-join "cells differing" figure compared the table with itself. It now re-extracts each period's latest edition from the local file recorded in `la_homelessness_support_needs_editions` and compares it with the live rows; the content hash excludes `loaded_at`. Gate 7 reads the England row from the same local file. The sketch below shows the rollback shape only.
 
 ```python
 probe = get_conn()
@@ -88,12 +90,12 @@ support.
 ## Connection
 
 Postgres `exempt_pipeline` on `localhost:5432`, session read-only. HTTPS to
-GOV.UK for gates 1, 6 and 7, which re-resolve the editions rather than trust a
-cached list.
+GOV.UK for gate 1, which re-resolves the editions rather than trust a cached
+list. Gates 6 and 7 read local files recorded in the editions table.
 
 ## Verified Output
 
-7 of 7 gates passed, 2026-08-14.
+7 of 7 gates passed, 2026-08-14. (Figures below are as of that run; gates 6 and 7 changed on 2026-10-06 and 7 of 7 pass again, see Gate 6.)
 
 - Gate 1: 101,232 expected, 101,232 loaded.
 - Gate 2: 296/296 in all eleven quarters.
