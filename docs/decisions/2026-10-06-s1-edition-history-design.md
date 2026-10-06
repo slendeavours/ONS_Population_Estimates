@@ -148,4 +148,4 @@ cells across the seven quarters; the 108 in the Why section is the count of stor
 6. A TRUNCATE trigger was added beside the update and delete triggers, closing a gap in the
    append-only guarantee.
 
-**Left open.** See `README.md`, item 5.
+**Left open.** See `README.md`, item 3.
