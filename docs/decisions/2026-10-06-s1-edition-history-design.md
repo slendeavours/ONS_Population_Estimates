@@ -62,7 +62,6 @@ produced whenever an edition changes a figure used in a delivered output. Change
 - `docs/decisions/README.md` (closes open items 1 and 3), `CHANGELOG.md`, `docs/METHODOLOGY.md`
   (revision handling paragraph), `docs/s1b_support_needs_source.md` and the S1 procedure notes;
 - `source_registry` S1 `revision_note` (generated field: set by the backfill script, not by hand).
-No S20 or S25 material appears in any public change.
 
 **6. Safety.**
 - Verified `pg_backup` set taken before the first write (restore tested to a scratch database).
