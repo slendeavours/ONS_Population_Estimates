@@ -17,7 +17,16 @@ Subcommands:
         # added, writes nothing). --commit inserts and runs the backfill gates
         # in the same transaction, rolling back on failure; --simulate does the
         # same and always rolls back. Idempotent: a second run adds nothing.
-    python scripts/s1b_editions.py load ...            # Task 3 (not yet built)
+    python scripts/s1b_editions.py load --period P --manifest-label registry
+        [--supersedes N] [--commit | --simulate]
+        # DRY-RUN by default: extracts the manifest's registry file with the
+        # S1b reader and diffs it against the period's latest stored edition;
+        # writes nothing. --commit inserts it as the next edition and runs
+        # gates 6-8 in the same transaction (rollback on failure); --simulate
+        # does the same and always rolls back. --supersedes must equal the
+        # chain tip.
+    python scripts/s1b_editions.py dryrun-all --out report.md
+        # plain-English diff of all seven registry files vs stored editions
     python scripts/s1b_editions.py refresh-latest ...  # Task 4 (not yet built)
 
 Helpers imported by later steps: create_schema, insert_edition, latest_edition,
@@ -31,7 +40,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from s1_editions import Q2_FILES, halt, sha256_file  # noqa: E402
+from s1_editions import (Q2_FILES, STALE_PERIODS, halt,  # noqa: E402
+                         load_manifest, select_entry, sha256_file)
 from s1_editions import latest_edition as _s1_latest_edition  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -481,9 +491,419 @@ def cmd_backfill(args):
         conn.close()
 
 
+# ------------------------------------------------------------ load (Task 3)
+
+ONE_OR_MORE = "hh_one_or_more_support_needs"
+MARKERS = {"..": "missing", "-": "suppressed", "[x]": "missing",
+           "[c]": "suppressed", "[z]": "not_applicable"}
+
+
+def raw_path(period, source_file):
+    """Local raw file for a stored source_file (with or without the period
+    prefix the raw folder uses). None if absent."""
+    for cand in (RAW_DIR / source_file, RAW_DIR / f"{period}_{source_file}"):
+        if cand.exists():
+            return cand
+    return None
+
+
+def _edition1_facts(cur, period) -> dict:
+    cur.execute(f"""SELECT DISTINCT release_page_url, reference_quarter,
+                           layout_version FROM public.{TABLE}
+                    WHERE period = %s AND edition = 1""", (period,))
+    rows = cur.fetchall()
+    if len(rows) != 1:
+        halt(f"{period}: edition 1 has {len(rows)} release_page_url/"
+             "reference_quarter/layout_version combinations, expected 1")
+    return dict(zip(("release_page_url", "reference_quarter",
+                     "layout_version"), rows[0]))
+
+
+def extract_entry(cur, entry: dict) -> tuple:
+    """Extract one manifest file with the S1b reader (verifying its sha256).
+    -> (rows as dicts keyed by DATA_COLS, edition dict, local path, layout).
+    The file is stored as a revised edition whatever its name says."""
+    import s1b_support_needs_build as s1b
+    period = entry["period"]
+    path = RAW_DIR / entry["file"]
+    if not path.exists():
+        halt(f"{path} not found")
+    sha = sha256_file(path)
+    if sha != entry["sha256"]:
+        halt(f"{entry['file']}: sha256 {sha} does not match manifest "
+             f"{entry['sha256']}")
+    prefix = f"{period}_"
+    if not entry["file"].startswith(prefix):
+        halt(f"{entry['file']}: manifest file name must start with {prefix}")
+    facts = _edition1_facts(cur, period)
+    edition = {"period": period, "reference_quarter": facts["reference_quarter"],
+               "url": entry["url"], "filename": entry["file"][len(prefix):],
+               "variant": "revised",
+               "release_page_url": facts["release_page_url"]}
+    layout, _, tuples = s1b.build_rows(cur, edition, s1b.read_a3(path))
+    rows = [dict(zip(DATA_COLS, t)) for t in tuples]
+    return rows, edition, path, layout
+
+
+def diff_rows(cur, period, rows, old_edition) -> dict:
+    """Cell diff of extracted rows against a stored edition (read-only)."""
+    from collections import Counter
+    cur.execute(f"""SELECT lad24cd, category_code, category_group, value,
+                           value_flag FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s""", (period, old_edition))
+    old = {(r[0], r[1]): (r[2], r[3], r[4]) for r in cur.fetchall()}
+    new = {(r["lad24cd"], r["category_code"]):
+           (r["category_group"], r["value"], r["value_flag"]) for r in rows}
+    kinds, by_group, by_cat, auth = Counter(), Counter(), Counter(), set()
+    for k in set(old) & set(new):
+        og, ov, of = old[k]
+        _, nv, nf = new[k]
+        if (ov, of) == (nv, nf):
+            continue
+        if ov is not None and nv is not None:
+            kind = "value -> value"
+        elif ov is not None:
+            kind = "value -> flag"
+        elif nv is not None:
+            kind = "flag -> value"
+        else:
+            kind = "flag -> different flag"
+        kinds[kind] += 1
+        if ov == 0 and nv is None:
+            kinds["  of which zero -> flag"] += 1
+        if of is not None and nv == 0:
+            kinds["  of which flag -> zero"] += 1
+        by_group[og] += 1
+        by_cat[k[1]] += 1
+        auth.add(k[0])
+    return {"kinds": kinds, "by_group": by_group, "by_category": by_cat,
+            "authorities": auth, "only_new": sorted(set(new) - set(old)),
+            "only_old": sorted(set(old) - set(new)),
+            "changed": sum(by_group.values()),
+            "compared": len(set(old) & set(new))}
+
+
+def format_diff(d) -> str:
+    kinds = ", ".join(f"{k}={v}" for k, v in sorted(d["kinds"].items())
+                      if not k.startswith(" ")) or "none"
+    return (f"{d['changed']} of {d['compared']} cells changed in "
+            f"{len(d['authorities'])} authorities; {kinds}"
+            + (f"; only_in_new={len(d['only_new'])}" if d["only_new"] else "")
+            + (f"; only_in_old={len(d['only_old'])}" if d["only_old"] else ""))
+
+
+def check_loaded(cur, period, edition, known_codes=None,
+                 require_registry=True) -> list:
+    """Gate 6 for one edition: 296 authorities and the period's category rows,
+    every lad24cd inside la_code_lookup, a source_url, the same category set as
+    edition 1, and (require_registry) label registry and variant revised."""
+    cur.execute(f"""SELECT lad24cd, category_code, release_label, source_url,
+                           edition_variant FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s""", (period, edition))
+    rows = cur.fetchall()
+    if known_codes is None:
+        cur.execute("SELECT new_code FROM public.la_code_lookup UNION "
+                    "SELECT old_code FROM public.la_code_lookup")
+        known_codes = {r[0] for r in cur.fetchall()}
+    tag = f"{period} ed{edition}"
+    bad = []
+    n = len({r[0] for r in rows})
+    if (n, len(rows)) != (296, expected_rows(period)):
+        bad.append(f"{tag}: {n} authorities/{len(rows)} rows, expected "
+                   f"296/{expected_rows(period)}")
+    orphans = sorted({r[0] for r in rows} - set(known_codes))
+    if orphans:
+        bad.append(f"{tag}: {len(orphans)} lad24cd outside la_code_lookup "
+                   f"{orphans[:3]}")
+    if any(r[3] is None for r in rows):
+        bad.append(f"{tag}: source_url missing")
+    if edition != 1:
+        cur.execute(f"""SELECT DISTINCT category_code FROM public.{TABLE}
+                        WHERE period = %s AND edition = 1""", (period,))
+        c1 = {r[0] for r in cur.fetchall()}
+        cn = {r[1] for r in rows}
+        if cn != c1:
+            bad.append(f"{tag}: category set differs from edition 1 "
+                       f"(only here {sorted(cn - c1)[:3]}, only ed1 "
+                       f"{sorted(c1 - cn)[:3]}); {len(cn)} categories")
+    if require_registry:
+        if {r[2] for r in rows} != {"registry"}:
+            bad.append(f"{tag}: release_label "
+                       f"{sorted({str(r[2]) for r in rows})}, expected registry")
+        if {r[4] for r in rows} != {"revised"}:
+            bad.append(f"{tag}: edition_variant "
+                       f"{sorted({r[4] for r in rows})}, expected revised")
+    return bad
+
+
+def raw_cells(cur, path) -> dict:
+    """(lad24cd, category_code) -> the raw A3 cell of the source file, read
+    straight from the sheet (only the column mapping and publisher-code
+    resolution come from the S1b reader)."""
+    import s1b_support_needs_build as s1b
+    df = s1b.read_a3(path)
+    _, mapping, _ = s1b.map_columns(df)
+    rows = s1b.la_rows(df)
+    resolved, unresolved = s1b.resolve_lookup(cur, rows)
+    if unresolved:
+        halt(f"{path.name}: unresolved publisher codes {unresolved}")
+    out = {}
+    for code, i in rows.items():
+        for j, cat in mapping.items():
+            out[(resolved[code], cat)] = df.iat[i, j]
+    return out
+
+
+def _expected_from_raw(raw):
+    """(value, flag) a raw cell must be stored as, independent of s1b.cell():
+    None/blank -> missing; a documented marker -> its flag; else the number."""
+    if raw is None or (isinstance(raw, float) and raw != raw):
+        return None, "missing"
+    text = str(raw).strip()
+    if text == "":
+        return None, "missing"
+    if text in MARKERS:
+        return None, MARKERS[text]
+    return int(round(float(text))), None
+
+
+def check_flag_integrity(cur, period, edition, raw=None) -> tuple:
+    """Gate 7 for one edition: every stored cell equals an independent re-read
+    of its raw cell - in particular no 0 is stored where the source cell is a
+    suppression marker or blank, and no marker is stored as a number. raw
+    ((lad, category) -> cell) defaults to the edition's source file.
+    -> (problems, rows checked, stored zeros)."""
+    tag = f"{period} ed{edition}"
+    cur.execute(f"""SELECT lad24cd, category_code, value, value_flag,
+                           source_file FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s""", (period, edition))
+    stored = cur.fetchall()
+    if raw is None:
+        files = {r[4] for r in stored}
+        path = raw_path(period, next(iter(files))) if len(files) == 1 else None
+        if path is None:
+            return [f"{tag}: source file {sorted(files)} not found in raw "
+                    "dir"], 0, 0
+        raw = raw_cells(cur, path)
+    bad, zeros = [], 0
+    for lad, cat, v, f, _ in stored:
+        if v == 0:
+            zeros += 1
+        if (lad, cat) not in raw:
+            bad.append(f"{tag} {lad} {cat}: no raw cell")
+            continue
+        try:
+            ev, ef = _expected_from_raw(raw[(lad, cat)])
+        except ValueError:
+            bad.append(f"{tag} {lad} {cat}: raw cell {raw[(lad, cat)]!r} is "
+                       "neither a number nor a marker")
+            continue
+        if (v, f) != (ev, ef):
+            bad.append(f"{tag} {lad} {cat}: stored ({v}, {f}), raw cell "
+                       f"{raw[(lad, cat)]!r} -> ({ev}, {ef})")
+    if len(stored) != expected_rows(period):
+        bad.append(f"{tag}: {len(stored)} stored cells, expected "
+                   f"{expected_rows(period)}")
+    return bad, len(stored), zeros
+
+
+def check_s1_cross(cur, period, edition, s1=None) -> list:
+    """Gate 8 for one edition: the 'one or more support needs' value of each
+    authority equals la_statutory_homelessness.support_needs_total for the same
+    lad24cd and period, NULL-safe, 296/296; a flagged S1b cell against a
+    non-NULL S1 value (or the reverse) is called out."""
+    tag = f"{period} ed{edition}"
+    if s1 is None:
+        cur.execute("""SELECT lad24cd, support_needs_total FROM
+                       public.la_statutory_homelessness WHERE period = %s""",
+                    (period,))
+        s1 = dict(cur.fetchall())
+    cur.execute(f"""SELECT lad24cd, value, value_flag FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s AND category_code = %s""",
+                (period, edition, ONE_OR_MORE))
+    got = cur.fetchall()
+    bad, n = [], 0
+    for lad, v, f in got:
+        if lad not in s1:
+            bad.append(f"{lad}: not in la_statutory_homelessness")
+        elif s1[lad] == v:
+            n += 1
+        elif f is not None and s1[lad] is not None:
+            bad.append(f"{lad}: S1b flagged {f}, S1 value {s1[lad]}")
+        elif f is None and s1[lad] is None:
+            bad.append(f"{lad}: S1b value {v}, S1 NULL")
+        else:
+            bad.append(f"{lad}: S1b {v}, S1 {s1[lad]}")
+    if n != 296 or len(got) != 296:
+        return [f"{tag}: {n}/296 equal ({len(got)} stored rows)"
+                + (f"; e.g. {bad[:3]}" if bad else "")]
+    return []
+
+
+def run_load_gates(cur, period, edition) -> None:
+    """Gates 6-8 for the edition just inserted; halt on any problem."""
+    problems = check_loaded(cur, period, edition)
+    p7, _, _ = check_flag_integrity(cur, period, edition)
+    problems += p7 + check_s1_cross(cur, period, edition)
+    if problems:
+        halt(f"{period} edition {edition} failed gates 6-8, rolled back: "
+             + "; ".join(problems[:5]))
+
+
+def cmd_load(args):
+    from datetime import date
+    from _db import get_conn, get_readonly_conn
+    entry = select_entry(load_manifest(), args.period,
+                         args.manifest_label, args.manifest_entry)
+    if entry["release_label"] != "registry":
+        halt(f"{entry['file']} has release_label {entry['release_label']!r}; "
+             "only registry files load as editions")
+    published = date.fromisoformat(
+        args.published_date or entry["last_modified"][:10])
+    writing = args.commit or args.simulate
+    conn = get_conn() if writing else get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            if not (RAW_DIR / entry["file"]).exists():
+                halt(f"{RAW_DIR / entry['file']} not found")
+            sha = sha256_file(RAW_DIR / entry["file"])
+            cur.execute(f"SELECT DISTINCT edition FROM public.{TABLE} "
+                        "WHERE period = %s AND source_sha256 = %s",
+                        (args.period, sha))
+            have = [r[0] for r in cur.fetchall()]
+            if have:
+                print(f"already loaded (edition {have[0]}), nothing inserted")
+                conn.rollback()
+                return
+            try:
+                prev = latest_edition(cur, args.period)
+            except (LookupError, ValueError) as e:
+                halt(f"cannot determine latest edition: {e}")
+            if args.supersedes is not None and args.supersedes != prev:
+                halt(f"--supersedes {args.supersedes} is not the current "
+                     f"chain tip (edition {prev}) of {args.period}")
+            rows, edition, path, layout = extract_entry(cur, entry)
+            d = diff_rows(cur, args.period, rows, prev)
+            print(f"{args.period} {entry['file']} (published {published}, "
+                  f"layout {layout}) vs stored edition {prev}:\n  "
+                  f"{format_diff(d)}")
+            if not d["changed"] and not d["only_new"] and not d["only_old"]:
+                print("  NOTE: identical in values to the previous edition; "
+                      "it would be recorded as a no_change edition")
+            if not writing:
+                print("DRY RUN: nothing written (use --commit to insert)")
+                return
+            ed = insert_edition(
+                cur, rows, args.period, release_label="registry",
+                published_date=published, source_url=None,
+                source_file=edition["filename"], source_sha256=sha,
+                supersedes=prev)
+            if latest_edition(cur, args.period) != ed:
+                halt(f"{args.period}: new edition {ed} is not the chain tip")
+            run_load_gates(cur, args.period, ed)
+        if args.commit:
+            conn.commit()
+            print(f"loaded {args.period} edition {ed} "
+                  f"({expected_rows(args.period)} rows); gates 6-8 passed in "
+                  "the same transaction")
+        else:
+            conn.rollback()
+            print(f"SIMULATION: {args.period} edition {ed} inserted, gates "
+                  "6-8 passed, ROLLED BACK (nothing persisted)")
+    except BaseException:
+        if writing:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def cmd_dryrun_all(args):
+    from _db import get_readonly_conn
+    manifest = [e for e in load_manifest() if e["release_label"] == "registry"
+                and e["period"] in STALE_PERIODS]
+    if len(manifest) != 7:
+        halt(f"{len(manifest)} registry entries for the seven quarters")
+    out = ["# Task 3 dry-run: registry files vs latest stored edition", "",
+           "Generated by `s1b_editions.py dryrun-all`. Nothing written to any "
+           "table. Each registry file is extracted with the S1b reader and "
+           "compared cell by cell (authority x category) with the period's "
+           "latest stored edition. A cell is either a number or a flag "
+           "(missing / suppressed / not applicable); a flag is stored as NULL "
+           "with a reason, never as 0.", ""]
+    conn = get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            for e in sorted(manifest, key=lambda x: x["period"]):
+                p = e["period"]
+                prev = latest_edition(cur, p)
+                out += [f"## {p}", "",
+                        f"File `{e['file']}`, published {e['last_modified'][:10]}"
+                        f"; compared with stored edition {prev}.", ""]
+                try:
+                    rows, _, _, layout = extract_entry(cur, e)
+                except SystemExit as x:
+                    out += [f"- EXTRACTION WARNING: {x}", ""]
+                    continue
+                facts = _edition1_facts(cur, p)
+                d = diff_rows(cur, p, rows, prev)
+                cats = {r["category_code"] for r in rows}
+                auths = {r["lad24cd"] for r in rows}
+                cur.execute(f"""SELECT DISTINCT category_code FROM
+                                public.{TABLE} WHERE period = %s
+                                AND edition = %s""", (p, prev))
+                same_cats = cats == {r[0] for r in cur.fetchall()}
+                cur.execute("""SELECT lad24cd, support_needs_total FROM
+                               public.la_statutory_homelessness
+                               WHERE period = %s""", (p,))
+                s1 = dict(cur.fetchall())
+                eq = sum(1 for r in rows if r["category_code"] == ONE_OR_MORE
+                         and s1.get(r["lad24cd"]) == r["value"])
+                same_layout = layout == facts["layout_version"]
+                out += [f"- structure: {len(auths)} authorities, {len(cats)} "
+                        f"categories, {len(rows)} rows (expected 296, "
+                        f"{expected_rows(p) // 296}, {expected_rows(p)}); "
+                        f"layout {layout} ("
+                        f"{'same as' if same_layout else 'DIFFERENT from'} "
+                        f"edition 1: {facts['layout_version']}); category set "
+                        f"{'identical to' if same_cats else 'DIFFERENT from'} "
+                        "the stored edition",
+                        f"- cells compared: {d['compared']}; changed: "
+                        f"{d['changed']} in {len(d['authorities'])} "
+                        "authorities"]
+                sub = {"value -> flag": "  of which zero -> flag",
+                       "flag -> value": "  of which flag -> zero"}
+                for k in ("value -> value", "value -> flag", "flag -> value",
+                          "flag -> different flag"):
+                    if d["kinds"].get(k):
+                        out.append(f"  - {k}: {d['kinds'][k]}")
+                        if d["kinds"].get(sub.get(k)):
+                            out.append(f"    - {sub[k].strip()}: "
+                                       f"{d['kinds'][sub[k]]}")
+                out.append("- changed cells by category group: "
+                           + (", ".join(f"{g}={n}" for g, n in
+                                        sorted(d["by_group"].items()))
+                              or "none"))
+                top = d["by_category"].most_common(5)
+                out.append("- most-changed categories: "
+                           + (", ".join(f"{c}={n}" for c, n in top)
+                              or "none"))
+                out.append("- cells only in the new file: "
+                           f"{len(d['only_new'])}; only in the stored edition: "
+                           f"{len(d['only_old'])}")
+                out += ["- S1 cross-check (gate 8 feed): 'one or more support "
+                        "needs' equals la_statutory_homelessness."
+                        f"support_needs_total for {eq}/296 authorities", ""]
+    finally:
+        conn.close()
+    path = Path(args.out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    print(f"wrote {path}")
+
+
 def cmd_pending(args):
-    halt(f"'{args.cmd}' is not built yet (Task "
-         f"{'3' if args.cmd == 'load' else '4'} of the S1b edition plan)")
+    halt(f"'{args.cmd}' is not built yet (Task 4 of the S1b edition plan)")
 
 
 def main(argv=None):
@@ -499,12 +919,32 @@ def main(argv=None):
     mode.add_argument("--simulate", action="store_true",
                       help="run the full --commit path and roll back")
     bf.set_defaults(func=cmd_backfill)
-    for name in ("load", "refresh-latest"):
-        p = sub.add_parser(name, help="not built yet")
-        m = p.add_mutually_exclusive_group()
-        m.add_argument("--commit", action="store_true")
-        m.add_argument("--simulate", action="store_true")
-        p.set_defaults(func=cmd_pending)
+    ld = sub.add_parser("load", help="extract a registry file and diff it "
+                        "(dry-run); insert only with --commit")
+    ld.add_argument("--period", required=True)
+    ld.add_argument("--manifest-label", help="select the period's manifest "
+                    "entry by release_label; only 'registry' loads")
+    ld.add_argument("--manifest-entry", type=int,
+                    help="alternative: 0-BASED index into the manifest")
+    ld.add_argument("--supersedes", type=int, help="must equal the current "
+                    "chain tip of the period (default: the tip)")
+    ld.add_argument("--published-date", help="YYYY-MM-DD; default the "
+                    "manifest last_modified date")
+    lm = ld.add_mutually_exclusive_group()
+    lm.add_argument("--commit", action="store_true",
+                    help="insert the edition (append-only, irreversible)")
+    lm.add_argument("--simulate", action="store_true",
+                    help="run the full --commit path and roll back")
+    ld.set_defaults(func=cmd_load)
+    da = sub.add_parser("dryrun-all", help="markdown diff of all seven "
+                        "registry files; writes no table")
+    da.add_argument("--out", required=True)
+    da.set_defaults(func=cmd_dryrun_all)
+    rl = sub.add_parser("refresh-latest", help="not built yet (Task 4)")
+    rm = rl.add_mutually_exclusive_group()
+    rm.add_argument("--commit", action="store_true")
+    rm.add_argument("--simulate", action="store_true")
+    rl.set_defaults(func=cmd_pending)
     args = ap.parse_args(argv)
     args.func(args)
 

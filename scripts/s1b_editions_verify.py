@@ -3,7 +3,11 @@
 Mirrors scripts/s1_editions_verify.py. Prints `GATE n name: PASS/FAIL`; exits 1
 on any FAIL. Gates 1-3 cover table shape, immutability and the supersedes-chain
 helpers; 4-5 cover the backfill (coverage, 2025Q2 original vs the before-revision
-CSV, latest edition vs the live table). Gates ending in `s` are seeded: they
+CSV, latest edition vs the live table), 6-8 the seven revised 2023Q2-2024Q4
+editions (structure and registry source, flag integrity against the raw cells,
+S1 cross-check). Gates 6-8 print `FAIL (pending load)` while any of those seven
+quarters has no edition 2 or later, so the exit code is 1 until they are loaded
+(the S1 convention). Gates ending in `s` are seeded: they
 prove the check itself flags a planted fault.
 
 Usage:
@@ -20,8 +24,10 @@ import psycopg2
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db import get_conn  # noqa: E402
+from s1_editions import STALE_PERIODS  # noqa: E402
 from s1b_editions import (TABLE, LIVE, DATA_COLS,  # noqa: E402
                           BACKFILL_ROWS_TOTAL, check_coverage,
+                          check_flag_integrity, check_loaded, check_s1_cross,
                           check_latest_equals_live, check_q2_pair,
                           insert_edition, latest_edition,
                           load_before_revision_csv)
@@ -438,6 +444,154 @@ def gate_5s_seeded(cur):
            "; ".join(bad[:2]))
 
 
+def _revised_editions(cur):
+    """{period: [editions >= 2]} for the seven revised quarters."""
+    cur.execute(f"""SELECT period, edition FROM public.{TABLE}
+                    WHERE period = ANY(%s) AND edition >= 2
+                    GROUP BY 1, 2 ORDER BY 1, 2""", (list(STALE_PERIODS),))
+    out = {p: [] for p in STALE_PERIODS}
+    for p, e in cur.fetchall():
+        out[p].append(e)
+    return out
+
+
+def _clean_fail(n, name, fn, cur):
+    """Run a gate body; a chain error becomes a FAIL line, not a traceback."""
+    try:
+        fn(cur)
+    except (ValueError, LookupError) as e:
+        report(n, name, False, str(e))
+
+
+def _loaded_gate(n, name, cur, check, ok_detail):
+    """Shared shape of gates 6-8: check(period, edition) -> problems over every
+    edition >= 2 of the seven quarters; 'pending load' while one is missing."""
+    if not table_exists(cur):
+        return report(n, name, False, f"{TABLE} absent")
+
+    def body(cur):
+        revised = _revised_editions(cur)
+        missing = [p for p, e in revised.items() if not e]
+        bad, done = [], 0
+        for p, eds in revised.items():
+            for e in eds:
+                bad += check(p, e)
+                done += 1
+        if bad:
+            return report(n, name, False, "; ".join(bad[:5]))
+        if missing:
+            return report(n, name, False,
+                          f"no edition >= 2 yet for {missing}", pending=True)
+        report(n, name, True, ok_detail(done))
+    _clean_fail(n, name, body, cur)
+
+
+def gate_6_loaded(cur):
+    _loaded_gate(6, "2023Q2-2024Q4 edition 2: 296 authorities, category rows, "
+                 "codes in la_code_lookup, registry/revised", cur,
+                 lambda p, e: check_loaded(cur, p, e),
+                 lambda n: f"{n} editions ok")
+
+
+def gate_7_flag_integrity(cur):
+    totals = [0, 0]
+
+    def check(p, e):
+        bad, n, z = check_flag_integrity(cur, p, e)
+        totals[0] += n
+        totals[1] += z
+        return bad
+    _loaded_gate(7, "no 0 stored over a suppression marker; every cell equals "
+                 "an independent raw-cell re-read", cur, check,
+                 lambda n: f"{totals[0]} cells re-read, {totals[1]} stored "
+                 "zeros all confirmed")
+
+
+def gate_8_s1_cross(cur):
+    _loaded_gate(8, "one-or-more support needs equals S1 support_needs_total, "
+                 "296/296 NULL-safe", cur,
+                 lambda p, e: check_s1_cross(cur, p, e),
+                 lambda n: f"{n} editions 296/296")
+
+
+def _stored_raw(cur, period, edition):
+    """Raw-cell stand-ins built from the stored cells (clean by construction)."""
+    cur.execute(f"""SELECT lad24cd, category_code, value, value_flag
+                    FROM public.{TABLE} WHERE period = %s AND edition = %s""",
+                (period, edition))
+    rev = {"missing": "..", "suppressed": "-", "not_applicable": "[z]"}
+    return {(l, c): (str(v) if v is not None else rev[f])
+            for l, c, v, f in cur.fetchall()}
+
+
+def gate_6s_seeded(cur):
+    name = "seeded: gate 6 flags an orphan code, a short edition and a wrong label"
+    if not table_exists(cur):
+        return report("6s", name, False, f"{TABLE} absent")
+    cur.execute(f"SELECT DISTINCT lad24cd FROM public.{TABLE} "
+                "WHERE period = '2023Q2' AND edition = 1")
+    codes = {r[0] for r in cur.fetchall()}
+    clean = check_loaded(cur, "2023Q2", 1, known_codes=codes,
+                         require_registry=False)
+    orphan = check_loaded(cur, "2023Q2", 1, known_codes=codes - {min(codes)},
+                          require_registry=False)
+    label = check_loaded(cur, "2023Q2", 1, known_codes=codes)
+
+    def short(cur):
+        _chain(cur, [(None, None, 1)])
+        return check_loaded(cur, "2099Q1", 1, require_registry=False)
+    sh = _in_savepoint(cur, short)
+    ok = (not clean and any("outside la_code_lookup" in x for x in orphan)
+          and any("1 authorities/1 rows" in x for x in sh)
+          and any("expected registry" in x for x in label))
+    report("6s", name, ok, f"clean={clean}; orphan={orphan[:1]}; "
+           f"short={sh[:1]}; label={label[:1]}")
+
+
+def gate_7s_seeded(cur):
+    name = "seeded: gate 7 flags a stored 0 over a suppression marker"
+    if not table_exists(cur):
+        return report("7s", name, False, f"{TABLE} absent")
+    cur.execute(f"""SELECT lad24cd, category_code FROM public.{TABLE}
+                    WHERE period = '2023Q2' AND edition = 1 AND value = 0
+                    ORDER BY 1, 2 LIMIT 1""")
+    row = cur.fetchone()
+    if row is None:
+        return report("7s", name, False, "no stored zero to seed against")
+    raw = _stored_raw(cur, "2023Q2", 1)
+    clean, n, zeros = check_flag_integrity(cur, "2023Q2", 1, raw=dict(raw))
+    raw[row] = "[c]"
+    sup = check_flag_integrity(cur, "2023Q2", 1, raw=raw)[0]
+    raw[row] = ".."
+    sup2 = check_flag_integrity(cur, "2023Q2", 1, raw=raw)[0]
+    ok = (not clean and zeros > 0 and len(sup) == 1 and len(sup2) == 1
+          and f"{row[0]} {row[1]}: stored (0, None)" in sup[0])
+    report("7s", name, ok, f"clean={len(clean)} problems over {n} cells; "
+           f"[c] over zero -> {sup[:1]}")
+
+
+def gate_8s_seeded(cur):
+    name = "seeded: gate 8 flags 295/296 and a flag-versus-value disagreement"
+    if not table_exists(cur):
+        return report("8s", name, False, f"{TABLE} absent")
+    cur.execute(f"""SELECT lad24cd, value FROM public.{TABLE}
+                    WHERE period = '2023Q2' AND edition = 1
+                      AND category_code = 'hh_one_or_more_support_needs'""")
+    exp = dict(cur.fetchall())
+    clean = check_s1_cross(cur, "2023Q2", 1, s1=dict(exp))
+    lad = min(exp)
+    changed = dict(exp)
+    changed[lad] = -1 if exp[lad] is None else exp[lad] + 1
+    bad = check_s1_cross(cur, "2023Q2", 1, s1=changed)
+    nulled = dict(exp)
+    nulled[lad] = None if exp[lad] is not None else 5
+    bad2 = check_s1_cross(cur, "2023Q2", 1, s1=nulled)
+    ok = (not clean and any("295/296" in x for x in bad)
+          and any("295/296" in x for x in bad2))
+    report("8s", name, ok, f"clean={clean}; changed={bad[:1]}; "
+           f"null/value swap={bad2[:1]}")
+
+
 def main():
     conn = get_conn()
     try:
@@ -463,6 +617,12 @@ def main():
             gate_4s_seeded(cur)
             gate_5_latest_equals_live(cur)
             gate_5s_seeded(cur)
+            gate_6_loaded(cur)
+            gate_7_flag_integrity(cur)
+            gate_8_s1_cross(cur)
+            gate_6s_seeded(cur)
+            gate_7s_seeded(cur)
+            gate_8s_seeded(cur)
     finally:
         conn.rollback()
         conn.close()
