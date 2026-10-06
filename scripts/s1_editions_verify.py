@@ -130,13 +130,13 @@ def _raises(fn, exc):
 
 def gate_3a_three_way_tie(cur):
     from datetime import date
-    name = "latest_edition: 3 tied editions, third differs, raises"
+    name = "latest_edition: 3 tied editions, middle differs, raises"
     if not table_exists(cur):
         return report("3a", name, False, f"{TABLE} absent")
 
     def body(cur):
         lad, d = _first_lad(cur), date(2099, 1, 1)
-        for i, v in enumerate((1, 1, 2)):
+        for i, v in enumerate((1, 2, 1)):
             insert_edition(cur, _rec(lad, v), "2099Q1", **_kw("t", d, f"h{i}"))
         return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
     ok, msg = _in_savepoint(cur, body)
