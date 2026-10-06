@@ -88,6 +88,11 @@ S6_NEW = ("- Demand trajectory: ${national.ta_england_total_reporting} household
           "authorities reporting in both years (${national.ta_yoy_pct_like_for_like}% year-on-year). "
           "Quote the change only on the like-for-like basis")
 
+S1_OLD = "- Cover: national demand trajectory, top LA opportunities"
+S1_NEW = ("- Cover: national demand trajectory (quote any TA change only from ta_matched_current, "
+          "ta_matched_prior_year and ta_yoy_pct_like_for_like; never compare ta_england_total_reporting "
+          "with a prior-year figure), top LA opportunities")
+
 LABEL_OLD_1 = "Signal: households_in_ta from MHCLG statutory homelessness Q2 2025."
 LABEL_NEW_1 = "Signal: households_in_ta from MHCLG statutory homelessness ${national.ta_period_label}."
 LABEL_OLD_2 = "| Statutory Homelessness TA Live Tables | MHCLG | Q2 2025 (Jul-Sep) | LA |"
@@ -108,10 +113,12 @@ def patch_fetch(sql):
 
 def patch_sections(js):
     if "ta_yoy_pct_like_for_like" in js:
-        return js
+        # Already applied. A second stage added the Section 1 line later.
+        return js if S1_NEW in js else once(js, S1_OLD, S1_NEW, "Section 1 national demand trajectory line")
     js = once(js, NATIONAL_OLD, NATIONAL_NEW, "national object")
     js = once(js, S2_OLD, S2_NEW, "Section 2 TA instruction")
     js = once(js, S6_OLD, S6_NEW, "Section 6 demand trajectory line")
+    js = once(js, S1_OLD, S1_NEW, "Section 1 national demand trajectory line")
     js = once(js, LABEL_OLD_1, LABEL_NEW_1, "'Q2 2025' tenant-type signal label")
     js = once(js, LABEL_OLD_2, LABEL_NEW_2, "'Q2 2025' data appendix row")
     return js
@@ -137,6 +144,7 @@ chk(p6.includes(String(row.ta_households_current_matched)) && p6.includes(String
 chk(!p6.includes(String(row.ta_households_prev_year)), 'section 6 shows all-reporting prior total');
 for (const s of out) chk(!/Q2 2025/.test(s.json.generation_prompt), s.json.section_id + ' still has the stale Q2 2025 label');
 chk(p6.includes('Jan-Mar 2026 (2025Q4)'), 'period label not derived');
+chk(by.section_1.generation_prompt.includes('ta_yoy_pct_like_for_like'), 'section 1 lacks like-for-like instruction');
 for (const s of out) chk(!/undefined|NaN/.test(s.json.generation_prompt), s.json.section_id + ' prompt contains undefined/NaN');
 console.log(JSON.stringify({ sections: out.length, bad }));
 process.exit(bad.length ? 1 : 0);
@@ -203,6 +211,11 @@ def main():
     if args.dry_run:
         log(f"DRY RUN: Fetch Staging Data {'would change' if new_fetch != old_fetch else 'unchanged'}; "
             f"Define Sections {'would change' if new_js != old_js else 'unchanged'}; nothing written")
+        nc.close()
+        return 0
+
+    if new_fetch == old_fetch and new_js == old_js:
+        log("both nodes already carry the patch; nothing written")
         nc.close()
         return 0
 
