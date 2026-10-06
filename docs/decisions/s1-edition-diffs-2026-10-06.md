@@ -6,7 +6,7 @@ Generated from `diff_editions` (edition 2 against edition 1) for the seven quart
 
 Each quarter had two candidate files: the older release-page attachment (A) and the registry 'revised' file (B). Both were compared with stored edition 1 in a dry run. The A files are an older vintage and were not loaded as editions. Only B was loaded.
 
-Stored edition 1 turned out to be close to B on the A1 measures: only 2 to 8 A1 cells per measure per quarter differ. The earlier figure of 200 to 230 authorities changed was measured against A, not B; against A the dry run showed:
+Stored edition 1 turned out to be close to B on the A1 measures: the only A1 differences are zero to NULL for authorities that did not submit (36 authority-quarters, 144 cells; no A1 figure is a numeric revision). The earlier figure of 200 to 230 authorities changed was measured against A, not B; against A the dry run showed:
 
 | Period | Authorities changed, A vs edition 1 | A households_in_ta transitions |
 |---|---|---|

@@ -46,9 +46,10 @@ Source: DLUHC H-CLIC statutory homelessness return (quarterly)
 | `supersedes` | The edition this one replaces; NULL for the first. |
 | measure columns | The six measures held in `la_statutory_homelessness` (`total_assessments`, `owed_duty`, `prevention_duty`, `relief_duty`, `households_in_ta`, `support_needs_total`). Suppressed values (`..`, `-`) are NULL, never 0. |
 | `release_label`, `published_date` | Description and date of the release. Informational only: for loaded revisions the file's HTTP Last-Modified date, for edition 1 the load date. They do not decide which edition is latest. |
+| `mental_health_suspect`, `learning_disability_suspect`, `drug_dependency_suspect`, `alcohol_dependency_suspect`, `rough_sleeping_history_suspect` | The five quarantined support-need columns; all NULL on the editions table. |
 | `source_url`, `source_file`, `source_sha256`, `loaded_at` | Provenance of the file the edition was read from. |
 
-**Live-layer rule.** `la_statutory_homelessness` holds, for each authority and period, the latest edition, where latest is the edition that no other edition supersedes. It is refreshed with `python scripts/s1_editions.py refresh-latest --commit` and changes only the six measures, `source_file` and `extracted_at`; `*_suspect` and `loaded_at` are never touched. A quarter with one edition is identical in both tables.
+**Live-layer rule.** `la_statutory_homelessness` holds, for each authority and period, the latest edition, where latest is the edition that no other edition supersedes. It is refreshed with `python scripts/s1_editions.py refresh-latest --commit` and changes only the six measures, `source_file` and `extracted_at`; `*_suspect` and `loaded_at` are never touched. A quarter with one edition is identical in both tables. The table and the rule are general, but `refresh-latest` is specific to the 2026-10-06 reload (hardcoded stale periods, snapshot table and row count); it must be generalised (new quarters write edition 1 first; gates parameterised) before the next S1 quarterly load.
 
 ---
 

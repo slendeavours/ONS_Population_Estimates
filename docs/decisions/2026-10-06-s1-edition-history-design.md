@@ -1,6 +1,6 @@
 # S1 edition history: store revisions as new editions, then reload the seven stale quarters
 
-Status: design, awaiting review. Nothing in the database or repo has been changed under it.
+Status: implemented 2026-10-06. See the execution log at the foot.
 
 ## Why
 
@@ -123,18 +123,16 @@ refresh, and was. `verify_source_registry.py`: 21 of 21 pass. W1 national figure
 from 0 to NULL, with no change to their trend label.
 
 **What the diffs showed.** The "200 to 230 authorities differ" divergence in the design's Why
-section was measured against the older release-page files, an older vintage. Stored edition 1
-was already close to the registry revised files on the A1 measures: per A1 measure only 2 to 8 authorities differ, 12, 32, 16, 28, 20, 28 and 8 A1 cells per quarter in total (2023Q2 to 2024Q4).
-The substantive changes in edition 2 are suppressed `households_in_ta` values (zero to NULL, 95
-cells across the seven quarters; the 108 in the Why section is the count of stored zeros, of which 95 were suppressed values and 13 are published zeros that stay) and revised A3
-`support_needs_total` (about 175 to 190 authorities per quarter).
+section was measured against the older release-page files, an older vintage. Edition 1's A1 figures already matched the registry revised files numerically: the only A1 differences are zero to NULL for authorities that did not submit (36 authority-quarters, 144 cells: 3, 8, 4, 7, 5, 7 and 2 authorities in 2023Q2 to 2024Q4, each across all four A1 measures); no A1 figure is a numeric revision. The genuine value revisions in edition 2 are the A3 `support_needs_total` (about 175 to 190 authorities per quarter). Edition 2 also turns suppressed zeros into NULL: `households_in_ta` (95
+cells across the seven quarters; the 108 in the Why section is the count of stored zeros, of which 95 were suppressed values and 13 are published zeros that stay) and the A1 cells above.
 
 **Rulings made during execution.**
 1. Task 4 was split: a dry run first (no inserts, because the table is append-only and a wrong
    edition cannot be deleted), then the real load after the diffs were read.
 2. Only the registry 'revised' file is loaded as edition 2 for each of the seven quarters. The
-   release-page files are an older vintage, not what any output used, and stay in `data/raw`
-   unloaded.
+   release-page files are an older vintage, not what any output used. They are not editions (the
+   supersedes chain cannot place an older vintage before an existing edition); they are retained in
+   `data/raw/s1b_a3` and listed in `scripts/s1_editions_manifest.json` with their sha256.
 3. Ordering is by the supersedes chain: latest is the one edition no other edition supersedes
    (a fork, or more than one root, is an error). `published_date` is informational. Date ordering
    would have ranked edition 1 above the 2024Q1 to 2024Q4 revised files, whose Last-Modified
@@ -148,4 +146,4 @@ cells across the seven quarters; the 108 in the Why section is the count of stor
 6. A TRUNCATE trigger was added beside the update and delete triggers, closing a gap in the
    append-only guarantee.
 
-**Left open.** See `README.md`, item 3.
+**Left open.** See `README.md`, item 3. That includes the fact that `refresh-latest` is specific to this reload and must be generalised before the next S1 quarterly load.

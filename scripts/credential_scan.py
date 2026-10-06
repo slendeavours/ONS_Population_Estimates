@@ -46,6 +46,9 @@ ALLOW = [
     re.compile(r"^\s*[-+]?\s*(#|--|//)"),          # commented-out example
     re.compile(r"(?i)password\s*[=:]\s*['\"](\*{3,}|x{3,}|<[^>]+>|\$\{)"),
     re.compile(r"(?i)(getenv|environ|ENV\.get|os\.environ)"),
+    # A JSON line holding only a file checksum, as in scripts/s1_editions_manifest.json.
+    # A sha256 is a public file digest, not a secret; this matches nothing else.
+    re.compile(r'^\s*[-+]?\s*"sha256":\s*"[0-9a-f]{64}",?$'),
 ]
 
 
