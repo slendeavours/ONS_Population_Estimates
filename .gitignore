@@ -65,3 +65,14 @@ backups/
 # Estate-tracing name lists (personal data of deceased individuals) - never public
 UnclaimedEstatesList.csv
 bona_vacantia_estates_*.csv
+
+# data/reference holds small CSV copies the pipeline reads (tracked). Publisher
+# originals are re-fetchable downloads and follow the data/raw rule; working and
+# evidence files from the 2026-10 revision work stay local; _1 is a stale variant.
+data/reference/*.xlsx
+data/reference/*.ods
+data/reference/LAHS_open_data_*.csv
+data/reference/rough_sleeping_snapshot_2025_1.csv
+data/reference/statutory_homelessness_2025Q2_comparison.csv
+data/reference/statutory_homelessness_2025Q2_support_needs_before_revision.csv
+desktop.ini
