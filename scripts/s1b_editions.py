@@ -32,6 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from s1_editions import Q2_FILES, halt, sha256_file  # noqa: E402
+from s1_editions import latest_edition as _s1_latest_edition  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -172,34 +173,10 @@ def insert_edition(cur, rows: list, period: str, *, release_label: str,
 
 
 def latest_edition(cur, period: str) -> int:
-    """Tip of the period's supersedes chain (the edition no other edition of
-    the period supersedes). Raises LookupError if the period has no editions
-    and ValueError if the chain is not linear: several roots, a fork (several
-    tips), inconsistent supersedes within an edition, or a cycle."""
-    cur.execute(f"SELECT DISTINCT edition, supersedes FROM public.{TABLE} "
-                "WHERE period = %s", (period,))
-    rows = cur.fetchall()
-    if not rows:
-        raise LookupError(f"no editions recorded for {period}")
-    sup = {}
-    for ed, s in rows:
-        if ed in sup:
-            raise ValueError(f"{period}: edition {ed} has inconsistent "
-                             "supersedes values across its rows")
-        sup[ed] = s
-    if len(sup) == 1:
-        return next(iter(sup))
-    roots = sorted(e for e, s in sup.items() if s is None)
-    if len(roots) != 1:
-        raise ValueError(f"{period}: {len(roots)} editions {roots} have no "
-                         "supersedes while several editions exist; the "
-                         "chain has no single root")
-    superseded = {s for s in sup.values() if s is not None}
-    tips = sorted(e for e in sup if e not in superseded)
-    if len(tips) != 1:
-        raise ValueError(f"{period}: supersedes chain has {len(tips)} tips "
-                         f"{tips}; order is ambiguous (fork or cycle)")
-    return tips[0]
+    """Chain tip of the period in the S1b editions table; the validation
+    (single root, no fork, no self/dangling supersedes, whole chain reachable)
+    lives in s1_editions.latest_edition."""
+    return _s1_latest_edition(cur, period, table=TABLE)
 
 
 # ---------------------------------------------------------------- checks
@@ -287,10 +264,11 @@ def check_q2_pair(cur, csv_rows=None) -> list:
                       AND edition = 1""")
     ed1 = set(cur.fetchall())
     bad = []
-    if len(csv_rows) != 9176:
-        bad.append(f"CSV holds {len(csv_rows)} distinct rows, expected 9176")
-    if len(ed1) != 9176:
-        bad.append(f"2025Q2 edition 1 holds {len(ed1)} rows, expected 9176")
+    want = expected_rows("2025Q2")
+    if len(csv_rows) != want:
+        bad.append(f"CSV holds {len(csv_rows)} distinct rows, expected {want}")
+    if len(ed1) != want:
+        bad.append(f"2025Q2 edition 1 holds {len(ed1)} rows, expected {want}")
     if ed1 != csv_rows:
         bad.append(f"2025Q2 edition 1 vs CSV: {len(ed1 - csv_rows)} "
                    f"edition-only, {len(csv_rows - ed1)} CSV-only rows")
@@ -332,7 +310,10 @@ def _q2_edition(cur, path: Path, variant_url: str) -> dict:
     cur.execute(f"""SELECT DISTINCT release_page_url, reference_quarter
                     FROM public.{LIVE} WHERE period = '2025Q2'""")
     (page, ref_q), = cur.fetchall()
-    filename = path.name.split("_", 1)[1]
+    prefix = "2025Q2_"
+    if not path.name.startswith(prefix):
+        halt(f"{path.name}: local raw file name must start with {prefix}")
+    filename = path.name[len(prefix):]
     return {"period": "2025Q2", "reference_quarter": ref_q,
             "url": variant_url, "filename": filename,
             "variant": s1b.edition_variant(filename),
@@ -415,14 +396,15 @@ def backfill(cur, plan_only=False) -> list:
             out.append(("2025Q2", prev, _count(cur, "2025Q2", prev), "present"))
             continue
         if plan_only:
-            out.append(("2025Q2", None, 9176, "would insert"))
+            out.append(("2025Q2", None, expected_rows("2025Q2"), "would insert"))
             continue
         edition = _q2_edition(cur, path, urls[fname])
         df = s1b.read_a3(path)
         _, _, tuples = s1b.build_rows(cur, edition, df)
         rows = [dict(zip(DATA_COLS, t)) for t in tuples]
-        if len(rows) != 9176:
-            halt(f"{fname}: {len(rows)} rows extracted, expected 9176")
+        if len(rows) != expected_rows("2025Q2"):
+            halt(f"{fname}: {len(rows)} rows extracted, expected "
+                 f"{expected_rows('2025Q2')}")
         ed = insert_edition(cur, rows, "2025Q2", release_label=label,
                             published_date=published, source_url=None,
                             source_file=edition["filename"], source_sha256=sha,

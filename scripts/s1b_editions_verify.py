@@ -44,6 +44,12 @@ def table_exists(cur):
     return cur.fetchone()[0] is not None
 
 
+def _norm(defn):
+    """Constraint definition with whitespace collapsed (the definitions do not
+    name the table, so equal text means the same CHECK)."""
+    return " ".join(defn.split())
+
+
 def gate_1_table_shape(cur):
     name = "table exists with PK, FK, CHECKs and three triggers"
     if not table_exists(cur):
@@ -53,7 +59,13 @@ def gate_1_table_shape(cur):
     cons = cur.fetchall()
     pk = [d for t, d in cons if t == "p"]
     fk = [d for t, d in cons if t == "f"]
-    chk = " ".join(d for t, d in cons if t == "c")
+    chk = {_norm(d) for t, d in cons if t == "c"}
+    cur.execute("""SELECT pg_get_constraintdef(oid) FROM pg_constraint
+                   WHERE conrelid = %s::regclass AND contype = 'c'""",
+                (f"public.{LIVE}",))
+    live_chk = {_norm(r[0]) for r in cur.fetchall()}
+    extra = chk - live_chk
+    period_chk = [d for d in extra if "Q[1-4]" in d]
     cur.execute("""SELECT column_name FROM information_schema.columns
                    WHERE table_schema='public' AND table_name=%s""", (TABLE,))
     cols = {r[0] for r in cur.fetchall()}
@@ -70,10 +82,11 @@ def gate_1_table_shape(cur):
                and not upd_del & 4 and trunc & 2 and trunc & 32)
     ok = (len(pk) == 1 and "lad24cd, period, category_code, edition" in pk[0]
           and len(fk) == 1 and "la_boundaries" in fk[0] and need <= cols
-          and "Q[1-4]" in chk and "num_nonnulls(value, value_flag) = 1" in chk
-          and "support_need" in chk and "missing" in chk
-          and "corrected" in chk and bool(trig_ok))
-    report(1, name, ok, f"pk={len(pk)} fk={len(fk)} triggers={sorted(trg)} "
+          and len(live_chk) == 4 and live_chk <= chk
+          and len(period_chk) == 1 and extra == set(period_chk)
+          and bool(trig_ok))
+    report(1, name, ok, f"checks: {len(live_chk)} live all present={live_chk <= chk}, "
+           f"extra={len(extra)}; pk={len(pk)} fk={len(fk)} triggers={sorted(trg)} "
            f"missing_cols={sorted(need - cols)}")
 
 
@@ -239,6 +252,40 @@ def gate_3h_cycle_raises(cur):
         report("3h", name, r[0], r[1])
 
 
+def _raw_chain(cur, rows):
+    """Insert editions of 2099Q1 directly with arbitrary supersedes values;
+    rows = [(edition, supersedes)]."""
+    lad = _first_lad(cur)
+    cols = list(DATA_COLS) + ["edition", "supersedes", "source_sha256"]
+    for ed, sup in rows:
+        r = _rec(lad, 1)
+        cur.execute(f"INSERT INTO public.{TABLE} ({', '.join(cols)}) "
+                    f"VALUES ({', '.join(['%s'] * len(cols))})",
+                    [r[c] for c in DATA_COLS] + [ed, sup, f"r{ed}"])
+
+
+def gate_3j_mutual_supersede(cur):
+    name = "latest_edition: 1 root plus two editions superseding each other raises"
+
+    def body(cur):
+        _raw_chain(cur, [(1, None), (2, 3), (3, 2)])
+        return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
+    r = _chain_gate(cur, "3j", name, body)
+    if r is not None:
+        report("3j", name, r[0], r[1])
+
+
+def gate_3k_self_supersede(cur):
+    name = "latest_edition: an edition superseding itself raises"
+
+    def body(cur):
+        _raw_chain(cur, [(1, None), (2, 1), (3, 3)])
+        return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
+    r = _chain_gate(cur, "3k", name, body)
+    if r is not None:
+        report("3k", name, r[0], r[1])
+
+
 def gate_3c_empty_recs(cur):
     name = "insert_edition: empty rows halts and writes nothing"
 
@@ -310,9 +357,16 @@ def gate_4t_total(cur):
     n = cur.fetchone()[0]
     cur.execute(f"SELECT COUNT(*) FROM public.{TABLE}")
     total = cur.fetchone()[0]
-    report("4t", name, n == BACKFILL_ROWS_TOTAL,
-           f"edition 1 + 2025Q2 edition 2 = {n}, expected "
-           f"{BACKFILL_ROWS_TOTAL}; table holds {total}")
+    later = total - n
+    if later:
+        # the whole-table total is only fixed until Task 3 loads more editions;
+        # the backfilled editions themselves must still be intact
+        return report("4t", name, n == BACKFILL_ROWS_TOTAL,
+                      f"pending: {later} rows of later editions exist, so the "
+                      f"table total no longer applies; backfilled editions "
+                      f"hold {n}, expected {BACKFILL_ROWS_TOTAL}")
+    report("4t", name, total == BACKFILL_ROWS_TOTAL,
+           f"table holds {total}, expected {BACKFILL_ROWS_TOTAL}")
 
 
 def gate_4q_q2_pair(cur):
@@ -398,6 +452,8 @@ def main():
             gate_3f_two_roots_raise(cur)
             gate_3g_single_edition(cur)
             gate_3h_cycle_raises(cur)
+            gate_3j_mutual_supersede(cur)
+            gate_3k_self_supersede(cur)
             gate_3c_empty_recs(cur)
             gate_3d_bad_supersedes(cur)
             gate_3i_idempotent(cur)
