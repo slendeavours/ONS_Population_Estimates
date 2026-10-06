@@ -221,6 +221,8 @@ ta_yoy_pct = ((ta_households_current - ta_households_prev_year)
 
 Rounded to 2 decimal places. NULL when either input is NULL.
 
+**National figure.** For the England row the two inputs are the matched totals: authorities with `households_in_ta > 0` in both the latest quarter and the same quarter a year earlier (`ta_households_current_matched`, `ta_households_prev_year_matched`). The all-reporting totals are published beside them but cover different sets of authorities and must not be divided into a percentage. Workflow 1 run 22 and earlier did divide them (+13.29%); from run 23 the same data gives +3.14%.
+
 ### Trend Label Assignment
 
 Assigned from `ta_yoy_pct`:
