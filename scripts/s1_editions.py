@@ -774,9 +774,10 @@ def main(argv=None):
                     "chain tip of the period (default: the tip)")
     ld.add_argument("--published-date", help="YYYY-MM-DD; default manifest "
                     "last_modified date")
-    ld.add_argument("--commit", action="store_true",
+    mode = ld.add_mutually_exclusive_group()
+    mode.add_argument("--commit", action="store_true",
                     help="insert the edition (append-only, irreversible)")
-    ld.add_argument("--simulate", action="store_true",
+    mode.add_argument("--simulate", action="store_true",
                     help="run the full --commit path (insert, gates 6-8) and "
                     "roll back instead of committing; persists nothing")
     ld.set_defaults(func=cmd_load)
