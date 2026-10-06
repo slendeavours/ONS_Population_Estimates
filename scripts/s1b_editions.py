@@ -27,7 +27,13 @@ Subcommands:
         # chain tip.
     python scripts/s1b_editions.py dryrun-all --out report.md
         # plain-English diff of all seven registry files vs stored editions
-    python scripts/s1b_editions.py refresh-latest ...  # Task 4 (not yet built)
+    python scripts/s1b_editions.py refresh-latest [--commit | --simulate]
+        # copies each period's latest edition into la_homelessness_support_needs
+        # (value, value_flag, source_url, source_edition, edition_variant only;
+        # never loaded_at or any other column/period). DRY-RUN by default;
+        # --commit runs the live-equals-latest and snapshot gates in the same
+        # transaction and rolls back on failure; --simulate always rolls back.
+        # Needs the snapshot table la_homelessness_support_needs_bak_20261006.
 
 Helpers imported by later steps: create_schema, insert_edition, latest_edition,
 check_coverage, check_latest_equals_live, check_q2_pair.
@@ -229,12 +235,18 @@ def _except_counts(cur, a_sql, a_args, b_sql, b_args) -> tuple:
 
 def check_latest_equals_live(cur, periods=None) -> list:
     """Gate 5: for each live period the latest edition equals the live rows on
-    every column except loaded_at, NULL-safe."""
-    cols = ", ".join(DATA_COLS)
+    every column except loaded_at, NULL-safe (and except category_label for
+    the seven revised quarters, see below)."""
     cur.execute(f"SELECT DISTINCT period FROM public.{LIVE}")
     live_periods = sorted(r[0] for r in cur.fetchall())
     bad = []
     for p in (periods or live_periods):
+        # category_label is the sheet header text, which for the seven revised
+        # quarters embeds the England total of that file, so it differs between
+        # editions. The live layer deliberately keeps its as-loaded label
+        # (refresh-latest does not touch it), so it is not compared there.
+        cols = ", ".join(c for c in DATA_COLS if not (
+            c == "category_label" and p in STALE_PERIODS))
         try:
             ed = latest_edition(cur, p)
         except (LookupError, ValueError) as e:
@@ -902,8 +914,157 @@ def cmd_dryrun_all(args):
     print(f"wrote {path}")
 
 
-def cmd_pending(args):
-    halt(f"'{args.cmd}' is not built yet (Task 4 of the S1b edition plan)")
+# ----------------------------------------------------- refresh-latest (Task 4)
+
+BAK = "la_homelessness_support_needs_bak_20261006"
+REFRESH_COLS = ("value", "value_flag", "source_url", "source_edition",
+                "edition_variant")
+# live columns that must never change (key columns are the join, loaded_at is
+# compared separately)
+FIXED_COLS = tuple(c for c in DATA_COLS
+                   if c not in REFRESH_COLS
+                   and c not in ("lad24cd", "period", "category_code"))
+LIVE_ROWS_TOTAL = 101232
+
+
+def _latest_map(cur) -> dict:
+    cur.execute(f"SELECT DISTINCT period FROM public.{LIVE} ORDER BY 1")
+    return {p: latest_edition(cur, p) for (p,) in cur.fetchall()}
+
+
+def _pairs(latest: dict) -> tuple:
+    return tuple(sorted(latest.items()))
+
+
+def _refresh_where() -> str:
+    return "(" + " OR ".join(f"l.{c} IS DISTINCT FROM e.{c}"
+                             for c in REFRESH_COLS) + ")"
+
+
+def refresh_counts(cur) -> dict:
+    """{period: live rows refresh_latest would write} (read-only)."""
+    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
+                    JOIN public.{TABLE} e USING (lad24cd, period, category_code)
+                    WHERE (e.period, e.edition) IN %s AND {_refresh_where()}
+                    GROUP BY 1 ORDER BY 1""", (_pairs(_latest_map(cur)),))
+    return dict(cur.fetchall())
+
+
+def refresh_latest(cur) -> int:
+    """Copy each period's latest edition into the live table; return rows
+    written. Updates ONLY value, value_flag, source_url, source_edition and
+    edition_variant, and only where the latest edition differs (NULL-safe).
+    Every other column, including loaded_at, and every other row is untouched.
+    """
+    sets = ", ".join(f"{c} = e.{c}" for c in REFRESH_COLS)
+    cur.execute(f"""UPDATE public.{LIVE} l SET {sets}
+                    FROM public.{TABLE} e
+                    WHERE e.lad24cd = l.lad24cd AND e.period = l.period
+                      AND e.category_code = l.category_code
+                      AND (e.period, e.edition) IN %s AND {_refresh_where()}""",
+                (_pairs(_latest_map(cur)),))
+    return cur.rowcount
+
+
+def check_live_preserved(cur) -> list:
+    """Live versus the pre-refresh snapshot: same keys; loaded_at identical on
+    every row; every period outside the seven revised quarters (single-edition
+    periods and 2025Q2) identical on every column; the seven quarters differ
+    only in value, value_flag, source_url, source_edition, edition_variant, and
+    each of them did change."""
+    cur.execute("SELECT to_regclass(%s)", (f"public.{BAK}",))
+    if cur.fetchone()[0] is None:
+        return [f"snapshot table {BAK} is absent"]
+    bad = []
+    cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} l
+                    FULL JOIN public.{BAK} b USING (lad24cd, period,
+                                                    category_code)
+                    WHERE l.period IS NULL OR b.period IS NULL
+                       OR l.loaded_at IS NULL OR b.loaded_at IS NULL""")
+    k = cur.fetchone()[0]
+    if k:
+        bad.append(f"{k} rows present in only one of live and snapshot")
+    cur.execute(f"SELECT COUNT(*) FROM public.{LIVE}")
+    n = cur.fetchone()[0]
+    if n != LIVE_ROWS_TOTAL:
+        bad.append(f"live table has {n} rows, expected {LIVE_ROWS_TOTAL}")
+    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
+                    JOIN public.{BAK} b USING (lad24cd, period, category_code)
+                    WHERE l.loaded_at IS DISTINCT FROM b.loaded_at
+                    GROUP BY 1""")
+    bad += [f"{p}: {c} rows with loaded_at changed" for p, c in cur.fetchall()]
+    allc = ", ".join(f"{{a}}.{c}" for c in DATA_COLS)
+    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
+                    JOIN public.{BAK} b USING (lad24cd, period, category_code)
+                    WHERE l.period <> ALL(%s)
+                      AND ROW({allc.format(a='l')}) IS DISTINCT FROM
+                          ROW({allc.format(a='b')})
+                    GROUP BY 1""", (list(STALE_PERIODS),))
+    bad += [f"{p}: {c} rows not identical to snapshot"
+            for p, c in cur.fetchall()]
+    fx = ", ".join(f"{{a}}.{c}" for c in FIXED_COLS)
+    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
+                    JOIN public.{BAK} b USING (lad24cd, period, category_code)
+                    WHERE l.period = ANY(%s)
+                      AND ROW({fx.format(a='l')}) IS DISTINCT FROM
+                          ROW({fx.format(a='b')})
+                    GROUP BY 1""", (list(STALE_PERIODS),))
+    bad += [f"{p}: {c} rows differ outside the five refresh columns"
+            for p, c in cur.fetchall()]
+    rc = ", ".join(f"{{a}}.{c}" for c in REFRESH_COLS)
+    cur.execute(f"""SELECT l.period, COUNT(*) FILTER (WHERE
+                           ROW({rc.format(a='l')}) IS DISTINCT FROM
+                           ROW({rc.format(a='b')}))
+                    FROM public.{LIVE} l
+                    JOIN public.{BAK} b USING (lad24cd, period, category_code)
+                    WHERE l.period = ANY(%s) GROUP BY 1""",
+                (list(STALE_PERIODS),))
+    got = dict(cur.fetchall())
+    bad += [f"{p}: no row refreshed" for p in STALE_PERIODS
+            if not got.get(p)]
+    return bad
+
+
+def run_refresh_gates(cur) -> None:
+    """Live equals latest edition (all columns bar loaded_at) and live versus
+    snapshot; halt on any problem."""
+    bad = ([f"live!=latest: {x}" for x in check_latest_equals_live(cur)]
+           + [f"snapshot: {x}" for x in check_live_preserved(cur)])
+    if bad:
+        halt("refresh-latest failed its gates, rolled back: "
+             + "; ".join(bad[:6]))
+
+
+def cmd_refresh_latest(args):
+    from _db import get_conn, get_readonly_conn
+    writing = args.commit or args.simulate
+    conn = get_conn() if writing else get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            counts = refresh_counts(cur)
+            print("rows refresh-latest would write: "
+                  + (", ".join(f"{p}={n}" for p, n in counts.items())
+                     or "none") + f" (total {sum(counts.values())})")
+            if not writing:
+                print("DRY RUN: nothing written (use --commit or --simulate)")
+                return
+            n = refresh_latest(cur)
+            if n != sum(counts.values()):
+                halt(f"wrote {n} rows, expected {sum(counts.values())}")
+            run_refresh_gates(cur)
+        print(f"{n} live rows refreshed; gates passed")
+        if args.commit:
+            conn.commit()
+            print("COMMITTED")
+        else:
+            conn.rollback()
+            print("SIMULATION: ROLLED BACK (nothing persisted)")
+    except BaseException:
+        if writing:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def main(argv=None):
@@ -940,11 +1101,15 @@ def main(argv=None):
                         "registry files; writes no table")
     da.add_argument("--out", required=True)
     da.set_defaults(func=cmd_dryrun_all)
-    rl = sub.add_parser("refresh-latest", help="not built yet (Task 4)")
+    rl = sub.add_parser("refresh-latest", help="copy each period's latest "
+                        "edition into the live table (dry-run by default)")
     rm = rl.add_mutually_exclusive_group()
-    rm.add_argument("--commit", action="store_true")
-    rm.add_argument("--simulate", action="store_true")
-    rl.set_defaults(func=cmd_pending)
+    rm.add_argument("--commit", action="store_true",
+                    help="refresh the live table (gates in the same "
+                    "transaction)")
+    rm.add_argument("--simulate", action="store_true",
+                    help="do everything, then roll back")
+    rl.set_defaults(func=cmd_refresh_latest)
     args = ap.parse_args(argv)
     args.func(args)
 

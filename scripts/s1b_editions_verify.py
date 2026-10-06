@@ -5,7 +5,7 @@ on any FAIL. Gates 1-3 cover table shape, immutability and the supersedes-chain
 helpers; 4-5 cover the backfill (coverage, 2025Q2 original vs the before-revision
 CSV, latest edition vs the live table), 6-8 the seven revised 2023Q2-2024Q4
 editions (structure and registry source, flag integrity against the raw cells,
-S1 cross-check). Gates 6-8 print `FAIL (pending load)` while any of those seven
+S1 cross-check), 9 the live layer against the pre-refresh snapshot. Gates 6-8 print `FAIL (pending load)` while any of those seven
 quarters has no edition 2 or later, so the exit code is 1 until they are loaded
 (the S1 convention). Gates ending in `s` are seeded: they
 prove the check itself flags a planted fault.
@@ -27,7 +27,8 @@ from _db import get_conn  # noqa: E402
 from s1_editions import STALE_PERIODS  # noqa: E402
 from s1b_editions import (TABLE, LIVE, DATA_COLS,  # noqa: E402
                           BACKFILL_ROWS_TOTAL, check_coverage,
-                          check_flag_integrity, check_loaded, check_s1_cross,
+                          check_flag_integrity, check_live_preserved,
+                          check_loaded, check_s1_cross,
                           check_latest_equals_live, check_q2_pair,
                           insert_edition, latest_edition,
                           load_before_revision_csv)
@@ -592,6 +593,47 @@ def gate_8s_seeded(cur):
            f"null/value swap={bad2[:1]}")
 
 
+def gate_9_live_preserved(cur):
+    name = ("live vs snapshot: other periods and loaded_at identical; the seven "
+            "quarters differ only in value/flag/source columns")
+    try:
+        bad = check_live_preserved(cur)
+    except (ValueError, LookupError) as e:
+        return report(9, name, False, str(e))
+    report(9, name, not bad, "; ".join(bad[:5]) if bad else
+           "single-edition periods and 2025Q2 identical; seven quarters "
+           "refreshed in the five columns only")
+
+
+def gate_9s_seeded(cur):
+    name = "seeded: gate 9 flags changed 2025Q3 value, loaded_at, label and 2025Q2 URL"
+
+    def body(cur):
+        cur.execute(f"""UPDATE public.{LIVE} SET value = COALESCE(value, 0) + 1,
+                        value_flag = NULL WHERE period = '2025Q3'
+                        AND lad24cd = 'E06000001'
+                        AND category_code = 'hh_no_support_needs'""")
+        cur.execute(f"""UPDATE public.{LIVE} SET loaded_at = now()
+                        WHERE period = '2024Q1' AND lad24cd = 'E06000001'
+                        AND category_code = 'hh_no_support_needs'""")
+        cur.execute(f"""UPDATE public.{LIVE} SET category_label = 'x'
+                        WHERE period = '2023Q2' AND lad24cd = 'E06000001'
+                        AND category_code = 'hh_no_support_needs'""")
+        cur.execute(f"""UPDATE public.{LIVE} SET source_url = 'x'
+                        WHERE period = '2025Q2' AND lad24cd = 'E06000001'
+                        AND category_code = 'hh_no_support_needs'""")
+        return check_live_preserved(cur)
+    try:
+        bad = _in_savepoint(cur, body)
+    except psycopg2.Error as e:
+        return report("9s", name, False, str(e).splitlines()[0])
+    ok = (any("2025Q3" in x and "not identical" in x for x in bad)
+          and any("2024Q1" in x and "loaded_at" in x for x in bad)
+          and any("2023Q2" in x and "outside the five" in x for x in bad)
+          and any("2025Q2" in x and "not identical" in x for x in bad))
+    report("9s", name, ok, "; ".join(bad[:4]))
+
+
 def main():
     conn = get_conn()
     try:
@@ -623,6 +665,8 @@ def main():
             gate_6s_seeded(cur)
             gate_7s_seeded(cur)
             gate_8s_seeded(cur)
+            gate_9_live_preserved(cur)
+            gate_9s_seeded(cur)
     finally:
         conn.rollback()
         conn.close()
