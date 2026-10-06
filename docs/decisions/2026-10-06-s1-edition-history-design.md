@@ -93,3 +93,59 @@ design; handled in the same pattern in a later change if wanted).
 ## Open questions
 
 None for the design. The download list is the only gate before the load step.
+
+## Execution log
+
+Added after the work was done; the design above is left as written.
+
+**Backup.** A verified `pg_backup` set was taken before any write:
+`db-backups/manual-pre-s1-edition/daily/2026-10-06/exempt_pipeline.dump` (12,245,364 bytes,
+restored to a scratch database and counts matched). It predates the editions table. Before the
+live layer was refreshed, `la_statutory_homelessness_bak_20261006` was created (3,256 rows,
+identical to live); it is kept, because gates 10 and 11 compare against it.
+
+**Editions held** (`la_statutory_homelessness_editions`, 5,624 rows).
+
+| Quarters | Editions | Edition 2 source |
+|---|---|---|
+| 2023Q2, 2023Q3, 2023Q4, 2024Q1, 2024Q2, 2024Q3, 2024Q4 | 1 and 2 | the registry 'revised' file |
+| 2025Q2 | 1 and 2 | MHCLG revision of 30 April 2026 |
+| 2025Q1, 2025Q3, 2025Q4 | 1 | none |
+
+Authorities changed, edition 2 against edition 1: 2023Q2 193, 2023Q3 184, 2023Q4 195, 2024Q1 194,
+2024Q2 190, 2024Q3 190, 2024Q4 191. Full diffs are in `s1-edition-diffs-2026-10-06.md`.
+
+**Gates.** The `s1_editions_verify.py` gates (1 to 11, 3a to 3g, plus the seeded gates 6s to 8s,
+10s and 11s that prove a gate can fail) all pass after the live layer was refreshed. Gate 5
+(live layer equals the latest edition) was expected to be red between the edition load and the
+refresh, and was. `verify_source_registry.py`: 21 of 21 pass. W1 national figures are unchanged
+(TA 130,775; prior year 115,431; year-on-year 13.29%); eleven authorities' prior-year TA moves
+from 0 to NULL, with no change to their trend label.
+
+**What the diffs showed.** The "200 to 230 authorities differ" divergence in the design's Why
+section was measured against the older release-page files, an older vintage. Stored edition 1
+was already close to the registry revised files on the A1 measures (2 to 8 cells per quarter).
+The substantive changes in edition 2 are suppressed `households_in_ta` values (zero to NULL, 95
+cells across the seven quarters, so not the 108 estimated above) and revised A3
+`support_needs_total` (about 175 to 190 authorities per quarter).
+
+**Rulings made during execution.**
+1. Task 4 was split: a dry run first (no inserts, because the table is append-only and a wrong
+   edition cannot be deleted), then the real load after the diffs were read.
+2. Only the registry 'revised' file is loaded as edition 2 for each of the seven quarters. The
+   release-page files are an older vintage, not what any output used, and stay in `data/raw`
+   unloaded.
+3. Ordering is by the supersedes chain: latest is the one edition no other edition supersedes
+   (a fork, or more than one root, is an error). `published_date` is informational. Date ordering
+   would have ranked edition 1 above the 2024Q1 to 2024Q4 revised files, whose Last-Modified
+   (2026-02-24) precedes the 2026-04-01 load.
+4. Gate 8 was redefined. The new edition's `support_needs_total` must equal an independent
+   re-extraction of A3 "households with one or more support needs" from the same file, 296 of
+   296. It no longer compares with `la_homelessness_support_needs`, which was built from the
+   older files and is stale against the revised ones.
+5. `published_date` is the file's HTTP Last-Modified date for the loaded editions (labelled so
+   in `release_label`) and the load date for edition 1 (labelled "as loaded; date is load date").
+6. A TRUNCATE trigger was added beside the update and delete triggers, closing a gap in the
+   append-only guarantee.
+
+**Left open.** See `README.md`, item 5.

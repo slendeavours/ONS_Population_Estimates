@@ -168,6 +168,13 @@ corrected edition carries a complete return.
 
 ## Known traps
 
+- **Stale for 2023Q2 to 2024Q4 against the revised files.** The S1b rows for these seven quarters
+  were built from the older release-page files. MHCLG's revised files change A3 `support_needs_total`
+  for about 175 to 190 authorities per quarter, and the S1 editions table now holds those revised
+  values (edition 2). S1b was not reloaded, so it disagrees with S1 for those quarters, and
+  `scripts/s1b_support_needs_verify.py` fails 6 of 7 gates. A reload is a separate decision. Its key
+  `(lad24cd, period, category_code)` holds one edition per period, so it also needs edition
+  treatment before its next revision. See `docs/decisions/2026-10-06-s1-edition-history-design.md`.
 - **Reading A3 by column position.** Two layouts and a full relabelling make
   positional extraction fragile, and it has already failed once in this
   pipeline. Match labels and refuse to load anything unaccounted for.

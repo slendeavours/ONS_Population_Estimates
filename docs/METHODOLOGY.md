@@ -279,6 +279,12 @@ Always uses `MAX(run_id)` to ensure the latest data is exported. Never hardcodes
 
 ---
 
+## Revision Handling
+
+A published revision of a figure already held is data, and is stored as a new edition, never by overwriting. For S1 (statutory homelessness) the `la_statutory_homelessness_editions` table is append-only, keyed on `(lad24cd, period, edition)`; edition 1 is the quarter as first loaded and each later edition records the file it came from and the edition it supersedes. The latest edition is the one no other edition supersedes (the publication date is informational). `la_statutory_homelessness`, which Workflow 1 reads, is the latest-edition layer and is refreshed from the editions table by `scripts/s1_editions.py refresh-latest`; every earlier edition stays queryable. Suppressed values (`..`, `-`) are NULL in every edition. Other sources are not yet handled this way: the RO4 table (key `lad24cd, financial_year`) and the S1b support-needs table need the same treatment before their next revision.
+
+---
+
 ## Known Data Gaps & Limitations
 
 | Issue | Detail |

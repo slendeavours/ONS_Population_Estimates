@@ -36,6 +36,20 @@ Source: DLUHC H-CLIC statutory homelessness return (quarterly)
 | `falling_strongly` | YoY decrease > -15% |
 | `submission_gap` | LA has not submitted data for one or more recent quarters |
 
+### Statutory homelessness editions (S1)
+
+`la_statutory_homelessness_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, period, edition)`, `period` a financial-year quarter (`YYYYQn`; 2023Q2 is July to September 2023).
+
+| Column | Description |
+|---|---|
+| `edition` | Integer, 1 = first loaded. |
+| `supersedes` | The edition this one replaces; NULL for the first. |
+| measure columns | The six measures held in `la_statutory_homelessness` (`total_assessments`, `owed_duty`, `prevention_duty`, `relief_duty`, `households_in_ta`, `support_needs_total`). Suppressed values (`..`, `-`) are NULL, never 0. |
+| `release_label`, `published_date` | Description and date of the release. Informational only: for loaded revisions the file's HTTP Last-Modified date, for edition 1 the load date. They do not decide which edition is latest. |
+| `source_url`, `source_file`, `source_sha256`, `loaded_at` | Provenance of the file the edition was read from. |
+
+**Live-layer rule.** `la_statutory_homelessness` holds, for each authority and period, the latest edition, where latest is the edition that no other edition supersedes. It is refreshed with `python scripts/s1_editions.py refresh-latest --commit` and changes only the six measures, `source_file` and `extracted_at`; `*_suspect` and `loaded_at` are never touched. A quarter with one edition is identical in both tables.
+
 ---
 
 ## Rough Sleeping
