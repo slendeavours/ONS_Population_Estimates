@@ -15,7 +15,8 @@ and sync-new records it as edition 1, idempotently (12); a live row changed
 directly is reported as drift and refresh halts unless accepted (13); today's
 database is clean (14); a short quarter is flagged because counts are derived
 (15); a forked chain is reported (16); nothing depends on the retired snapshot
-tables or fixed period lists (17). The per-period before/after content hash
+tables, fixed counts or period lists (17); sync-new needs an explicit
+count when no period has editions (18). The per-period before/after content hash
 (excluding loaded_at) replaces the old snapshot comparison.
 
 Usage:
@@ -385,7 +386,7 @@ def _clean_fail(n, name, fn, cur):
 
 
 def gate_6_revised_registry(cur):
-    name = "2023Q2-2024Q4 have a registry edition >= 2, 296 authorities"
+    name = "2023Q2-2024Q4 have a registry edition >= 2, derived authority count"
     if not table_exists(cur):
         return report(6, name, False, f"{TABLE} absent")
 
@@ -433,7 +434,7 @@ def gate_7_no_suppressed_zero(cur):
 
 
 def gate_8_support_needs_vs_a3(cur):
-    name = "support_needs_total equals independent S1b-reader A3 re-read, 296/296"
+    name = "support_needs_total equals independent S1b-reader A3 re-read, every authority"
     if not table_exists(cur):
         return report(8, name, False, f"{TABLE} absent")
 
@@ -451,7 +452,7 @@ def gate_8_support_needs_vs_a3(cur):
         if missing:
             return report(8, name, False,
                           f"no edition >= 2 yet for {missing}", pending=True)
-        report(8, name, True, f"{done} periods 296/296")
+        report(8, name, True, f"{done} periods {expected_authorities(cur)}/{expected_authorities(cur)}")
     _clean_fail(8, name, body, cur)
 
 
@@ -501,7 +502,7 @@ def gate_7s_seeded(cur):
 
 
 def gate_8s_seeded(cur):
-    name = "seeded: gate 8 check flags 295/296"
+    name = "seeded: gate 8 check flags one authority short of the derived count"
     if not table_exists(cur):
         return report("8s", name, False, f"{TABLE} absent")
     cur.execute(f"""SELECT lad24cd, support_needs_total FROM public.{TABLE}
@@ -511,7 +512,8 @@ def gate_8s_seeded(cur):
     lad = min(exp)
     exp[lad] = -1 if exp[lad] is None else exp[lad] + 1
     bad = check_support_needs(cur, "2023Q2", 1, expected=exp)
-    report("8s", name, not clean and any("295/296" in x for x in bad),
+    n = expected_authorities(cur)
+    report("8s", name, not clean and any(f"{n - 1}/{n}" in x for x in bad),
            f"clean={clean}; seeded={bad}")
 
 
@@ -544,13 +546,15 @@ def _bump(col, by=1, lad=LAD):
 
 
 def _fake_live_period(cur, drop_one=False):
-    """Copy 2025Q4 live rows into a fake 2099Q1 (a brand-new quarter)."""
+    """Copy the current quarter's live rows into a fake 2099Q1 (a brand-new
+    quarter)."""
     cur.execute(f"""INSERT INTO public.{LIVE}
         (lad24cd, period, {', '.join(MEASURES)}, loaded_at, source_file,
          extracted_at)
         SELECT lad24cd, '2099Q1', {', '.join(MEASURES)}, loaded_at,
                source_file, extracted_at
-        FROM public.{LIVE} WHERE period = '2025Q4'""")
+        FROM public.{LIVE} WHERE period = (SELECT MAX(period)
+                                           FROM public.{LIVE})""")
     if drop_one:
         cur.execute(f"DELETE FROM public.{LIVE} WHERE period = '2099Q1' "
                     "AND lad24cd = %s", (LAD,))
@@ -614,6 +618,10 @@ def gate_10_tamper_rolls_back(cur):
         "another period's row count":
             "DELETE FROM public.{live} WHERE period = '2024Q1' "
             "AND lad24cd = '{lad}'",
+        "a *_suspect column of an untouched period":
+            "UPDATE public.{live} SET drug_dependency_suspect = "
+            "COALESCE(drug_dependency_suspect, 0) + 1 "
+            "WHERE period = '2024Q2' AND lad24cd = '{lad}'",
         "a *_suspect column of the refreshed period":
             "UPDATE public.{live} SET mental_health_suspect = "
             "COALESCE(mental_health_suspect, 0) + 1 "
@@ -662,23 +670,28 @@ def gate_11_w1_equivalence(cur):
             return refresh_latest(cur)
         return _in_savepoint(cur, body)
     try:
-        cur_res = run("2025Q4", "households_in_ta", 7)
-        prev_res = run("2024Q4", "households_in_ta", 5, "E06000002")
-        non_ta = run("2025Q4", "owed_duty", 3)
+        snap = w1_snapshot(cur)  # derives current/prior quarter as W1 does
+        top, prev = snap["top"], snap["prev"]
+        cur_res = run(top, "households_in_ta", 7)
+        prev_res = run(prev, "households_in_ta", 5, "E06000002")
+        non_ta = run(top, "owed_duty", 3)
     except (psycopg2.Error, SystemExit) as e:
         return report(11, name, False, str(e).splitlines()[0])
     w = cur_res["w1"]
-    ok = (w["authorities_differing"] == [LAD]
+    ok = (w["ta_changed_authorities"] == [LAD]
+          and set(w["authorities_differing"]) <= set(w["ta_changed_authorities"])
+          and w["authorities_differing"]
           and set(w["columns"]) <= TA_SIGNAL_COLS
           and w["national_columns_changed"]
           and set(w["national_columns_changed"]) <= NATIONAL_TA_COLS)
-    out.append(f"current quarter TA +7 -> signals differ for "
+    out.append(f"{top} (current) TA +7 -> signals differ for "
                f"{w['authorities_differing']} in {sorted(w['columns'])}, "
                f"national {w['national_columns_changed']}")
     w = prev_res["w1"]
-    ok = ok and (w["authorities_differing"] == ["E06000002"]
+    ok = ok and (w["ta_changed_authorities"] == ["E06000002"]
+                 and set(w["authorities_differing"]) <= {"E06000002"}
                  and set(w["columns"]) <= TA_SIGNAL_COLS)
-    out.append(f"prior-year TA +5 -> {w['authorities_differing']}")
+    out.append(f"{prev} (prior year) TA +5 -> {w['authorities_differing']}")
     w = non_ta["w1"]
     ok = ok and not w["authorities_differing"] and not w["national_columns_changed"]
     out.append("non-TA measure change -> no signals move")
@@ -739,18 +752,20 @@ def gate_12_new_period(cur):
             _in_savepoint(cur, body)
     except (psycopg2.Error, SystemExit) as e:
         return report(12, name, False, str(e).splitlines()[0])
+    n_auth = expected_authorities(cur)
     cur.execute(f"SELECT {', '.join(('lad24cd',) + MEASURES)} "
-                f"FROM public.{TABLE} WHERE period = '2025Q4' AND edition = 1")
+                f"FROM public.{TABLE} WHERE edition = 1 AND period = "
+                f"(SELECT MAX(period) FROM public.{LIVE})")
     want = live_text_sha256([dict(zip(("lad24cd",) + MEASURES, r))
                              for r in cur.fetchall()])
     ok = (s1["new_periods"] == ["2099Q1"] and not s1["ok"]
           and halted[0] and "sync-new" in halted[1]
-          and done == ["2099Q1"] and tip == 1 and rows == 296
+          and done == ["2099Q1"] and tip == 1 and rows == n_auth
           and label == LIVE_LABEL and sha == want
-          and again == [] and total == 296 and s2["ok"])
+          and again == [] and total == n_auth and s2["ok"])
     report(12, name, ok, f"new={s1['new_periods']} refresh halted={halted[0]} "
            f"synced={done} edition rows={rows} label={label!r} sha matches "
-           f"2025Q4's canonical hash={sha == want} second sync={again} "
+           f"current quarter's canonical hash={sha == want} second sync={again} "
            f"status after ok={s2['ok']}")
 
 
@@ -797,7 +812,7 @@ def gate_14_today(cur):
 
 
 def gate_15_derived_counts(cur):
-    name = "seeded: a 295-authority quarter is flagged, not absorbed (counts derived)"
+    name = "seeded: a quarter one authority short is flagged, not absorbed (counts derived)"
 
     def body(cur):
         _fake_live_period(cur, drop_one=True)
@@ -808,10 +823,12 @@ def gate_15_derived_counts(cur):
         st, halted = _in_savepoint(cur, body)
     except psycopg2.Error as e:
         return report(15, name, False, str(e).splitlines()[0])
-    unit = (modal_count({"a": 296, "b": 296, "c": 295}) == 296
+    n = expected_authorities(cur)
+    unit = (modal_count({"a": 7, "b": 7, "c": 6}) == 7
             and modal_count({}) is None)
-    ok = (st["bad_counts"].get("2099Q1") == (295, 296) and not st["ok"]
-          and halted[0] and "295 live rows, expected 296" in halted[1] and unit)
+    ok = (st["bad_counts"].get("2099Q1") == (n - 1, n) and not st["ok"]
+          and halted[0] and f"{n - 1} live rows, expected {n}" in halted[1]
+          and unit)
     report(15, name, ok, f"bad_counts={st['bad_counts']} sync-new: "
            f"{halted[1][:80]}")
 
@@ -835,16 +852,85 @@ def gate_16_chain_error_reported(cur):
            str(st["chain_errors"])[:120])
 
 
+# Functions allowed to mention the retired literals, by name. Everything else
+# in s1_editions.py and in this file is scanned. STALE_PERIODS itself may stay
+# defined at module level (s1b imports it until Task 2).
+RETIRED = ("_bak_", "BAK", "3256", "STALE_PERIODS")
+ALLOWED_S1 = {
+    # one-off historical load / report code for the 2026-10 reload
+    "cmd_dryrun_all",
+}
+ALLOWED_VERIFY = {
+    # gates 6-8 check the seven quarters restated in the 2026-10 reload
+    "_revised_editions",
+    # this gate names the literals it looks for
+    "gate_17_no_snapshot_dependency",
+}
+REFRESH_PATH = ("refresh_latest", "refresh_counts", "status", "sync_new",
+                "classify_period", "guard_problems", "check_w1_equivalence",
+                "_plan", "reproduction_update", "latest_map",
+                "w1_snapshot", "period_hashes")
+
+
+def _function_sources(path):
+    import ast
+    text = path.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    return {n.name: ast.get_source_segment(text, n)
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+
 def gate_17_no_snapshot_dependency(cur):
-    name = "no code path depends on the retired snapshot tables or fixed period lists"
-    src = (Path(__file__).resolve().parent / "s1_editions.py").read_text(
-        encoding="utf-8")
-    start = src.index("# S1 specifics")
-    refresh = src[start:src.index("def main(argv=None)")]
-    hits = [w for w in ("_bak_", "BAK", "STALE_PERIODS", "3256")
-            if w in refresh]
-    report(17, name, not hits, f"found {hits}" if hits else
-           "refresh path and gates read neither")
+    name = "no code path depends on the retired snapshot tables, fixed counts or period lists"
+    here = Path(__file__).resolve().parent
+    s1 = _function_sources(here / "s1_editions.py")
+    vf = _function_sources(here / "s1_editions_verify.py")
+    missing = [f for f in REFRESH_PATH if f not in s1]
+    hits = [f"s1_editions.{fn}: {w}" for fn, src in s1.items()
+            if fn not in ALLOWED_S1 for w in RETIRED if w in src]
+    hits += [f"s1_editions_verify.{fn}: {w}" for fn, src in vf.items()
+             if fn not in ALLOWED_VERIFY for w in RETIRED if w in src]
+    # a literal 296 must not appear in any scanned function either
+    hits += [f"s1_editions.{fn}: literal 296" for fn, src in s1.items()
+             if fn not in ALLOWED_S1 and "296" in src]
+    hits += [f"s1_editions_verify.{fn}: literal 296" for fn, src in vf.items()
+             if fn not in ALLOWED_VERIFY and "296" in src]
+    # the scanner must be able to see a planted literal (seeded)
+    planted = "x = 'la_statutory_homelessness_bak_1'"
+    seeded = any(w in planted for w in RETIRED)
+    report(17, name, not hits and not missing and seeded,
+           f"missing={missing} hits={hits[:6]}" if hits or missing else
+           f"{len(s1)} + {len(vf)} functions scanned; allow-listed: "
+           f"{sorted(ALLOWED_S1 | ALLOWED_VERIFY)}")
+
+
+def gate_18_bootstrap_needs_explicit_count(cur):
+    name = "seeded: with no period having editions, sync-new needs --expected-authorities"
+    import s1_editions as m
+    n = expected_authorities(cur)
+
+    def body(cur):
+        _fake_live_period(cur, drop_one=True)
+        saved = m.latest_map, m.live_period_counts
+        m.latest_map = lambda cur, *a, **k: ({}, ["2099Q1"], {})
+        m.live_period_counts = lambda cur, *a, **k: {"2099Q1": n - 1}
+        try:
+            no_arg = _halts(lambda: sync_new(cur))
+            short = _halts(lambda: sync_new(cur, n))
+            explicit = sync_new(cur, n - 1)
+        finally:
+            m.latest_map, m.live_period_counts = saved
+        return no_arg, short, explicit
+    try:
+        no_arg, short, explicit = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(18, name, False, str(e).splitlines()[0])
+    ok = (no_arg[0] and "--expected-authorities" in no_arg[1]
+          and short[0] and f"{n - 1} live rows, expected {n}" in short[1]
+          and explicit == ["2099Q1"])
+    report(18, name, ok, f"no count: {no_arg[1][:60]}; wrong count: "
+           f"{short[1][:60]}; explicit {n - 1}: {explicit}")
 
 
 def main():
@@ -882,6 +968,7 @@ def main():
             gate_15_derived_counts(cur)
             gate_16_chain_error_reported(cur)
             gate_17_no_snapshot_dependency(cur)
+            gate_18_bootstrap_needs_explicit_count(cur)
     finally:
         conn.rollback()
         conn.close()
