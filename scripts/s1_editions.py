@@ -10,11 +10,15 @@ Subcommands (refresh-latest is added in a later step):
     python scripts/s1_editions.py backfill  # edition 1 of every stored quarter
                                             # plus the 2025Q2 revision; idempotent
     python scripts/s1_editions.py diff --period P --new N --old M
-    python scripts/s1_editions.py load --period P --manifest-entry N
+    python scripts/s1_editions.py load --period P
+        (--manifest-label registry | --manifest-entry N)
         [--supersedes E] [--published-date YYYY-MM-DD] [--commit]
         # DRY-RUN by default: extracts the manifest file, diffs it against the
         # latest stored edition, writes nothing. Only --commit inserts.
-        # --manifest-entry is a 0-based index into s1_editions_manifest.json.
+        # --manifest-label selects the manifest entry of that period by its
+        # release_label (use `registry`); --manifest-entry is a 0-based index
+        # into s1_editions_manifest.json. Give exactly one. Only registry
+        # entries load unless --allow-non-registry is given.
     python scripts/s1_editions.py dryrun-all --out report.md
         # both manifest candidates of 2023Q2-2024Q4 vs stored edition 1 and
         # vs each other, as markdown; writes no table
@@ -136,46 +140,40 @@ def insert_edition(cur, recs: list, period: str, *, release_label: str,
     return edition
 
 
-def _values_differ(cur, period, ed_a, ed_b) -> bool:
-    cols = ", ".join(("lad24cd",) + MEASURES)
-    q = (f"SELECT COUNT(*) FROM (SELECT {cols} FROM public.{TABLE} "
-         "WHERE period = %s AND edition = %s EXCEPT "
-         f"SELECT {cols} FROM public.{TABLE} "
-         "WHERE period = %s AND edition = %s) x")
-    cur.execute(q, (period, ed_a, period, ed_b))
-    a = cur.fetchone()[0]
-    cur.execute(q, (period, ed_b, period, ed_a))
-    return bool(a or cur.fetchone()[0])
-
-
 def latest_edition(cur, period: str) -> int:
-    """Edition with the highest published_date (ties: highest edition).
+    """Tip of the period's supersedes chain.
 
-    Raises if two editions share the top published_date but differ in values,
-    because the order is then unknowable and must not be guessed.
+    Ordering is the `supersedes` chain, not published_date (which is
+    informational only). The latest edition is the single edition that no other
+    edition of the period supersedes. Raises if the chain is not linear: more
+    than one root (edition with no supersedes) while several editions exist, a
+    fork (several tips), an edition recorded with inconsistent supersedes, or a
+    cycle (no tip).
     """
-    cur.execute(f"SELECT DISTINCT edition, published_date FROM public.{TABLE} "
+    cur.execute(f"SELECT DISTINCT edition, supersedes FROM public.{TABLE} "
                 "WHERE period = %s", (period,))
-    eds = cur.fetchall()
-    if not eds:
+    rows = cur.fetchall()
+    if not rows:
         raise LookupError(f"no editions recorded for {period}")
-    dated = [d for _, d in eds if d is not None]
-    if dated and len(dated) != len(eds):
-        undated = sorted(e for e, d in eds if d is None)
-        raise ValueError(f"{period}: editions {undated} have no "
-                         "published_date while others are dated; "
-                         "order is ambiguous")
-    if not dated:
-        if len(eds) > 1:
-            raise ValueError(f"{period}: several editions, none dated")
-        return eds[0][0]
-    top = max(dated)
-    tied = sorted(e for e, d in eds if d == top)
-    for other in tied[1:]:
-        if _values_differ(cur, period, tied[0], other):
-            raise ValueError(f"{period}: editions {tied} share published_date "
-                             f"{top} and differ in values; order is ambiguous")
-    return tied[-1]
+    sup = {}
+    for ed, s in rows:
+        if ed in sup:
+            raise ValueError(f"{period}: edition {ed} has inconsistent "
+                             "supersedes values across its rows")
+        sup[ed] = s
+    if len(sup) == 1:
+        return next(iter(sup))
+    roots = sorted(e for e, s in sup.items() if s is None)
+    if len(roots) != 1:
+        raise ValueError(f"{period}: {len(roots)} editions {roots} have no "
+                         "supersedes while several editions exist; the "
+                         "chain has no single root")
+    superseded = {s for s in sup.values() if s is not None}
+    tips = sorted(e for e in sup if e not in superseded)
+    if len(tips) != 1:
+        raise ValueError(f"{period}: supersedes chain has {len(tips)} tips "
+                         f"{tips}; order is ambiguous (fork or cycle)")
+    return tips[0]
 
 
 def cmd_ddl(_args):
@@ -439,15 +437,32 @@ def cmd_diff(args):
     print(f"{args.period} edition {args.new} vs {args.old}: {format_diff(d)}")
 
 
+def select_entry(manifest, period, label=None, index=None) -> dict:
+    """Manifest entry chosen by release_label or 0-based index, never both."""
+    if (label is None) == (index is None):
+        halt("give exactly one of --manifest-label and --manifest-entry")
+    if label is not None:
+        hits = [e for e in manifest
+                if e["period"] == period and e["release_label"] == label]
+        if len(hits) != 1:
+            halt(f"{len(hits)} manifest entries for {period} with "
+                 f"release_label {label!r}, expected exactly 1")
+        return hits[0]
+    if not 0 <= index < len(manifest):
+        halt(f"--manifest-entry {index} outside 0..{len(manifest) - 1}")
+    if manifest[index]["period"] != period:
+        halt(f"manifest entry {index} is {manifest[index]['period']}, "
+             f"not {period}")
+    return manifest[index]
+
+
 def cmd_load(args):
-    manifest = load_manifest()
-    if not 0 <= args.manifest_entry < len(manifest):
-        halt(f"--manifest-entry {args.manifest_entry} outside "
-             f"0..{len(manifest) - 1}")
-    entry = manifest[args.manifest_entry]
-    if entry["period"] != args.period:
-        halt(f"manifest entry {args.manifest_entry} is {entry['period']}, "
-             f"not {args.period}")
+    entry = select_entry(load_manifest(), args.period,
+                         args.manifest_label, args.manifest_entry)
+    if entry["release_label"] != "registry" and not args.allow_non_registry:
+        halt(f"{entry['file']} has release_label {entry['release_label']!r}; "
+             "only registry files load as editions (--allow-non-registry "
+             "overrides)")
     recs, path = _extract_entry(entry)
     published = (date.fromisoformat(args.published_date) if args.published_date
                  else date.fromisoformat(entry["last_modified"][:10]))
@@ -601,8 +616,13 @@ def main(argv=None):
     ld = sub.add_parser("load", help="extract a manifest file and diff it "
                         "(dry-run); insert only with --commit")
     ld.add_argument("--period", required=True)
-    ld.add_argument("--manifest-entry", type=int, required=True,
-                    help="0-based index into s1_editions_manifest.json")
+    ld.add_argument("--manifest-label", help="select the period's manifest "
+                    "entry by release_label, e.g. registry (preferred)")
+    ld.add_argument("--manifest-entry", type=int,
+                    help="alternative to --manifest-label: 0-BASED index into "
+                    "s1_editions_manifest.json")
+    ld.add_argument("--allow-non-registry", action="store_true",
+                    help="permit loading a non-registry manifest file")
     ld.add_argument("--supersedes", type=int)
     ld.add_argument("--published-date", help="YYYY-MM-DD; default manifest "
                     "last_modified date")

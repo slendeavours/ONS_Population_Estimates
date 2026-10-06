@@ -3,7 +3,7 @@
 Prints `GATE n name: PASS/FAIL`; exits 1 on any FAIL. Gates 1-3 cover the
 table shape and immutability, 4-5 the backfill, 6-8 the revised 2023Q2-2024Q4
 editions (registry source, no suppressed value stored as 0, support-need totals
-equal to S1b). Gates 6-8 print `FAIL (pending load)` while any of those seven
+equal to an independent S1b-reader re-read of the same file). Gates 6-8 print `FAIL (pending load)` while any of those seven
 quarters has no edition 2 or later, so the exit code is 1 until they are loaded.
 Later steps add gates 9-11.
 
@@ -134,33 +134,78 @@ def _raises(fn, exc):
     return False, "no error raised"
 
 
-def gate_3a_three_way_tie(cur):
-    name = "latest_edition: 3 tied editions, middle differs, raises"
+def _chain(cur, specs):
+    """Insert editions of 2099Q1; specs = [(supersedes, published_date, value)]
+    in edition order. Distinct values and a distinct sha per edition."""
+    lad = _first_lad(cur)
+    for i, (sup, d, v) in enumerate(specs):
+        insert_edition(cur, _rec(lad, v), "2099Q1",
+                       **dict(_kw("t", d, f"h{i}"), supersedes=sup))
+
+
+def gate_3a_chain_tip(cur):
+    name = "latest_edition: chain tip wins even with an older published_date"
     if not table_exists(cur):
         return report("3a", name, False, f"{TABLE} absent")
 
     def body(cur):
-        lad, d = _first_lad(cur), date(2099, 1, 1)
-        for i, v in enumerate((1, 2, 1)):
-            insert_edition(cur, _rec(lad, v), "2099Q1", **_kw("t", d, f"h{i}"))
-        return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
-    ok, msg = _in_savepoint(cur, body)
-    report("3a", name, ok and "differ" in msg, msg)
+        _chain(cur, [(None, date(2099, 3, 1), 1), (1, date(2099, 1, 1), 2)])
+        return latest_edition(cur, "2099Q1")
+    got = _in_savepoint(cur, body)
+    report("3a", name, got == 2, f"latest = edition {got}, expected 2")
 
 
-def gate_3b_mixed_dates(cur):
-    name = "latest_edition: dated and undated mixed, raises"
+def gate_3b_fork_raises(cur):
+    name = "latest_edition: fork (two editions supersede one) raises"
     if not table_exists(cur):
         return report("3b", name, False, f"{TABLE} absent")
 
     def body(cur):
-        lad = _first_lad(cur)
-        insert_edition(cur, _rec(lad, 1), "2099Q1",
-                       **_kw("t", date(2099, 1, 1), "h0"))
-        insert_edition(cur, _rec(lad, 2), "2099Q1", **_kw("t", None, "h1"))
+        _chain(cur, [(None, date(2099, 1, 1), 1), (1, date(2099, 2, 1), 2),
+                     (1, date(2099, 3, 1), 3)])
         return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
     ok, msg = _in_savepoint(cur, body)
-    report("3b", name, ok and "no published_date" in msg, msg)
+    report("3b", name, ok and "tips" in msg, msg)
+
+
+def gate_3e_superseded_never_returned(cur):
+    name = "latest_edition: a superseded edition is never returned"
+    if not table_exists(cur):
+        return report("3e", name, False, f"{TABLE} absent")
+
+    def body(cur):
+        # edition 2 carries the newest date but edition 3 supersedes it
+        _chain(cur, [(None, date(2099, 1, 1), 1), (1, date(2099, 6, 1), 2),
+                     (2, date(2099, 2, 1), 3)])
+        return latest_edition(cur, "2099Q1")
+    got = _in_savepoint(cur, body)
+    report("3e", name, got == 3, f"latest = edition {got}, expected 3")
+
+
+def gate_3f_two_roots_raise(cur):
+    name = "latest_edition: two roots with no supersedes raise"
+    if not table_exists(cur):
+        return report("3f", name, False, f"{TABLE} absent")
+
+    def body(cur):
+        # identical values and date: the old date/value rule accepted this
+        _chain(cur, [(None, date(2099, 1, 1), 1), (None, date(2099, 1, 1), 1)])
+        return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
+    ok, msg = _in_savepoint(cur, body)
+    report("3f", name, ok and "no single root" in msg, msg)
+
+
+def gate_3g_single_edition(cur):
+    name = "latest_edition: a single edition returns itself"
+    if not table_exists(cur):
+        return report("3g", name, False, f"{TABLE} absent")
+
+    def body(cur):
+        _chain(cur, [(None, None, 1)])
+        return latest_edition(cur, "2099Q1")
+    got = _in_savepoint(cur, body)
+    report("3g", name, got == 1, f"latest = edition {got}, expected 1 "
+           "(regression guard; the old code also passes this one)")
 
 
 def gate_3c_empty_recs(cur):
@@ -369,33 +414,56 @@ def gate_7_no_suppressed_zero(cur):
            "zeros confirmed")
 
 
-def gate_8_support_needs_vs_s1b(cur):
-    name = "support_needs_total equals S1b totals, 296/296 per period"
+def _a3_expected(cur, path):
+    """lad24cd -> A3 'households with one or more support needs', read from
+    the file with the S1b reader (read_a3, map_columns, la_rows, cell,
+    resolve_lookup). These functions only parse the workbook and query
+    la_code_lookup; none writes or fetches, so they can run on any file."""
+    import s1b_support_needs_build as s1b
+    df = s1b.read_a3(path)
+    _, mapping, _ = s1b.map_columns(df)
+    col = [j for j, c in mapping.items()
+           if c == "hh_one_or_more_support_needs"][0]
+    rows = s1b.la_rows(df)
+    resolved, unresolved = s1b.resolve_lookup(cur, rows)
+    if unresolved:
+        halt(f"{path.name}: unresolved publisher codes {unresolved}")
+    return {resolved[code]: s1b.cell(df.iat[i, col])[0]
+            for code, i in rows.items()}
+
+
+def gate_8_support_needs_vs_a3(cur):
+    name = "support_needs_total equals independent S1b-reader A3 re-read, 296/296"
     if not table_exists(cur):
         return report(8, name, False, f"{TABLE} absent")
     revised = _revised_editions(cur)
     missing = [p for p, e in revised.items() if not e]
-    bad = []
+    bad, done = [], 0
     for p, eds in revised.items():
         if not eds:
             continue
         ed = latest_edition(cur, p)
-        cur.execute(f"""SELECT COUNT(*) FROM public.{TABLE} e
-                        JOIN public.la_homelessness_support_needs s
-                          ON s.lad24cd = e.lad24cd AND s.period = e.period
-                         AND s.category_code = 'hh_one_or_more_support_needs'
-                        WHERE e.period = %s AND e.edition = %s
-                          AND e.support_needs_total IS NOT DISTINCT FROM
-                              s.value""", (p, ed))
-        n = cur.fetchone()[0]
-        if n != 296:
+        cur.execute(f"""SELECT DISTINCT source_file FROM public.{TABLE}
+                        WHERE period = %s AND edition = %s""", (p, ed))
+        files = [r[0] for r in cur.fetchall()]
+        path = RAW_DIR / files[0] if len(files) == 1 else None
+        if path is None or not path.exists():
+            bad.append(f"{p} ed{ed}: source file {files} not found")
+            continue
+        expected = _a3_expected(cur, path)
+        cur.execute(f"""SELECT lad24cd, support_needs_total FROM public.{TABLE}
+                        WHERE period = %s AND edition = %s""", (p, ed))
+        stored = dict(cur.fetchall())
+        n = sum(1 for lad, v in stored.items() if expected.get(lad, "x") == v)
+        if n != 296 or len(stored) != 296:
             bad.append(f"{p} ed{ed}: {n}/296 equal")
+        done += 1
     if bad:
         return report(8, name, False, "; ".join(bad[:7]))
     if missing:
         return report(8, name, False, f"no edition >= 2 yet for {missing}",
                       pending=True)
-    report(8, name, True, f"{len(revised)} periods 296/296")
+    report(8, name, True, f"{done} periods 296/296")
 
 
 def main():
@@ -405,15 +473,18 @@ def main():
             gate_1_table_shape(cur)
             gate_2_update(cur)
             gate_3_delete(cur)
-            gate_3a_three_way_tie(cur)
-            gate_3b_mixed_dates(cur)
+            gate_3a_chain_tip(cur)
+            gate_3b_fork_raises(cur)
+            gate_3e_superseded_never_returned(cur)
+            gate_3f_two_roots_raise(cur)
+            gate_3g_single_edition(cur)
             gate_3c_empty_recs(cur)
             gate_3d_bad_supersedes(cur)
             gate_4_coverage(cur)
             gate_5_latest_equals_live(cur)
             gate_6_revised_registry(cur)
             gate_7_no_suppressed_zero(cur)
-            gate_8_support_needs_vs_s1b(cur)
+            gate_8_support_needs_vs_a3(cur)
     finally:
         conn.rollback()
         conn.close()
