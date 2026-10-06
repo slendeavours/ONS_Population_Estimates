@@ -12,32 +12,10 @@ live database, git tree or Pages runs rather than taken from its own text.
 
 ## Still open
 
-Five things are registered but unresolved; the three in item 4 are latent. Each is discoverable from the data
-as well as from here. S1 items 1 and 3 closed on 2026-10-06 (see below).
+Three things are registered but unresolved; the three bullets under item 2 are latent. Each is discoverable from the data
+as well as from here. S1 items 1 and 3 of the earlier list closed on 2026-10-06 and now sit in the Closed table.
 
-### 1. The S1 A1 back-series revision, seven quarters: CLOSED 2026-10-06
-
-Closed by [2026-10-06-s1-edition-history-design.md](2026-10-06-s1-edition-history-design.md)
-(execution log at its foot) and [s1-edition-diffs-2026-10-06.md](s1-edition-diffs-2026-10-06.md).
-Revisions are now stored as editions in `la_statutory_homelessness_editions`, and
-`la_statutory_homelessness` is the latest-edition layer.
-
-**The premise recorded here was wrong, and the record it cites is left as written.**
-The "200–230 authorities differ" figure was measured against the older release-page
-files, which are an older vintage. Stored edition 1's A1 values were already close
-to the registry 'revised' files: 2 to 8 A1 cells per quarter differ. What edition 2
-really changes is the suppressed `households_in_ta` values (zero to NULL, 10 to 20
-cells per quarter, 95 across the seven quarters) and the revised A3
-`support_needs_total` (about 175 to 190 authorities per quarter). The seven
-quarters now reproduce from source (`homelessness_quarter_urls.reproduces_from_source`
-true, 0 cells differ). The older release-page files stay in `data/raw` and were not loaded as editions.
-
-**An acknowledged departure from the additive rule.** The 2025Q2 revision
-(MHCLG, 30 April 2026) was applied in place on 2026-10-05 (`pipeline_run_log` 135),
-leaving only a CSV before-image. It is now represented as edition 2 of 2025Q2 and the
-live layer matches it.
-
-### 2. S10 rough sleeping — suppression markers unverified
+### 1. S10 rough sleeping — suppression markers unverified
 
 `la_rough_sleeping` holds 22 and 27 zeros with **no NULL anywhere** — the same
 signature as S1's `..`-stored-as-zero defect. A genuine zero is plausible for a
@@ -45,14 +23,7 @@ snapshot count, so the table cannot settle it either way. It settles the way S1
 did: extract from source and compare. S10 also fetches a pre-processed CSV with
 no committed extraction code, so the extraction likely has to be written first.
 
-### 3. Historical stored zeros in S1, seven quarters: CLOSED 2026-10-06
-
-The suppressed `households_in_ta` zeros are NULL in edition 2 and in the live layer
-(95 cells, counted from the revised files). The earlier figures of 129 stored zeros
-and 108 were estimates made before the revised files were compared cell by cell;
-95 is what the loaded edition shows. Resolved by the same load as item 1.
-
-### 4. Three latent database defects, none affecting the map
+### 2. Three latent database defects, none affecting the map
 
 Found in the 2026-09-30 reference-CSV reconciliation; assessed the same day.
 Nothing reads any of them, so none is urgent. See
@@ -67,7 +38,7 @@ Nothing reads any of them, so none is urgent. See
   the third release: eight authorities are NULL and Islington and Leicester
   differ. Unread by the map.
 
-### 5. Left open by the S1 edition work
+### 3. Left open by the S1 edition work
 
 None of these was fixed by it.
 
@@ -89,6 +60,8 @@ None of these was fixed by it.
 
 | Record | What it settled |
 | --- | --- |
+| [2026-10-06 S1 back-series revision (former open item 1)](2026-10-06-s1-edition-history-design.md) | Closed 2026-10-06 with the edition work and [s1-edition-diffs-2026-10-06.md](s1-edition-diffs-2026-10-06.md). **The premise recorded in the 2026-08-16 record was wrong, and that record is left as written.** The "200 to 230 authorities differ" figure was measured against the older release-page files. Stored edition 1 was already close to the registry 'revised' files on the A1 measures: per A1 measure only 2 to 8 authorities differ, 12, 32, 16, 28, 20, 28 and 8 A1 cells per quarter in total (2023Q2 to 2024Q4). What edition 2 really changes is suppressed `households_in_ta` (zero to NULL, 95 cells) and revised A3 `support_needs_total` (about 175 to 190 authorities per quarter). The seven quarters reproduce from source (`reproduces_from_source` true, 0 cells differ). The 2025Q2 revision (MHCLG, 30 April 2026) was applied in place on 2026-10-05 (`pipeline_run_log` 135), an acknowledged departure from the additive rule; it is now edition 2 of 2025Q2 and the live layer matches it. |
+| [2026-10-06 S1 stored zeros (former open item 3)](2026-10-06-s1-edition-history-design.md) | Closed 2026-10-06. 108 `households_in_ta` zeros were stored across the seven quarters: 95 were suppressed values, now NULL in edition 2 and the live layer, and 13 are published zeros, kept. The 129 stored zeros in the 2026-08-16 record and the earlier changelog is that record's own earlier figure and was not reproduced. |
 | [2026-10-06-s1-edition-history-design.md](2026-10-06-s1-edition-history-design.md) | S1 revisions are stored as editions (`la_statutory_homelessness_editions`, append-only); the live table is the latest-edition layer. Seven back quarters loaded as edition 2, 2025Q2 revision represented as edition 2. Closes open items 1 and 3; diffs in [s1-edition-diffs-2026-10-06.md](s1-edition-diffs-2026-10-06.md). |
 | [2026-09-30-telford-no-housing-register.md](2026-09-30-telford-no-housing-register.md) | Telford has no housing register; its reported 0 is not applicable. Set to NULL, run 20 exported, map shows No data. |
 | [2026-08-21-s14-brma-join-break.md](2026-08-21-s14-brma-join-break.md) | An accidental import rebuilt S14 and left a name-spelling mismatch and a consumed header row. 152 rate rows and 0 ampersand mappings verified live 2026-09-30. Gate 18 added. |

@@ -124,9 +124,9 @@ from 0 to NULL, with no change to their trend label.
 
 **What the diffs showed.** The "200 to 230 authorities differ" divergence in the design's Why
 section was measured against the older release-page files, an older vintage. Stored edition 1
-was already close to the registry revised files on the A1 measures (2 to 8 cells per quarter).
+was already close to the registry revised files on the A1 measures: per A1 measure only 2 to 8 authorities differ, 12, 32, 16, 28, 20, 28 and 8 A1 cells per quarter in total (2023Q2 to 2024Q4).
 The substantive changes in edition 2 are suppressed `households_in_ta` values (zero to NULL, 95
-cells across the seven quarters, so not the 108 estimated above) and revised A3
+cells across the seven quarters; the 108 in the Why section is the count of stored zeros, of which 95 were suppressed values and 13 are published zeros that stay) and revised A3
 `support_needs_total` (about 175 to 190 authorities per quarter).
 
 **Rulings made during execution.**

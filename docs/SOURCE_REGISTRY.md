@@ -277,8 +277,8 @@ Detection uses the per-period `source` column the target table already
 records, where it has one. That column says which file each loaded period
 actually came from, so a republished file is visible from the link list alone
 — the `-Revised` suffix on the DRD filenames is the whole signal, and nothing
-is downloaded. Six sources are currently flagged as revising: S6, S8b, S9a,
-S15, S18 and S22.
+is downloaded. Eleven sources are currently flagged as revising
+(`revises_back_series` true): S1, S1b, S2, S4, S6, S8b, S9a, S15, S18, S22 and S23.
 
 S18 is immune by accident: every edition republishes the full back series, so
 loading the latest edition finalises prior months automatically. S9a is not —
