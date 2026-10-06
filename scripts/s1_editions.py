@@ -70,12 +70,10 @@ def create_schema(cur) -> None:
         RAISE EXCEPTION '{TABLE} is append-only: % is not permitted', TG_OP;
     END
     $f$ LANGUAGE plpgsql""")
-    cur.execute(f"DROP TRIGGER IF EXISTS {TRIGGER} ON public.{TABLE}")
-    cur.execute(f"""CREATE TRIGGER {TRIGGER}
+    cur.execute(f"""CREATE OR REPLACE TRIGGER {TRIGGER}
         BEFORE UPDATE OR DELETE ON public.{TABLE}
         FOR EACH ROW EXECUTE FUNCTION public.{TRIGGER}()""")
-    cur.execute(f"DROP TRIGGER IF EXISTS {TRUNCATE_TRIGGER} ON public.{TABLE}")
-    cur.execute(f"""CREATE TRIGGER {TRUNCATE_TRIGGER}
+    cur.execute(f"""CREATE OR REPLACE TRIGGER {TRUNCATE_TRIGGER}
         BEFORE TRUNCATE ON public.{TABLE}
         FOR EACH STATEMENT EXECUTE FUNCTION public.{TRIGGER}()""")
 
@@ -88,7 +86,10 @@ def insert_edition(cur, recs: list, period: str, *, release_label: str,
 
     If source_sha256 is already recorded for the period nothing is inserted and
     the existing edition number is returned. Missing measures are stored NULL.
+    Empty recs is a hard stop: an edition with no rows cannot be recorded.
     """
+    if not recs:
+        halt(f"insert_edition: no records supplied for {period}")
     cur.execute(f"SELECT DISTINCT edition FROM public.{TABLE} "
                 "WHERE period = %s AND source_sha256 = %s",
                 (period, source_sha256))
@@ -136,15 +137,22 @@ def latest_edition(cur, period: str) -> int:
     eds = cur.fetchall()
     if not eds:
         raise LookupError(f"no editions recorded for {period}")
-    top = max((d for _, d in eds if d is not None), default=None)
-    if top is None:
+    dated = [d for _, d in eds if d is not None]
+    if dated and len(dated) != len(eds):
+        undated = sorted(e for e, d in eds if d is None)
+        raise ValueError(f"{period}: editions {undated} have no "
+                         "published_date while others are dated; "
+                         "order is ambiguous")
+    if not dated:
         if len(eds) > 1:
             raise ValueError(f"{period}: several editions, none dated")
         return eds[0][0]
+    top = max(dated)
     tied = sorted(e for e, d in eds if d == top)
-    if len(tied) > 1 and _values_differ(cur, period, tied[0], tied[-1]):
-        raise ValueError(f"{period}: editions {tied} share published_date "
-                         f"{top} and differ in values; order is ambiguous")
+    for other in tied[1:]:
+        if _values_differ(cur, period, tied[0], other):
+            raise ValueError(f"{period}: editions {tied} share published_date "
+                             f"{top} and differ in values; order is ambiguous")
     return tied[-1]
 
 
