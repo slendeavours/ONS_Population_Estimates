@@ -1,0 +1,114 @@
+[
+  {
+    "period": "2023Q2",
+    "file": "2023Q2_Detailed_LA_202309_fixed.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/65e5ec332f2b3bbc587cd7ff/Detailed_LA_202309_fixed.ods",
+    "release_label": "release page",
+    "sha256": "c6c749c6cb5569736dc5f19884725ae105564348c9f92e350b14d66c751bc5d3",
+    "last_modified": "2024-03-04T15:43:47Z"
+  },
+  {
+    "period": "2023Q2",
+    "file": "2023Q2_Detailed_LA_202309_revised.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/662f6dd89e82181baa98a8f5/Detailed_LA_202309_revised.ods",
+    "release_label": "registry",
+    "sha256": "774d363a29c9b498492d0c2b60fc5a6d70913376b67f9f4c421d77101e478e67",
+    "last_modified": "2024-04-29T09:52:24Z"
+  },
+  {
+    "period": "2023Q3",
+    "file": "2023Q3_Detailed_LA_202312.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/662b65586963baceeb225265/Detailed_LA_202312.ods",
+    "release_label": "release page",
+    "sha256": "0cd12d3d628009bb1a584cef648bf22046c631f930306573a589ade6f4c6cf48",
+    "last_modified": "2024-04-26T08:27:04Z"
+  },
+  {
+    "period": "2023Q3",
+    "file": "2023Q3_Detailed_LA_202312_Revised_No_Dropdowns.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/66b331c5a3c2a28abb50ddfd/Detailed_LA_202312_Revised_No_Dropdowns.ods",
+    "release_label": "registry",
+    "sha256": "81c15ee1a0b0b5efe98d196436e77e5e9e7dd16af145a01a675ac0547b9a7933",
+    "last_modified": "2024-08-07T08:35:17Z"
+  },
+  {
+    "period": "2023Q4",
+    "file": "2023Q4_Detailed_LA_202403.xlsx",
+    "url": "https://assets.publishing.service.gov.uk/media/66cd9584b0bac21caec708e2/Detailed_LA_202403.xlsx",
+    "release_label": "release page",
+    "sha256": "15a30400a1a8ec236d2ec4126bd7d87dfe8fe053e2853ed7a90f4ba0a7647196",
+    "last_modified": "2024-08-27T08:59:48Z"
+  },
+  {
+    "period": "2023Q4",
+    "file": "2023Q4_Detailed_LA_202403_nov2024_6747279d.xlsx",
+    "url": "https://assets.publishing.service.gov.uk/media/6747279da72d7eb7f348c04c/Detailed_LA_202403.xlsx",
+    "release_label": "registry",
+    "sha256": "7546bfdf48ee7af95f41e8bce1fd131846bb834e28581b25f38a4ca0f9dc9c9d",
+    "last_modified": "2024-11-27T14:07:25Z"
+  },
+  {
+    "period": "2024Q1",
+    "file": "2024Q1_Detailed_LA_202406_fix.xlsx",
+    "url": "https://assets.publishing.service.gov.uk/media/674f0869339c7d42405da960/Detailed_LA_202406_fix.xlsx",
+    "release_label": "release page",
+    "sha256": "543dcd9d59bbeee78ba41eff13bf43713711bb40981c34f5240dd2eb9b5484ec",
+    "last_modified": "2024-12-03T13:32:25Z"
+  },
+  {
+    "period": "2024Q1",
+    "file": "2024Q1_Statutory_Homelessness_Detailed_Local_Authority_Data_202406_revised.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/699d950a532c9ad91ebbcbd2/Statutory_Homelessness_Detailed_Local_Authority_Data_202406_revised.ods",
+    "release_label": "registry",
+    "sha256": "225ba959434261f393d7c4b67052aa6c8e75683ee37d9fa7e129829d43828b25",
+    "last_modified": "2026-02-24T12:09:46Z"
+  },
+  {
+    "period": "2024Q2",
+    "file": "2024Q2_Detailed_LA_202409.xlsx",
+    "url": "https://assets.publishing.service.gov.uk/media/67bc91d14ad141d908353486/Detailed_LA_202409.xlsx",
+    "release_label": "release page",
+    "sha256": "000fac9c78119f5da403c2fce77bf38993192e07e4b2dccf3212915f6dbc4f3e",
+    "last_modified": "2025-02-24T15:35:45Z"
+  },
+  {
+    "period": "2024Q2",
+    "file": "2024Q2_Statutory_Homelessness_Detailed_Local_Authority_Data_202409_revised.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/699d953607d7bff3604d6c0a/Statutory_Homelessness_Detailed_Local_Authority_Data_202409_revised.ods",
+    "release_label": "registry",
+    "sha256": "771b38b437006d7ba38af2f0db9085eeacdc8aebac102137303ff05bba16e93a",
+    "last_modified": "2026-02-24T12:10:30Z"
+  },
+  {
+    "period": "2024Q3",
+    "file": "2024Q3_Detailed_LA_202412.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/680f56bc56bc2cfe7f7f5c04/Detailed_LA_202412.ods",
+    "release_label": "release page",
+    "sha256": "ff6f173089abe6a74311115d3ea5bd937015368d4d06fe2fba39d27d9a9f6b3d",
+    "last_modified": "2025-04-28T10:21:48Z"
+  },
+  {
+    "period": "2024Q3",
+    "file": "2024Q3_Statutory_Homelessness_Detailed_Local_Authority_Data_202412_revised.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/699d956edb2401de164d6c1c/Statutory_Homelessness_Detailed_Local_Authority_Data_202412_revised.ods",
+    "release_label": "registry",
+    "sha256": "3178e5f6550c4aa032a39d05c78d504c1282c39e7feca2f93e79b26fd4005f77",
+    "last_modified": "2026-02-24T12:11:26Z"
+  },
+  {
+    "period": "2024Q4",
+    "file": "2024Q4_Detailed_LA_202503.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/687e2060791bb4d8c309a01a/Detailed_LA_202503.ods",
+    "release_label": "release page",
+    "sha256": "1cdf71a79817b5e5b449c4d9d98beb53c7ab1e56357c14708c0324ef8ccfc371",
+    "last_modified": "2025-07-21T11:11:28Z"
+  },
+  {
+    "period": "2024Q4",
+    "file": "2024Q4_Statutory_Homelessness_Detailed_Local_Authority_Data_202503_revised.ods",
+    "url": "https://assets.publishing.service.gov.uk/media/699d95ae07d7bff3604d6c0c/Statutory_Homelessness_Detailed_Local_Authority_Data_202503_revised.ods",
+    "release_label": "registry",
+    "sha256": "42172c1dd5b8fe2f63cfaa3200c27f1d04eb8a5228a829ee19f9237c1ff34e27",
+    "last_modified": "2026-02-24T12:12:31Z"
+  }
+]
