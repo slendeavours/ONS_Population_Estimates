@@ -5,18 +5,29 @@ This module owns la_statutory_homelessness_editions, which keeps every
 published edition of a quarter so a revision never overwrites what was sent.
 Rows are immutable: a trigger raises on UPDATE, DELETE and TRUNCATE.
 
-Subcommands (load, refresh-latest and diff are added in later steps):
+Subcommands (refresh-latest is added in a later step):
     python scripts/s1_editions.py ddl       # idempotent; safe to run repeatedly
     python scripts/s1_editions.py backfill  # edition 1 of every stored quarter
                                             # plus the 2025Q2 revision; idempotent
+    python scripts/s1_editions.py diff --period P --new N --old M
+    python scripts/s1_editions.py load --period P --manifest-entry N
+        [--supersedes E] [--published-date YYYY-MM-DD] [--commit]
+        # DRY-RUN by default: extracts the manifest file, diffs it against the
+        # latest stored edition, writes nothing. Only --commit inserts.
+        # --manifest-entry is a 0-based index into s1_editions_manifest.json.
+    python scripts/s1_editions.py dryrun-all --out report.md
+        # both manifest candidates of 2023Q2-2024Q4 vs stored edition 1 and
+        # vs each other, as markdown; writes no table
 
 Helpers imported by later steps: sha256_file, create_schema, insert_edition,
-latest_edition.
+latest_edition, diff_editions, diff_records.
 """
 import argparse
 import hashlib
 import csv
+import json
 import sys
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -306,6 +317,275 @@ def cmd_backfill(_args):
           f"{TABLE} now holds {total} rows")
 
 
+MANIFEST = Path(__file__).resolve().parent / "s1_editions_manifest.json"
+RAW_DIR = Path(__file__).resolve().parent.parent / "data" / "raw" / "s1b_a3"
+STALE_PERIODS = ("2023Q2", "2023Q3", "2023Q4", "2024Q1", "2024Q2", "2024Q3",
+                 "2024Q4")
+
+
+def _transition(old, new) -> str:
+    if old == 0 and new is None:
+        return "zero -> NULL"
+    if old is None and new == 0:
+        return "NULL -> zero"
+    if old is None:
+        return "NULL -> value"
+    if new is None:
+        return "value -> NULL"
+    return "value -> value"
+
+
+def _diff_maps(new_map: dict, old_map: dict) -> dict:
+    """Core diff of two {lad24cd: {measure: value}} maps."""
+    only_new = sorted(set(new_map) - set(old_map))
+    only_old = sorted(set(old_map) - set(new_map))
+    changed_auth = set()
+    cells = {m: 0 for m in MEASURES}
+    transitions = {m: Counter() for m in MEASURES}
+    totals = Counter()
+    for lad in set(new_map) & set(old_map):
+        for m in MEASURES:
+            o, n = old_map[lad].get(m), new_map[lad].get(m)
+            if o != n:
+                cells[m] += 1
+                changed_auth.add(lad)
+                t = _transition(o, n)
+                transitions[m][t] += 1
+                totals[t] += 1
+    return {
+        "authorities_changed": len(changed_auth),
+        "cells_changed": cells,
+        "no_change": not changed_auth and not only_new and not only_old,
+        "transitions": {m: dict(c) for m, c in transitions.items() if c},
+        "transition_totals": {t: totals.get(t, 0) for t in (
+            "zero -> NULL", "NULL -> zero", "value -> value",
+            "NULL -> value", "value -> NULL")},
+        "only_in_new": only_new,
+        "only_in_old": only_old,
+    }
+
+
+def _edition_map(cur, period, edition) -> dict:
+    cols = ", ".join(("lad24cd",) + MEASURES)
+    cur.execute(f"SELECT {cols} FROM public.{TABLE} "
+                "WHERE period = %s AND edition = %s", (period, edition))
+    return {r[0]: dict(zip(MEASURES, r[1:])) for r in cur.fetchall()}
+
+
+def diff_editions(cur, period: str, new_edition: int, old_edition: int) -> dict:
+    """Cell-level diff of two stored editions of one period (read-only).
+
+    Returns authorities_changed, cells_changed {measure: n}, no_change, plus
+    transitions per measure and transition_totals ('zero -> NULL',
+    'NULL -> zero', 'value -> value', and the two NULL<->value kinds).
+    """
+    new_map = _edition_map(cur, period, new_edition)
+    old_map = _edition_map(cur, period, old_edition)
+    if not new_map or not old_map:
+        halt(f"diff_editions: {period} edition "
+             f"{new_edition if not new_map else old_edition} has no rows")
+    return _diff_maps(new_map, old_map)
+
+
+def diff_records(recs: list, cur, period: str, old_edition: int) -> dict:
+    """As diff_editions, but the new side is extracted records not yet stored."""
+    old_map = _edition_map(cur, period, old_edition)
+    if not old_map:
+        halt(f"diff_records: {period} edition {old_edition} has no rows")
+    new_map = {r["lad24cd"]: {m: r.get(m) for m in MEASURES} for r in recs}
+    return _diff_maps(new_map, old_map)
+
+
+def load_manifest() -> list:
+    return json.loads(MANIFEST.read_text(encoding="utf-8"))
+
+
+def _extract_entry(entry: dict) -> tuple:
+    """Extract one manifest file explicitly; verify its sha256. -> (recs, path)."""
+    from s1_extract_ods import extract
+    path = RAW_DIR / entry["file"]
+    if not path.exists():
+        halt(f"{path} not found")
+    sha = sha256_file(path)
+    if sha != entry["sha256"]:
+        halt(f"{entry['file']}: sha256 {sha} does not match manifest "
+             f"{entry['sha256']}")
+    label = ("MHCLG Statutory Homelessness Detailed Local Authority Data, "
+             + entry["file"])
+    recs = extract(path, entry["period"], label)
+    if len(recs) != 296 or len({r["lad24cd"] for r in recs}) != 296:
+        halt(f"{entry['file']}: {len(recs)} authorities extracted, expected 296")
+    return recs, path
+
+
+def format_diff(d: dict) -> str:
+    cells = ", ".join(f"{m}={n}" for m, n in d["cells_changed"].items() if n)
+    t = ", ".join(f"{k}={v}" for k, v in d["transition_totals"].items() if v)
+    return (f"authorities_changed={d['authorities_changed']}; "
+            f"no_change={d['no_change']}; cells: {cells or 'none'}; "
+            f"transitions: {t or 'none'}"
+            + (f"; only_in_new={d['only_in_new']}" if d["only_in_new"] else "")
+            + (f"; only_in_old={d['only_in_old']}" if d["only_in_old"] else ""))
+
+
+def cmd_diff(args):
+    from _db import get_readonly_conn
+    conn = get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            d = diff_editions(cur, args.period, args.new, args.old)
+    finally:
+        conn.close()
+    print(f"{args.period} edition {args.new} vs {args.old}: {format_diff(d)}")
+
+
+def cmd_load(args):
+    manifest = load_manifest()
+    if not 0 <= args.manifest_entry < len(manifest):
+        halt(f"--manifest-entry {args.manifest_entry} outside "
+             f"0..{len(manifest) - 1}")
+    entry = manifest[args.manifest_entry]
+    if entry["period"] != args.period:
+        halt(f"manifest entry {args.manifest_entry} is {entry['period']}, "
+             f"not {args.period}")
+    recs, path = _extract_entry(entry)
+    published = (date.fromisoformat(args.published_date) if args.published_date
+                 else date.fromisoformat(entry["last_modified"][:10]))
+    from _db import get_conn, get_readonly_conn
+    conn = get_conn() if args.commit else get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            try:
+                prev = latest_edition(cur, args.period)
+            except (LookupError, ValueError) as e:
+                halt(f"cannot determine latest edition: {e}")
+            supersedes = args.supersedes if args.supersedes is not None else prev
+            d = diff_records(recs, cur, args.period, prev)
+            print(f"{args.period} {entry['file']} (published {published}) "
+                  f"vs stored edition {prev}:\n  {format_diff(d)}")
+            if d["no_change"]:
+                print("  NOTE: identical in values to the previous edition; "
+                      "it would be recorded as a no_change edition, not a "
+                      "revision")
+            if not args.commit:
+                print("DRY RUN: nothing written (use --commit to insert)")
+                return
+            ed = insert_edition(
+                cur, recs, args.period, release_label=entry["release_label"],
+                published_date=published, source_url=entry["url"],
+                source_file=entry["file"], source_sha256=entry["sha256"],
+                supersedes=supersedes)
+            cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
+                        "WHERE period = %s AND edition = %s", (args.period, ed))
+            n = cur.fetchone()[0]
+            if n != 296:
+                halt(f"{args.period} edition {ed}: {n} rows, expected 296")
+        conn.commit()
+        print(f"loaded {args.period} edition {ed} ({n} rows)")
+    except BaseException:
+        if args.commit:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _s1b_needs(cur, period) -> dict:
+    """lad24cd -> S1b 'households with one or more support needs' (A3)."""
+    cur.execute("SELECT lad24cd, value FROM public.la_homelessness_support_needs "
+                "WHERE period = %s AND "
+                "category_code = 'hh_one_or_more_support_needs'", (period,))
+    return dict(cur.fetchall())
+
+
+def _needs_match(vals: dict, s1b: dict) -> tuple:
+    """(equal, differ) authority counts; NULL equals NULL."""
+    eq = sum(1 for lad, v in vals.items() if s1b.get(lad) == v)
+    return eq, len(vals) - eq
+
+
+def _fmt_cells(d):
+    return ", ".join(f"{k}={v}" for k, v in d["cells_changed"].items() if v) \
+        or "none"
+
+
+def _fmt_trans(d):
+    return ", ".join(f"{k}={v}" for k, v in d["transition_totals"].items()
+                     if v) or "none"
+
+
+def cmd_dryrun_all(args):
+    from _db import get_readonly_conn
+    manifest = load_manifest()
+    out = ["# Task 4a dry-run: manifest candidates vs stored edition 1", "",
+           "Generated by `s1_editions.py dryrun-all`. Nothing written to any "
+           "table.", "",
+           "A = release-page attachment, B = registry file (the manifest's two "
+           "candidates per period). Gate-8 feed: authorities (of 296) where "
+           "extracted `support_needs_total` equals S1b "
+           "`la_homelessness_support_needs` category "
+           "`hh_one_or_more_support_needs` (A3 'households with one or more "
+           "support needs'; NULL equals NULL).", ""]
+    conn = get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            for period in STALE_PERIODS:
+                ents = [e for e in manifest if e["period"] == period]
+                if len(ents) != 2:
+                    halt(f"{period}: {len(ents)} manifest entries, expected 2")
+                s1b = _s1b_needs(cur, period)
+                cur.execute(f"SELECT DISTINCT edition FROM public.{TABLE} "
+                            "WHERE period = %s", (period,))
+                eds = sorted(r[0] for r in cur.fetchall())
+                cur.execute("SELECT DISTINCT source_edition FROM "
+                            "public.la_homelessness_support_needs "
+                            "WHERE period = %s", (period,))
+                s1b_src = [r[0] for r in cur.fetchall()]
+                e1 = _edition_map(cur, period, 1)
+                eq1, _ = _needs_match({k: v["support_needs_total"]
+                                       for k, v in e1.items()}, s1b)
+                out += [f"## {period}", "",
+                        f"Stored editions: {eds}. S1b source file: {s1b_src}. "
+                        f"Stored edition 1 support_needs_total equals S1b for "
+                        f"{eq1}/296.", ""]
+                got = {}
+                for tag, e in zip("AB", ents):
+                    recs, _ = _extract_entry(e)
+                    got[tag] = recs
+                    d = diff_records(recs, cur, period, 1)
+                    m = {r["lad24cd"]: r.get("support_needs_total")
+                         for r in recs}
+                    eq, ne = _needs_match(m, s1b)
+                    out += [f"### Candidate {tag} vs edition 1: `{e['file']}` "
+                            f"({e['release_label']}, last_modified "
+                            f"{e['last_modified']})", "",
+                            f"- authorities changed: "
+                            f"{d['authorities_changed']} of 296; "
+                            f"no_change: {d['no_change']}",
+                            f"- cells changed: {_fmt_cells(d)}",
+                            f"- transitions (all measures): {_fmt_trans(d)}",
+                            "- households_in_ta transitions: "
+                            f"{d['transitions'].get('households_in_ta', 'none')}",
+                            "- gate-8 feed: support_needs_total equals S1b for "
+                            f"{eq}/296 authorities ({ne} differ)", ""]
+                ma = {r["lad24cd"]: {m: r.get(m) for m in MEASURES}
+                      for r in got["A"]}
+                mb = {r["lad24cd"]: {m: r.get(m) for m in MEASURES}
+                      for r in got["B"]}
+                dab = _diff_maps(mb, ma)
+                out += ["### A vs B pairwise (B against A)", "",
+                        f"- values identical: {dab['no_change']}",
+                        f"- authorities differing: {dab['authorities_changed']}"
+                        f"; cells: {_fmt_cells(dab)}",
+                        f"- transitions: {_fmt_trans(dab)}", ""]
+    finally:
+        conn.close()
+    path = Path(args.out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+    print(f"wrote {path}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -313,6 +593,26 @@ def main(argv=None):
                    ).set_defaults(func=cmd_ddl)
     sub.add_parser("backfill", help="record edition 1 of stored quarters and "
                    "the 2025Q2 revision").set_defaults(func=cmd_backfill)
+    d = sub.add_parser("diff", help="diff two stored editions of a period")
+    d.add_argument("--period", required=True)
+    d.add_argument("--new", type=int, required=True)
+    d.add_argument("--old", type=int, required=True)
+    d.set_defaults(func=cmd_diff)
+    ld = sub.add_parser("load", help="extract a manifest file and diff it "
+                        "(dry-run); insert only with --commit")
+    ld.add_argument("--period", required=True)
+    ld.add_argument("--manifest-entry", type=int, required=True,
+                    help="0-based index into s1_editions_manifest.json")
+    ld.add_argument("--supersedes", type=int)
+    ld.add_argument("--published-date", help="YYYY-MM-DD; default manifest "
+                    "last_modified date")
+    ld.add_argument("--commit", action="store_true",
+                    help="insert the edition (append-only, irreversible)")
+    ld.set_defaults(func=cmd_load)
+    da = sub.add_parser("dryrun-all", help="markdown dry-run report of every "
+                        "manifest candidate; writes no table")
+    da.add_argument("--out", required=True)
+    da.set_defaults(func=cmd_dryrun_all)
     args = ap.parse_args(argv)
     args.func(args)
 

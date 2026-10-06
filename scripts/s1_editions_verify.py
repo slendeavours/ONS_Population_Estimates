@@ -1,7 +1,11 @@
 """Gates for the S1 edition-history table.
 
 Prints `GATE n name: PASS/FAIL`; exits 1 on any FAIL. Gates 1-3 cover the
-table shape and immutability, 4-5 the backfill. Later steps add gates 6-11.
+table shape and immutability, 4-5 the backfill, 6-8 the revised 2023Q2-2024Q4
+editions (registry source, no suppressed value stored as 0, support-need totals
+equal to S1b). Gates 6-8 print `FAIL (pending load)` while any of those seven
+quarters has no edition 2 or later, so the exit code is 1 until they are loaded.
+Later steps add gates 9-11.
 
 Usage:
     python scripts/s1_editions_verify.py
@@ -17,8 +21,8 @@ import psycopg2
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db import get_conn  # noqa: E402
-from s1_editions import (TABLE, MEASURES, insert_edition,  # noqa: E402
-                         latest_edition)
+from s1_editions import (TABLE, MEASURES, RAW_DIR, STALE_PERIODS,  # noqa: E402
+                         insert_edition, latest_edition)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -26,9 +30,10 @@ if hasattr(sys.stdout, "reconfigure"):
 RESULTS = []
 
 
-def report(n, name, ok, detail=""):
+def report(n, name, ok, detail="", pending=False):
     RESULTS.append(ok)
-    print(f"GATE {n} {name}: {'PASS' if ok else 'FAIL'}"
+    verdict = "PASS" if ok else ("FAIL (pending load)" if pending else "FAIL")
+    print(f"GATE {n} {name}: {verdict}"
           + (f"  [{detail}]" if detail else ""))
 
 
@@ -260,6 +265,139 @@ def gate_5_latest_equals_live(cur):
            "Hartlepool 138 -> 159")
 
 
+def _revised_editions(cur):
+    """{period: [editions >= 2]} for the seven stale quarters."""
+    cur.execute(f"""SELECT period, edition FROM public.{TABLE}
+                    WHERE period = ANY(%s) AND edition >= 2
+                    GROUP BY 1, 2 ORDER BY 1, 2""", (list(STALE_PERIODS),))
+    out = {p: [] for p in STALE_PERIODS}
+    for p, e in cur.fetchall():
+        out[p].append(e)
+    return out
+
+
+def gate_6_revised_registry(cur):
+    name = "2023Q2-2024Q4 have a registry edition >= 2, 296 authorities"
+    if not table_exists(cur):
+        return report(6, name, False, f"{TABLE} absent")
+    revised = _revised_editions(cur)
+    missing = [p for p, e in revised.items() if not e]
+    bad = []
+    for p, eds in revised.items():
+        if not eds:
+            continue
+        cur.execute(f"""SELECT edition, COUNT(DISTINCT lad24cd), COUNT(*),
+                        MAX(release_label), BOOL_AND(source_url IS NOT NULL),
+                        COUNT(*) FILTER (WHERE lad24cd NOT IN (
+                            SELECT new_code FROM public.la_code_lookup
+                            UNION SELECT old_code FROM public.la_code_lookup))
+                        FROM public.{TABLE} WHERE period = %s AND edition >= 2
+                        GROUP BY edition ORDER BY edition""", (p,))
+        rows = cur.fetchall()
+        for ed, nauth, nrows, label, has_url, orphans in rows:
+            if (nauth, nrows) != (296, 296) or orphans:
+                bad.append(f"{p} ed{ed}: {nauth} authorities/{nrows} rows, "
+                           f"{orphans} outside la_code_lookup")
+        if not any(r[3] == "registry" and r[4] for r in rows):
+            bad.append(f"{p}: no edition >= 2 labelled 'registry' with a "
+                       "source_url")
+    if bad:
+        return report(6, name, False, "; ".join(bad[:5]))
+    if missing:
+        return report(6, name, False, f"no edition >= 2 yet for {missing}",
+                      pending=True)
+    report(6, name, True, f"{len(revised)} periods ok")
+
+
+def _raw_ta1(path):
+    """lad24cd -> (published TA1 cell text, extractor value) for one file."""
+    from s1_extract_ods import (LA_CODE, COLUMN_LABELS, code_resolution, num,
+                                read_sheets, resolve_columns)
+    rows = read_sheets(path, {"TA1"})["TA1"]
+    j = resolve_columns(rows, COLUMN_LABELS["TA1"], "TA1")["households_in_ta"]
+    _, recode = code_resolution()
+    out = {}
+    for row in rows:
+        code = (row[0] or "").strip() if row else ""
+        if LA_CODE.fullmatch(code):
+            cell = row[j] if j < len(row) else ""
+            out[recode.get(code, code)] = (cell, num(cell))
+    return out
+
+
+def gate_7_no_suppressed_zero(cur):
+    name = "no suppressed households_in_ta stored as 0 in editions >= 2"
+    if not table_exists(cur):
+        return report(7, name, False, f"{TABLE} absent")
+    revised = _revised_editions(cur)
+    missing = [p for p, e in revised.items() if not e]
+    bad, checked, zeros = [], 0, 0
+    for p, eds in revised.items():
+        for ed in eds:
+            cur.execute(f"""SELECT DISTINCT source_file FROM public.{TABLE}
+                            WHERE period = %s AND edition = %s""", (p, ed))
+            files = [r[0] for r in cur.fetchall()]
+            path = RAW_DIR / files[0] if len(files) == 1 else None
+            if path is None or not path.exists():
+                bad.append(f"{p} ed{ed}: source file {files} not found in "
+                           "raw dir")
+                continue
+            raw = _raw_ta1(path)
+            cur.execute(f"""SELECT lad24cd, households_in_ta FROM public.{TABLE}
+                            WHERE period = %s AND edition = %s""", (p, ed))
+            for lad, stored in cur.fetchall():
+                checked += 1
+                cell, val = raw.get(lad, (None, None))
+                if stored == 0:
+                    zeros += 1
+                    try:
+                        published_zero = float(str(cell).replace(",", "")) == 0
+                    except ValueError:
+                        published_zero = False
+                    if not published_zero:
+                        bad.append(f"{p} ed{ed} {lad}: stored 0, TA1 cell "
+                                   f"{cell!r}")
+                if stored != val:
+                    bad.append(f"{p} ed{ed} {lad}: stored {stored}, "
+                               f"re-extracted {val}")
+    if bad:
+        return report(7, name, False, "; ".join(bad[:5]))
+    if missing:
+        return report(7, name, False, f"no edition >= 2 yet for {missing}",
+                      pending=True)
+    report(7, name, True, f"{checked} rows re-extracted, {zeros} published "
+           "zeros confirmed")
+
+
+def gate_8_support_needs_vs_s1b(cur):
+    name = "support_needs_total equals S1b totals, 296/296 per period"
+    if not table_exists(cur):
+        return report(8, name, False, f"{TABLE} absent")
+    revised = _revised_editions(cur)
+    missing = [p for p, e in revised.items() if not e]
+    bad = []
+    for p, eds in revised.items():
+        if not eds:
+            continue
+        ed = latest_edition(cur, p)
+        cur.execute(f"""SELECT COUNT(*) FROM public.{TABLE} e
+                        JOIN public.la_homelessness_support_needs s
+                          ON s.lad24cd = e.lad24cd AND s.period = e.period
+                         AND s.category_code = 'hh_one_or_more_support_needs'
+                        WHERE e.period = %s AND e.edition = %s
+                          AND e.support_needs_total IS NOT DISTINCT FROM
+                              s.value""", (p, ed))
+        n = cur.fetchone()[0]
+        if n != 296:
+            bad.append(f"{p} ed{ed}: {n}/296 equal")
+    if bad:
+        return report(8, name, False, "; ".join(bad[:7]))
+    if missing:
+        return report(8, name, False, f"no edition >= 2 yet for {missing}",
+                      pending=True)
+    report(8, name, True, f"{len(revised)} periods 296/296")
+
+
 def main():
     conn = get_conn()
     try:
@@ -273,6 +411,9 @@ def main():
             gate_3d_bad_supersedes(cur)
             gate_4_coverage(cur)
             gate_5_latest_equals_live(cur)
+            gate_6_revised_registry(cur)
+            gate_7_no_suppressed_zero(cur)
+            gate_8_support_needs_vs_s1b(cur)
     finally:
         conn.rollback()
         conn.close()
