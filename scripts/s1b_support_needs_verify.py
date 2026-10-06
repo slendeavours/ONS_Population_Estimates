@@ -24,7 +24,6 @@ import psycopg2.extras
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db import get_conn, get_readonly_conn, readonly_identity  # noqa: E402
 import s1b_support_needs_build as build  # noqa: E402
-from s1_editions import STALE_PERIODS  # noqa: E402
 from s1b_editions import (TABLE as EDITIONS, DATA_COLS,  # noqa: E402
                           latest_edition, raw_path)
 
@@ -61,11 +60,8 @@ def expected_from_source():
 
 
 def content_hash(cur):
-    """md5 over every live column except loaded_at (which an upsert resets) and
-    category_label (the sheet header text; for revised quarters it embeds that
-    file's England total and the live layer keeps its as-loaded label)."""
-    cols = [c for c in DATA_COLS if c != "category_label"]
-    line = " || '|' || ".join(f"COALESCE({c}::text, 'NULL')" for c in cols)
+    """md5 over every live column except loaded_at, which an upsert resets."""
+    line = " || '|' || ".join(f"COALESCE({c}::text, 'NULL')" for c in DATA_COLS)
     cur.execute(f"""
         SELECT md5(string_agg(line, E'\\n' ORDER BY line))
         FROM (SELECT {line} AS line FROM {TABLE}) s
@@ -249,15 +245,10 @@ def main():
             edition, path, ed = latest_source(pcur, period)
             _, _, rows = build.build_rows(pcur, edition, build.read_a3(path))
             extracted[period] = rows
-            # category_label is compared only where the live layer kept it
-            # (see content_hash): every other column is compared
-            skip = (DATA_COLS.index("category_label")
-                    if period in STALE_PERIODS else None)
-            keep = [i for i in range(len(DATA_COLS)) if i != skip]
-            want = {tuple(r[i] for i in keep) for r in rows}
+            want = {tuple(r) for r in rows}
             pcur.execute(f"SELECT {', '.join(DATA_COLS)} FROM {TABLE} "
                          "WHERE period = %s", (period,))
-            got = {tuple(r[i] for i in keep) for r in pcur.fetchall()}
+            got = {tuple(r) for r in pcur.fetchall()}
             d = len(want ^ got) // 2 if len(want) == len(got) else \
                 len(want ^ got)
             cell_diffs += d

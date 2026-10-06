@@ -29,7 +29,8 @@ Subcommands:
         # plain-English diff of all seven registry files vs stored editions
     python scripts/s1b_editions.py refresh-latest [--commit | --simulate]
         # copies each period's latest edition into la_homelessness_support_needs
-        # (value, value_flag, source_url, source_edition, edition_variant only;
+        # (value, value_flag, category_label, source_url, source_edition,
+        # edition_variant only;
         # never loaded_at or any other column/period). DRY-RUN by default;
         # --commit runs the live-equals-latest and snapshot gates in the same
         # transaction and rolls back on failure; --simulate always rolls back.
@@ -235,18 +236,12 @@ def _except_counts(cur, a_sql, a_args, b_sql, b_args) -> tuple:
 
 def check_latest_equals_live(cur, periods=None) -> list:
     """Gate 5: for each live period the latest edition equals the live rows on
-    every column except loaded_at, NULL-safe (and except category_label for
-    the seven revised quarters, see below)."""
+    every column except loaded_at, NULL-safe."""
     cur.execute(f"SELECT DISTINCT period FROM public.{LIVE}")
     live_periods = sorted(r[0] for r in cur.fetchall())
     bad = []
     for p in (periods or live_periods):
-        # category_label is the sheet header text, which for the seven revised
-        # quarters embeds the England total of that file, so it differs between
-        # editions. The live layer deliberately keeps its as-loaded label
-        # (refresh-latest does not touch it), so it is not compared there.
-        cols = ", ".join(c for c in DATA_COLS if not (
-            c == "category_label" and p in STALE_PERIODS))
+        cols = ", ".join(DATA_COLS)
         try:
             ed = latest_edition(cur, p)
         except (LookupError, ValueError) as e:
@@ -917,8 +912,9 @@ def cmd_dryrun_all(args):
 # ----------------------------------------------------- refresh-latest (Task 4)
 
 BAK = "la_homelessness_support_needs_bak_20261006"
-REFRESH_COLS = ("value", "value_flag", "source_url", "source_edition",
-                "edition_variant")
+REFRESH_COLS = ("value", "value_flag", "category_label", "source_url",
+                "source_edition", "edition_variant")
+BAK_B = "la_homelessness_support_needs_bak_20261006b"
 # live columns that must never change (key columns are the join, loaded_at is
 # compared separately)
 FIXED_COLS = tuple(c for c in DATA_COLS
@@ -952,8 +948,8 @@ def refresh_counts(cur) -> dict:
 
 def refresh_latest(cur) -> int:
     """Copy each period's latest edition into the live table; return rows
-    written. Updates ONLY value, value_flag, source_url, source_edition and
-    edition_variant, and only where the latest edition differs (NULL-safe).
+    written. Updates ONLY value, value_flag, category_label, source_url,
+    source_edition and edition_variant, and only where the latest edition differs (NULL-safe).
     Every other column, including loaded_at, and every other row is untouched.
     """
     sets = ", ".join(f"{c} = e.{c}" for c in REFRESH_COLS)
@@ -970,8 +966,7 @@ def check_live_preserved(cur) -> list:
     """Live versus the pre-refresh snapshot: same keys; loaded_at identical on
     every row; every period outside the seven revised quarters (single-edition
     periods and 2025Q2) identical on every column; the seven quarters differ
-    only in value, value_flag, source_url, source_edition, edition_variant, and
-    each of them did change."""
+    only in the six refresh columns, and each of them did change."""
     cur.execute("SELECT to_regclass(%s)", (f"public.{BAK}",))
     if cur.fetchone()[0] is None:
         return [f"snapshot table {BAK} is absent"]
@@ -1009,7 +1004,7 @@ def check_live_preserved(cur) -> list:
                       AND ROW({fx.format(a='l')}) IS DISTINCT FROM
                           ROW({fx.format(a='b')})
                     GROUP BY 1""", (list(STALE_PERIODS),))
-    bad += [f"{p}: {c} rows differ outside the five refresh columns"
+    bad += [f"{p}: {c} rows differ outside the six refresh columns"
             for p, c in cur.fetchall()]
     rc = ", ".join(f"{{a}}.{c}" for c in REFRESH_COLS)
     cur.execute(f"""SELECT l.period, COUNT(*) FILTER (WHERE
@@ -1025,11 +1020,54 @@ def check_live_preserved(cur) -> list:
     return bad
 
 
+def check_live_vs_snapshot_b(cur) -> list:
+    """Live versus the second snapshot (taken just before category_label was
+    refreshed): same keys, loaded_at identical, every column identical except
+    category_label; category_label differs only in the seven revised quarters,
+    and in each of them it did change."""
+    cur.execute("SELECT to_regclass(%s)", (f"public.{BAK_B}",))
+    if cur.fetchone()[0] is None:
+        return [f"snapshot table {BAK_B} is absent"]
+    bad = []
+    cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} l
+                    FULL JOIN public.{BAK_B} b USING (lad24cd, period,
+                                                      category_code)
+                    WHERE l.period IS NULL OR b.period IS NULL""")
+    k = cur.fetchone()[0]
+    if k:
+        bad.append(f"{k} rows present in only one of live and snapshot")
+    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
+                    JOIN public.{BAK_B} b USING (lad24cd, period, category_code)
+                    WHERE l.loaded_at IS DISTINCT FROM b.loaded_at
+                    GROUP BY 1""")
+    bad += [f"{p}: {c} rows with loaded_at changed" for p, c in cur.fetchall()]
+    other = ", ".join(f"{{a}}.{c}" for c in DATA_COLS if c != "category_label")
+    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
+                    JOIN public.{BAK_B} b USING (lad24cd, period, category_code)
+                    WHERE ROW({other.format(a='l')}) IS DISTINCT FROM
+                          ROW({other.format(a='b')})
+                    GROUP BY 1""")
+    bad += [f"{p}: {c} rows differ outside category_label"
+            for p, c in cur.fetchall()]
+    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
+                    JOIN public.{BAK_B} b USING (lad24cd, period, category_code)
+                    WHERE l.category_label IS DISTINCT FROM b.category_label
+                    GROUP BY 1""")
+    got = dict(cur.fetchall())
+    bad += [f"{p}: {c} rows with category_label changed (not a revised "
+            "quarter)" for p, c in sorted(got.items())
+            if p not in STALE_PERIODS]
+    bad += [f"{p}: category_label not refreshed" for p in STALE_PERIODS
+            if not got.get(p)]
+    return bad
+
+
 def run_refresh_gates(cur) -> None:
     """Live equals latest edition (all columns bar loaded_at) and live versus
     snapshot; halt on any problem."""
     bad = ([f"live!=latest: {x}" for x in check_latest_equals_live(cur)]
-           + [f"snapshot: {x}" for x in check_live_preserved(cur)])
+           + [f"snapshot: {x}" for x in check_live_preserved(cur)]
+           + [f"snapshot b: {x}" for x in check_live_vs_snapshot_b(cur)])
     if bad:
         halt("refresh-latest failed its gates, rolled back: "
              + "; ".join(bad[:6]))
