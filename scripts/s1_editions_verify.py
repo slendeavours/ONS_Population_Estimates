@@ -5,7 +5,10 @@ table shape and immutability, 4-5 the backfill, 6-8 the revised 2023Q2-2024Q4
 editions (registry source, no suppressed value stored as 0, support-need totals
 equal to an independent S1b-reader re-read of the same file). Gates 6-8 print `FAIL (pending load)` while any of those seven
 quarters has no edition 2 or later, so the exit code is 1 until they are loaded.
-Later steps add gates 9-11.
+Gates 9-11 cover the live layer after refresh-latest: it equals the latest
+edition (9), untouched rows/columns match the snapshot (10), and the W1
+signals/national queries differ from the snapshot only where TA was revised
+(11).
 
 Usage:
     python scripts/s1_editions_verify.py
@@ -23,7 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db import get_conn  # noqa: E402
 from s1_editions import (TABLE, MEASURES, STALE_PERIODS,  # noqa: E402
                          check_no_suppressed_zero, check_registry,
-                         check_support_needs, insert_edition, latest_edition)
+                         check_live_equals_latest, check_live_preserved,
+                         check_signals_equivalence, check_support_needs,
+                         insert_edition, latest_edition, LIVE, LIVE_MEASURES)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -461,6 +466,71 @@ def gate_8s_seeded(cur):
            f"clean={clean}; seeded={bad}")
 
 
+def gate_9_live_equals_latest(cur):
+    name = "live table equals latest edition for every row"
+    try:
+        bad = check_live_equals_latest(cur)
+    except (ValueError, LookupError) as e:
+        return report(9, name, False, str(e))
+    report(9, name, not bad, "; ".join(bad[:5]) if bad else "3256 rows match")
+
+
+def gate_10_live_preserved(cur):
+    name = "single-edition quarters, 2025Q2, *_suspect, loaded_at match snapshot"
+    try:
+        bad = check_live_preserved(cur)
+    except (ValueError, LookupError) as e:
+        return report(10, name, False, str(e))
+    report(10, name, not bad, "; ".join(bad[:5]) if bad else "identical")
+
+
+def gate_11_signals_equivalence(cur):
+    name = "W1 signals/national differ from snapshot only where TA revised"
+    try:
+        bad, summ = check_signals_equivalence(cur)
+    except (ValueError, LookupError) as e:
+        return report(11, name, False, str(e))
+    report(11, name, not bad, "; ".join(bad[:5]) if bad else
+           f"{len(summ['authorities_differing'])} authorities differ, "
+           f"columns {summ['columns']}, national columns "
+           f"{summ['national_columns_changed']}")
+
+
+def gate_10s_seeded(cur):
+    name = "seeded: gate 10 flags a changed suspect column and a changed 2025Q3 row"
+    def body(cur):
+        cur.execute(f"""UPDATE public.{LIVE} SET mental_health_suspect =
+                        COALESCE(mental_health_suspect, 0) + 1
+                        WHERE period = '2023Q2' AND lad24cd = 'E06000001'""")
+        cur.execute(f"""UPDATE public.{LIVE} SET households_in_ta =
+                        COALESCE(households_in_ta, 0) + 1
+                        WHERE period = '2025Q3' AND lad24cd = 'E06000001'""")
+        return check_live_preserved(cur)
+    try:
+        bad = _in_savepoint(cur, body)
+    except psycopg2.Error as e:
+        return report("10s", name, False, str(e).splitlines()[0])
+    ok = (any("2025Q3" in x and "byte-identical" in x for x in bad)
+          and any("2023Q2" in x and "suspect" in x for x in bad))
+    report("10s", name, ok, "; ".join(bad))
+
+
+def gate_11s_seeded(cur):
+    name = "seeded: gate 11 flags a TA change in the current quarter"
+    def body(cur):
+        cur.execute(f"""UPDATE public.{LIVE} SET households_in_ta =
+                        COALESCE(households_in_ta, 0) + 7
+                        WHERE period = (SELECT MAX(period) FROM public.{LIVE})
+                          AND lad24cd = 'E06000001'""")
+        return check_signals_equivalence(cur)[0]
+    try:
+        bad = _in_savepoint(cur, body)
+    except psycopg2.Error as e:
+        return report("11s", name, False, str(e).splitlines()[0])
+    ok = any("E06000001" in x and "not revised" in x for x in bad)
+    report("11s", name, ok, "; ".join(bad[:2]))
+
+
 def main():
     conn = get_conn()
     try:
@@ -483,6 +553,11 @@ def main():
             gate_6s_seeded(cur)
             gate_7s_seeded(cur)
             gate_8s_seeded(cur)
+            gate_9_live_equals_latest(cur)
+            gate_10_live_preserved(cur)
+            gate_11_signals_equivalence(cur)
+            gate_10s_seeded(cur)
+            gate_11s_seeded(cur)
     finally:
         conn.rollback()
         conn.close()
