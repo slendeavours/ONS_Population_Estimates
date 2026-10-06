@@ -73,14 +73,17 @@ def main():
     old_ct = by["Create Staging Tables"]["parameters"]["query"]
     new_ct = patched_create_tables(old_ct)
 
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H%M%S")
-    backup = BACKUP_DIR / f"w1_node_backup_{stamp}.json"
-    backup.write_text(json.dumps(
-        {"backed_up_at": stamp, "workflow_id": W1_ID,
-         "nodes": {"National Aggregates": old_na,
-                   "Create Staging Tables": old_ct}}, indent=1), encoding="utf-8")
-    log(f"previous SQL backed up to {backup.relative_to(REPO)}")
+    if args.apply:
+        # Only an apply leaves an artefact: a dry run must not add files to a
+        # tracked folder.
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H%M%S")
+        backup = BACKUP_DIR / f"w1_node_backup_{stamp}.json"
+        backup.write_text(json.dumps(
+            {"backed_up_at": stamp, "workflow_id": W1_ID,
+             "nodes": {"National Aggregates": old_na,
+                       "Create Staging Tables": old_ct}}, indent=1), encoding="utf-8")
+        log(f"previous SQL backed up to {backup.relative_to(REPO)}")
 
     if args.dry_run:
         log(f"DRY RUN: National Aggregates {'would change' if old_na != new_sql else 'unchanged'}; "
