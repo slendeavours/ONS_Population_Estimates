@@ -21,8 +21,9 @@ import psycopg2
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db import get_conn  # noqa: E402
-from s1_editions import (TABLE, MEASURES, RAW_DIR, STALE_PERIODS,  # noqa: E402
-                         insert_edition, latest_edition)
+from s1_editions import (TABLE, MEASURES, STALE_PERIODS,  # noqa: E402
+                         check_no_suppressed_zero, check_registry,
+                         check_support_needs, insert_edition, latest_edition)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -321,149 +322,143 @@ def _revised_editions(cur):
     return out
 
 
+def _clean_fail(n, name, fn, cur):
+    """Run a gate body; a chain error becomes a FAIL line, not a traceback."""
+    try:
+        fn(cur)
+    except (ValueError, LookupError) as e:
+        report(n, name, False, str(e))
+
+
 def gate_6_revised_registry(cur):
     name = "2023Q2-2024Q4 have a registry edition >= 2, 296 authorities"
     if not table_exists(cur):
         return report(6, name, False, f"{TABLE} absent")
-    revised = _revised_editions(cur)
-    missing = [p for p, e in revised.items() if not e]
-    bad = []
-    for p, eds in revised.items():
-        if not eds:
-            continue
-        cur.execute(f"""SELECT edition, COUNT(DISTINCT lad24cd), COUNT(*),
-                        MAX(release_label), BOOL_AND(source_url IS NOT NULL),
-                        COUNT(*) FILTER (WHERE lad24cd NOT IN (
-                            SELECT new_code FROM public.la_code_lookup
-                            UNION SELECT old_code FROM public.la_code_lookup))
-                        FROM public.{TABLE} WHERE period = %s AND edition >= 2
-                        GROUP BY edition ORDER BY edition""", (p,))
-        rows = cur.fetchall()
-        for ed, nauth, nrows, label, has_url, orphans in rows:
-            if (nauth, nrows) != (296, 296) or orphans:
-                bad.append(f"{p} ed{ed}: {nauth} authorities/{nrows} rows, "
-                           f"{orphans} outside la_code_lookup")
-        if not any(r[3] == "registry" and r[4] for r in rows):
-            bad.append(f"{p}: no edition >= 2 labelled 'registry' with a "
-                       "source_url")
-    if bad:
-        return report(6, name, False, "; ".join(bad[:5]))
-    if missing:
-        return report(6, name, False, f"no edition >= 2 yet for {missing}",
-                      pending=True)
-    report(6, name, True, f"{len(revised)} periods ok")
 
-
-def _raw_ta1(path):
-    """lad24cd -> (published TA1 cell text, extractor value) for one file."""
-    from s1_extract_ods import (LA_CODE, COLUMN_LABELS, code_resolution, num,
-                                read_sheets, resolve_columns)
-    rows = read_sheets(path, {"TA1"})["TA1"]
-    j = resolve_columns(rows, COLUMN_LABELS["TA1"], "TA1")["households_in_ta"]
-    _, recode = code_resolution()
-    out = {}
-    for row in rows:
-        code = (row[0] or "").strip() if row else ""
-        if LA_CODE.fullmatch(code):
-            cell = row[j] if j < len(row) else ""
-            out[recode.get(code, code)] = (cell, num(cell))
-    return out
+    def body(cur):
+        revised = _revised_editions(cur)
+        missing = [p for p, e in revised.items() if not e]
+        bad = []
+        for p, eds in revised.items():
+            for e in eds:
+                bad += check_registry(cur, p, e, require_registry=False)
+            if eds and all(check_registry(cur, p, e) for e in eds):
+                bad.append(f"{p}: no valid registry edition >= 2")
+        if bad:
+            return report(6, name, False, "; ".join(bad[:5]))
+        if missing:
+            return report(6, name, False,
+                          f"no edition >= 2 yet for {missing}", pending=True)
+        report(6, name, True, f"{len(revised)} periods ok")
+    _clean_fail(6, name, body, cur)
 
 
 def gate_7_no_suppressed_zero(cur):
     name = "no suppressed households_in_ta stored as 0 in editions >= 2"
     if not table_exists(cur):
         return report(7, name, False, f"{TABLE} absent")
-    revised = _revised_editions(cur)
-    missing = [p for p, e in revised.items() if not e]
-    bad, checked, zeros = [], 0, 0
-    for p, eds in revised.items():
-        for ed in eds:
-            cur.execute(f"""SELECT DISTINCT source_file FROM public.{TABLE}
-                            WHERE period = %s AND edition = %s""", (p, ed))
-            files = [r[0] for r in cur.fetchall()]
-            path = RAW_DIR / files[0] if len(files) == 1 else None
-            if path is None or not path.exists():
-                bad.append(f"{p} ed{ed}: source file {files} not found in "
-                           "raw dir")
-                continue
-            raw = _raw_ta1(path)
-            cur.execute(f"""SELECT lad24cd, households_in_ta FROM public.{TABLE}
-                            WHERE period = %s AND edition = %s""", (p, ed))
-            for lad, stored in cur.fetchall():
-                checked += 1
-                cell, val = raw.get(lad, (None, None))
-                if stored == 0:
-                    zeros += 1
-                    try:
-                        published_zero = float(str(cell).replace(",", "")) == 0
-                    except ValueError:
-                        published_zero = False
-                    if not published_zero:
-                        bad.append(f"{p} ed{ed} {lad}: stored 0, TA1 cell "
-                                   f"{cell!r}")
-                if stored != val:
-                    bad.append(f"{p} ed{ed} {lad}: stored {stored}, "
-                               f"re-extracted {val}")
-    if bad:
-        return report(7, name, False, "; ".join(bad[:5]))
-    if missing:
-        return report(7, name, False, f"no edition >= 2 yet for {missing}",
-                      pending=True)
-    report(7, name, True, f"{checked} rows re-extracted, {zeros} published "
-           "zeros confirmed")
 
-
-def _a3_expected(cur, path):
-    """lad24cd -> A3 'households with one or more support needs', read from
-    the file with the S1b reader (read_a3, map_columns, la_rows, cell,
-    resolve_lookup). These functions only parse the workbook and query
-    la_code_lookup; none writes or fetches, so they can run on any file."""
-    import s1b_support_needs_build as s1b
-    df = s1b.read_a3(path)
-    _, mapping, _ = s1b.map_columns(df)
-    col = [j for j, c in mapping.items()
-           if c == "hh_one_or_more_support_needs"][0]
-    rows = s1b.la_rows(df)
-    resolved, unresolved = s1b.resolve_lookup(cur, rows)
-    if unresolved:
-        halt(f"{path.name}: unresolved publisher codes {unresolved}")
-    return {resolved[code]: s1b.cell(df.iat[i, col])[0]
-            for code, i in rows.items()}
+    def body(cur):
+        revised = _revised_editions(cur)
+        missing = [p for p, e in revised.items() if not e]
+        bad, checked, zeros = [], 0, 0
+        for p, eds in revised.items():
+            for ed in eds:
+                pr, n, z = check_no_suppressed_zero(cur, p, ed)
+                bad += pr
+                checked += n
+                zeros += z
+        if bad:
+            return report(7, name, False, "; ".join(bad[:5]))
+        if missing:
+            return report(7, name, False,
+                          f"no edition >= 2 yet for {missing}", pending=True)
+        report(7, name, True, f"{checked} rows re-extracted, {zeros} "
+               "published zeros confirmed")
+    _clean_fail(7, name, body, cur)
 
 
 def gate_8_support_needs_vs_a3(cur):
     name = "support_needs_total equals independent S1b-reader A3 re-read, 296/296"
     if not table_exists(cur):
         return report(8, name, False, f"{TABLE} absent")
-    revised = _revised_editions(cur)
-    missing = [p for p, e in revised.items() if not e]
-    bad, done = [], 0
-    for p, eds in revised.items():
-        if not eds:
-            continue
-        ed = latest_edition(cur, p)
-        cur.execute(f"""SELECT DISTINCT source_file FROM public.{TABLE}
-                        WHERE period = %s AND edition = %s""", (p, ed))
-        files = [r[0] for r in cur.fetchall()]
-        path = RAW_DIR / files[0] if len(files) == 1 else None
-        if path is None or not path.exists():
-            bad.append(f"{p} ed{ed}: source file {files} not found")
-            continue
-        expected = _a3_expected(cur, path)
-        cur.execute(f"""SELECT lad24cd, support_needs_total FROM public.{TABLE}
-                        WHERE period = %s AND edition = %s""", (p, ed))
-        stored = dict(cur.fetchall())
-        n = sum(1 for lad, v in stored.items() if expected.get(lad, "x") == v)
-        if n != 296 or len(stored) != 296:
-            bad.append(f"{p} ed{ed}: {n}/296 equal")
-        done += 1
-    if bad:
-        return report(8, name, False, "; ".join(bad[:7]))
-    if missing:
-        return report(8, name, False, f"no edition >= 2 yet for {missing}",
-                      pending=True)
-    report(8, name, True, f"{done} periods 296/296")
+
+    def body(cur):
+        revised = _revised_editions(cur)
+        missing = [p for p, e in revised.items() if not e]
+        bad, done = [], 0
+        for p, eds in revised.items():
+            if not eds:
+                continue
+            bad += check_support_needs(cur, p, latest_edition(cur, p))
+            done += 1
+        if bad:
+            return report(8, name, False, "; ".join(bad[:7]))
+        if missing:
+            return report(8, name, False,
+                          f"no edition >= 2 yet for {missing}", pending=True)
+        report(8, name, True, f"{done} periods 296/296")
+    _clean_fail(8, name, body, cur)
+
+
+def gate_6s_seeded(cur):
+    name = "seeded: gate 6 check flags an orphan code and a short edition"
+    if not table_exists(cur):
+        return report("6s", name, False, f"{TABLE} absent")
+    cur.execute(f"SELECT lad24cd FROM public.{TABLE} "
+                "WHERE period = '2023Q2' AND edition = 1")
+    codes = {r[0] for r in cur.fetchall()}
+    clean = check_registry(cur, "2023Q2", 1, known_codes=codes,
+                           require_registry=False)
+    orphan = check_registry(cur, "2023Q2", 1, known_codes=codes - {min(codes)},
+                            require_registry=False)
+
+    def short(cur):
+        _chain(cur, [(None, None, 1)])
+        return check_registry(cur, "2099Q1", 1, require_registry=False)
+    sh = _in_savepoint(cur, short)
+    # edition 1 has no source_url by design, so only the count/orphan checks
+    # are expected to be clean here
+    ok = (not [x for x in clean if "source_url" not in x]
+          and any("outside la_code_lookup" in x for x in orphan)
+          and any("1 authorities/1 rows" in x for x in sh))
+    report("6s", name, ok, f"clean={clean}; orphan={orphan[:1]}; short={sh[:1]}")
+
+
+def gate_7s_seeded(cur):
+    name = "seeded: gate 7 check flags a stored 0 over a suppressed cell"
+    if not table_exists(cur):
+        return report("7s", name, False, f"{TABLE} absent")
+    cur.execute(f"""SELECT lad24cd FROM public.{TABLE}
+                    WHERE period = '2023Q2' AND edition = 1
+                      AND households_in_ta = 0 LIMIT 1""")
+    row = cur.fetchone()
+    if row is None:
+        return report("7s", name, False, "no stored zero to seed against")
+    lad = row[0]
+    sup, _, _ = check_no_suppressed_zero(cur, "2023Q2", 1,
+                                         raw={lad: ("..", None)})
+    pub, _, _ = check_no_suppressed_zero(cur, "2023Q2", 1,
+                                         raw={lad: ("0", 0)})
+    ok = (any(f"{lad}: stored 0, TA1 cell '..'" in x for x in sup)
+          and not any(f"{lad}: stored 0" in x for x in pub))
+    report("7s", name, ok, f"suppressed cell -> {len(sup)} flag(s) incl. "
+           f"{lad}; published zero -> not flagged")
+
+
+def gate_8s_seeded(cur):
+    name = "seeded: gate 8 check flags 295/296"
+    if not table_exists(cur):
+        return report("8s", name, False, f"{TABLE} absent")
+    cur.execute(f"""SELECT lad24cd, support_needs_total FROM public.{TABLE}
+                    WHERE period = '2023Q2' AND edition = 1""")
+    exp = dict(cur.fetchall())
+    clean = check_support_needs(cur, "2023Q2", 1, expected=dict(exp))
+    lad = min(exp)
+    exp[lad] = -1 if exp[lad] is None else exp[lad] + 1
+    bad = check_support_needs(cur, "2023Q2", 1, expected=exp)
+    report("8s", name, not clean and any("295/296" in x for x in bad),
+           f"clean={clean}; seeded={bad}")
 
 
 def main():
@@ -485,6 +480,9 @@ def main():
             gate_6_revised_registry(cur)
             gate_7_no_suppressed_zero(cur)
             gate_8_support_needs_vs_a3(cur)
+            gate_6s_seeded(cur)
+            gate_7s_seeded(cur)
+            gate_8s_seeded(cur)
     finally:
         conn.rollback()
         conn.close()

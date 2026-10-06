@@ -12,13 +12,16 @@ Subcommands (refresh-latest is added in a later step):
     python scripts/s1_editions.py diff --period P --new N --old M
     python scripts/s1_editions.py load --period P
         (--manifest-label registry | --manifest-entry N)
-        [--supersedes E] [--published-date YYYY-MM-DD] [--commit]
+        [--supersedes E] [--published-date YYYY-MM-DD] [--commit | --simulate]
         # DRY-RUN by default: extracts the manifest file, diffs it against the
         # latest stored edition, writes nothing. Only --commit inserts.
         # --manifest-label selects the manifest entry of that period by its
         # release_label (use `registry`); --manifest-entry is a 0-based index
         # into s1_editions_manifest.json. Give exactly one. Only registry
-        # entries load unless --allow-non-registry is given.
+        # entries load unless --allow-non-registry is given. --commit runs
+        # gates 6-8 for the period in the same transaction and rolls back on
+        # failure; --simulate does the same and always rolls back.
+        # --supersedes must equal the period's chain tip.
     python scripts/s1_editions.py dryrun-all --out report.md
         # both manifest candidates of 2023Q2-2024Q4 vs stored edition 1 and
         # vs each other, as markdown; writes no table
@@ -437,6 +440,124 @@ def cmd_diff(args):
     print(f"{args.period} edition {args.new} vs {args.old}: {format_diff(d)}")
 
 
+def check_registry(cur, period, edition, known_codes=None,
+                   require_registry=True) -> list:
+    """Gate 6 for one edition: 296 authorities/rows, no lad24cd outside
+    la_code_lookup (or known_codes, for tests), a source_url, and the
+    'registry' label when require_registry. Returns a list of problems."""
+    cur.execute(f"""SELECT lad24cd, release_label, source_url FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s""", (period, edition))
+    rows = cur.fetchall()
+    if known_codes is None:
+        cur.execute("SELECT new_code FROM public.la_code_lookup UNION "
+                    "SELECT old_code FROM public.la_code_lookup")
+        known_codes = {r[0] for r in cur.fetchall()}
+    tag = f"{period} ed{edition}"
+    bad = []
+    n = len({r[0] for r in rows})
+    if (n, len(rows)) != (296, 296):
+        bad.append(f"{tag}: {n} authorities/{len(rows)} rows, expected 296/296")
+    orphans = sorted({r[0] for r in rows} - set(known_codes))
+    if orphans:
+        bad.append(f"{tag}: {len(orphans)} lad24cd outside la_code_lookup "
+                   f"{orphans[:3]}")
+    if any(r[2] is None for r in rows):
+        bad.append(f"{tag}: source_url missing")
+    if require_registry and {r[1] for r in rows} != {"registry"}:
+        bad.append(f"{tag}: release_label {sorted({str(r[1]) for r in rows})},"
+                   " expected registry")
+    return bad
+
+
+def raw_ta1(path) -> dict:
+    """lad24cd -> (published TA1 cell text, extractor value) for one file."""
+    from s1_extract_ods import (LA_CODE, COLUMN_LABELS, code_resolution, num,
+                                read_sheets, resolve_columns)
+    rows = read_sheets(path, {"TA1"})["TA1"]
+    j = resolve_columns(rows, COLUMN_LABELS["TA1"], "TA1")["households_in_ta"]
+    _, recode = code_resolution()
+    out = {}
+    for row in rows:
+        code = (row[0] or "").strip() if row else ""
+        if LA_CODE.fullmatch(code):
+            cell = row[j] if j < len(row) else ""
+            out[recode.get(code, code)] = (cell, num(cell))
+    return out
+
+
+def edition_source_path(cur, period, edition):
+    """(raw file path or None, files) for a stored edition's source_file."""
+    cur.execute(f"""SELECT DISTINCT source_file FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s""", (period, edition))
+    files = [r[0] for r in cur.fetchall()]
+    path = RAW_DIR / files[0] if len(files) == 1 else None
+    return (path if path is not None and path.exists() else None), files
+
+
+def check_no_suppressed_zero(cur, period, edition, raw=None) -> tuple:
+    """Gate 7 for one edition. raw (lad -> (cell, value)) defaults to a
+    re-extraction of the edition's source file. -> (problems, rows, zeros)."""
+    tag = f"{period} ed{edition}"
+    if raw is None:
+        path, files = edition_source_path(cur, period, edition)
+        if path is None:
+            return [f"{tag}: source file {files} not found in raw dir"], 0, 0
+        raw = raw_ta1(path)
+    cur.execute(f"""SELECT lad24cd, households_in_ta FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s""", (period, edition))
+    bad, n, zeros = [], 0, 0
+    for lad, stored in cur.fetchall():
+        n += 1
+        cell, val = raw.get(lad, (None, None))
+        if stored == 0:
+            zeros += 1
+            try:
+                published_zero = float(str(cell).replace(",", "")) == 0
+            except ValueError:
+                published_zero = False
+            if not published_zero:
+                bad.append(f"{tag} {lad}: stored 0, TA1 cell {cell!r}")
+        if stored != val:
+            bad.append(f"{tag} {lad}: stored {stored}, re-extracted {val}")
+    return bad, n, zeros
+
+
+def a3_expected(cur, path) -> dict:
+    """lad24cd -> A3 'households with one or more support needs', read with
+    the S1b reader (read_a3, map_columns, la_rows, cell, resolve_lookup):
+    these only parse the workbook and read la_code_lookup, so they are safe
+    to run on any file."""
+    import s1b_support_needs_build as s1b
+    df = s1b.read_a3(path)
+    _, mapping, _ = s1b.map_columns(df)
+    col = [j for j, c in mapping.items()
+           if c == "hh_one_or_more_support_needs"][0]
+    rows = s1b.la_rows(df)
+    resolved, unresolved = s1b.resolve_lookup(cur, rows)
+    if unresolved:
+        halt(f"{path.name}: unresolved publisher codes {unresolved}")
+    return {resolved[code]: s1b.cell(df.iat[i, col])[0]
+            for code, i in rows.items()}
+
+
+def check_support_needs(cur, period, edition, expected=None) -> list:
+    """Gate 8 for one edition: support_needs_total equals the independent
+    S1b-reader A3 re-read of the same source file, 296/296."""
+    tag = f"{period} ed{edition}"
+    if expected is None:
+        path, files = edition_source_path(cur, period, edition)
+        if path is None:
+            return [f"{tag}: source file {files} not found in raw dir"]
+        expected = a3_expected(cur, path)
+    cur.execute(f"""SELECT lad24cd, support_needs_total FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s""", (period, edition))
+    stored = dict(cur.fetchall())
+    n = sum(1 for lad, v in stored.items() if expected.get(lad, "x") == v)
+    if n != 296 or len(stored) != 296:
+        return [f"{tag}: {n}/296 equal ({len(stored)} stored rows)"]
+    return []
+
+
 def select_entry(manifest, period, label=None, index=None) -> dict:
     """Manifest entry chosen by release_label or 0-based index, never both."""
     if (label is None) == (index is None):
@@ -456,6 +577,17 @@ def select_entry(manifest, period, label=None, index=None) -> dict:
     return manifest[index]
 
 
+def run_load_gates(cur, period, edition) -> None:
+    """Gates 6-8 for the edition just inserted; halt on any problem."""
+    problems = check_registry(cur, period, edition)
+    p7, _, _ = check_no_suppressed_zero(cur, period, edition)
+    problems += p7
+    problems += check_support_needs(cur, period, edition)
+    if problems:
+        halt(f"{period} edition {edition} failed gates 6-8, rolled back: "
+             + "; ".join(problems[:5]))
+
+
 def cmd_load(args):
     entry = select_entry(load_manifest(), args.period,
                          args.manifest_label, args.manifest_entry)
@@ -467,14 +599,25 @@ def cmd_load(args):
     published = (date.fromisoformat(args.published_date) if args.published_date
                  else date.fromisoformat(entry["last_modified"][:10]))
     from _db import get_conn, get_readonly_conn
-    conn = get_conn() if args.commit else get_readonly_conn()
+    writing = args.commit or args.simulate
+    conn = get_conn() if writing else get_readonly_conn()
     try:
         with conn.cursor() as cur:
+            cur.execute(f"SELECT DISTINCT edition FROM public.{TABLE} "
+                        "WHERE period = %s AND source_sha256 = %s",
+                        (args.period, entry["sha256"]))
+            have = [r[0] for r in cur.fetchall()]
+            if have:
+                print(f"already loaded (edition {have[0]}), nothing inserted")
+                conn.rollback()
+                return
             try:
                 prev = latest_edition(cur, args.period)
             except (LookupError, ValueError) as e:
                 halt(f"cannot determine latest edition: {e}")
-            supersedes = args.supersedes if args.supersedes is not None else prev
+            if args.supersedes is not None and args.supersedes != prev:
+                halt(f"--supersedes {args.supersedes} is not the current "
+                     f"chain tip (edition {prev}) of {args.period}")
             d = diff_records(recs, cur, args.period, prev)
             print(f"{args.period} {entry['file']} (published {published}) "
                   f"vs stored edition {prev}:\n  {format_diff(d)}")
@@ -482,23 +625,27 @@ def cmd_load(args):
                 print("  NOTE: identical in values to the previous edition; "
                       "it would be recorded as a no_change edition, not a "
                       "revision")
-            if not args.commit:
+            if not writing:
                 print("DRY RUN: nothing written (use --commit to insert)")
                 return
             ed = insert_edition(
                 cur, recs, args.period, release_label=entry["release_label"],
                 published_date=published, source_url=entry["url"],
                 source_file=entry["file"], source_sha256=entry["sha256"],
-                supersedes=supersedes)
-            cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
-                        "WHERE period = %s AND edition = %s", (args.period, ed))
-            n = cur.fetchone()[0]
-            if n != 296:
-                halt(f"{args.period} edition {ed}: {n} rows, expected 296")
-        conn.commit()
-        print(f"loaded {args.period} edition {ed} ({n} rows)")
-    except BaseException:
+                supersedes=prev)
+            if latest_edition(cur, args.period) != ed:
+                halt(f"{args.period}: new edition {ed} is not the chain tip")
+            run_load_gates(cur, args.period, ed)
         if args.commit:
+            conn.commit()
+            print(f"loaded {args.period} edition {ed} (296 rows); "
+                  "gates 6-8 passed in the same transaction")
+        else:
+            conn.rollback()
+            print(f"SIMULATION: {args.period} edition {ed} inserted, gates "
+                  "6-8 passed, ROLLED BACK (nothing persisted)")
+    except BaseException:
+        if writing:
             conn.rollback()
         raise
     finally:
@@ -623,11 +770,15 @@ def main(argv=None):
                     "s1_editions_manifest.json")
     ld.add_argument("--allow-non-registry", action="store_true",
                     help="permit loading a non-registry manifest file")
-    ld.add_argument("--supersedes", type=int)
+    ld.add_argument("--supersedes", type=int, help="must equal the current "
+                    "chain tip of the period (default: the tip)")
     ld.add_argument("--published-date", help="YYYY-MM-DD; default manifest "
                     "last_modified date")
     ld.add_argument("--commit", action="store_true",
                     help="insert the edition (append-only, irreversible)")
+    ld.add_argument("--simulate", action="store_true",
+                    help="run the full --commit path (insert, gates 6-8) and "
+                    "roll back instead of committing; persists nothing")
     ld.set_defaults(func=cmd_load)
     da = sub.add_parser("dryrun-all", help="markdown dry-run report of every "
                         "manifest candidate; writes no table")
