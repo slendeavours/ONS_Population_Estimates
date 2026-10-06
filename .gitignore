@@ -61,3 +61,7 @@ backups/
 # version control. The rule above exists to stop dumps, not definitions.
 # Nothing else is un-ignored, and a dump must never be written to sql/.
 !sql/*.sql
+
+# Estate-tracing name lists (personal data of deceased individuals) - never public
+UnclaimedEstatesList.csv
+bona_vacantia_estates_*.csv
