@@ -852,19 +852,29 @@ def gate_16_chain_error_reported(cur):
            str(st["chain_errors"])[:120])
 
 
-# Functions allowed to mention the retired literals, by name. Everything else
-# in s1_editions.py and in this file is scanned. STALE_PERIODS itself may stay
-# defined at module level (s1b imports it until Task 2).
-RETIRED = ("_bak_", "BAK", "3256", "STALE_PERIODS")
+# Retired literals: the snapshot table names, the fixed live row count, the
+# fixed period list and a typed authority count.
+RETIRED = ("_bak_", "BAK", "3256", "STALE_PERIODS", "296")
+# Functions allowed to mention them, by name, each with the reason.
 ALLOWED_S1 = {
-    # one-off historical load / report code for the 2026-10 reload
+    # one-off historical markdown report of the 2026-10 reload candidates:
+    # iterates the seven restated quarters on purpose; writes no table
     "cmd_dryrun_all",
 }
 ALLOWED_VERIFY = {
-    # gates 6-8 check the seven quarters restated in the 2026-10 reload
+    # gates 6-8 check the seven quarters restated in the 2026-10 reload, which
+    # is historical by definition
     "_revised_editions",
-    # this gate names the literals it looks for
+    # this gate has to name the literals it looks for (and plants them)
     "gate_17_no_snapshot_dependency",
+}
+# Module-level assignments allowed to carry a retired literal:
+ALLOWED_MODULE = {
+    # still imported by s1b_editions until it is generalised (Task 2)
+    "STALE_PERIODS",
+    # the scanner's own literal list and this allow-list (this file only)
+    "RETIRED",
+    "ALLOWED_MODULE",
 }
 REFRESH_PATH = ("refresh_latest", "refresh_counts", "status", "sync_new",
                 "classify_period", "guard_problems", "check_w1_equivalence",
@@ -872,46 +882,85 @@ REFRESH_PATH = ("refresh_latest", "refresh_counts", "status", "sync_new",
                 "w1_snapshot", "period_hashes")
 
 
-def _function_sources(path):
+def scan_retired(text, allowed_funcs, allowed_module=ALLOWED_MODULE,
+                 literals=RETIRED) -> list:
+    """[(function or '<module>', literal)] for every retired literal found in
+    the source text: inside each top-level function not in allowed_funcs, and
+    in module-level statements other than docstrings, imports of an allowed
+    name, and assignments to an allowed name."""
     import ast
-    text = path.read_text(encoding="utf-8")
     tree = ast.parse(text)
-    return {n.name: ast.get_source_segment(text, n)
-            for n in ast.walk(tree)
+    out = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in allowed_funcs:
+                continue
+            where = node.name
+        elif isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id in allowed_module
+                for t in node.targets):
+            continue
+        elif isinstance(node, ast.Expr) and isinstance(
+                getattr(node, "value", None), ast.Constant):
+            continue  # docstring / bare string
+        elif isinstance(node, ast.ImportFrom) and all(
+                a.name in allowed_module for a in node.names
+                if a.name in literals):
+            continue
+        else:
+            where = "<module>"
+        src = ast.get_source_segment(text, node) or ""
+        out += [(where, w) for w in literals if w in src]
+    return out
+
+
+def _defined_functions(text):
+    import ast
+    return {n.name for n in ast.parse(text).body
             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
 def gate_17_no_snapshot_dependency(cur):
     name = "no code path depends on the retired snapshot tables, fixed counts or period lists"
     here = Path(__file__).resolve().parent
-    s1 = _function_sources(here / "s1_editions.py")
-    vf = _function_sources(here / "s1_editions_verify.py")
-    missing = [f for f in REFRESH_PATH if f not in s1]
-    hits = [f"s1_editions.{fn}: {w}" for fn, src in s1.items()
-            if fn not in ALLOWED_S1 for w in RETIRED if w in src]
-    hits += [f"s1_editions_verify.{fn}: {w}" for fn, src in vf.items()
-             if fn not in ALLOWED_VERIFY for w in RETIRED if w in src]
-    # a literal 296 must not appear in any scanned function either
-    hits += [f"s1_editions.{fn}: literal 296" for fn, src in s1.items()
-             if fn not in ALLOWED_S1 and "296" in src]
-    hits += [f"s1_editions_verify.{fn}: literal 296" for fn, src in vf.items()
-             if fn not in ALLOWED_VERIFY and "296" in src]
-    # the scanner must be able to see a planted literal (seeded)
-    planted = "x = 'la_statutory_homelessness_bak_1'"
-    seeded = any(w in planted for w in RETIRED)
+    s1_text = (here / "s1_editions.py").read_text(encoding="utf-8")
+    vf_text = (here / "s1_editions_verify.py").read_text(encoding="utf-8")
+    missing = [f for f in REFRESH_PATH if f not in _defined_functions(s1_text)]
+    hits = [f"s1_editions.{fn}: {w}"
+            for fn, w in scan_retired(s1_text, ALLOWED_S1)]
+    hits += [f"s1_editions_verify.{fn}: {w}"
+             for fn, w in scan_retired(vf_text, ALLOWED_VERIFY)]
+    # seeded: the scanner reports a planted literal in a function that is not
+    # allow-listed, ignores it in an allow-listed one, and sees module level
+    planted = ("def refresh_x(cur):\n    cur.execute('SELECT 1 FROM "
+               "la_statutory_homelessness_bak_1')\n"
+               "def old_report(cur):\n    return 3256\n"
+               "X = 296\nSTALE_PERIODS = ('2023Q2',)\n")
+    got = scan_retired(planted, {"old_report"})
+    seeded = (("refresh_x", "_bak_") in got
+              and not any(f == "old_report" for f, _ in got)
+              and ("<module>", "296") in got
+              and not any(w == "STALE_PERIODS" for _, w in got))
     report(17, name, not hits and not missing and seeded,
-           f"missing={missing} hits={hits[:6]}" if hits or missing else
-           f"{len(s1)} + {len(vf)} functions scanned; allow-listed: "
-           f"{sorted(ALLOWED_S1 | ALLOWED_VERIFY)}")
+           f"missing={missing} hits={hits[:6]} seeded scanner ok={seeded}"
+           if hits or missing or not seeded else
+           f"both files scanned (functions and module level); allow-listed: "
+           f"{sorted(ALLOWED_S1 | ALLOWED_VERIFY)}; planted literal "
+           f"reported={got}")
 
 
 def gate_18_bootstrap_needs_explicit_count(cur):
-    name = "seeded: with no period having editions, sync-new needs --expected-authorities"
+    name = "seeded: --expected-authorities only when no count is derivable (or equal to it)"
     import s1_editions as m
     n = expected_authorities(cur)
 
     def body(cur):
         _fake_live_period(cur, drop_one=True)
+        # derivable count (real periods have editions): a different N halts
+        differs = _halts(lambda: sync_new(cur, n - 1))
+        # derivable and equal to N: accepted, the short quarter still halts
+        equal = _halts(lambda: sync_new(cur, n))
+        # no period has editions: simulate the bootstrap
         saved = m.latest_map, m.live_period_counts
         m.latest_map = lambda cur, *a, **k: ({}, ["2099Q1"], {})
         m.live_period_counts = lambda cur, *a, **k: {"2099Q1": n - 1}
@@ -921,16 +970,18 @@ def gate_18_bootstrap_needs_explicit_count(cur):
             explicit = sync_new(cur, n - 1)
         finally:
             m.latest_map, m.live_period_counts = saved
-        return no_arg, short, explicit
+        return differs, no_arg, short, explicit, equal
     try:
-        no_arg, short, explicit = _in_savepoint(cur, body)
+        differs, no_arg, short, explicit, equal = _in_savepoint(cur, body)
     except (psycopg2.Error, SystemExit) as e:
         return report(18, name, False, str(e).splitlines()[0])
-    ok = (no_arg[0] and "--expected-authorities" in no_arg[1]
+    ok = (differs[0] and "differs from the count" in differs[1]
+          and no_arg[0] and "--expected-authorities" in no_arg[1]
           and short[0] and f"{n - 1} live rows, expected {n}" in short[1]
-          and explicit == ["2099Q1"])
-    report(18, name, ok, f"no count: {no_arg[1][:60]}; wrong count: "
-           f"{short[1][:60]}; explicit {n - 1}: {explicit}")
+          and explicit == ["2099Q1"]
+          and equal[0] and f"{n - 1} live rows, expected {n}" in equal[1])
+    report(18, name, ok, f"derivable, N differs: {differs[1][:50]}; bootstrap "
+           f"no N: {no_arg[1][:40]}; explicit {n - 1}: {explicit}")
 
 
 def main():

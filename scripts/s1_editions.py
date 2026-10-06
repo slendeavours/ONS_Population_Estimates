@@ -1048,7 +1048,14 @@ def sync_new(cur, expected_authorities_n=None) -> list:
             f"{p}: {m}" for p, m in errors.items()))
     counts = live_period_counts(cur)
     known = {p: n for p, n in counts.items() if p not in new}
-    expected = expected_authorities_n or modal_count(known)
+    derived = modal_count(known)
+    if (expected_authorities_n is not None and derived is not None
+            and expected_authorities_n != derived):
+        halt(f"sync-new: --expected-authorities {expected_authorities_n} "
+             f"differs from the count {derived} derived from periods that "
+             "already have editions; it is only accepted when nothing can be "
+             "derived (or when it equals the derived count)")
+    expected = derived if derived is not None else expected_authorities_n
     if new and expected is None:
         halt("sync-new: no live period has editions, so the authority count "
              "cannot be derived; give --expected-authorities N")
