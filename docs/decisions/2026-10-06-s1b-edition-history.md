@@ -16,7 +16,7 @@ and 2025Q4 are unchanged.
 
 In each of the seven quarters 2023Q2 to 2024Q4, 1,648 to 2,078 of 9,176 cells changed in 209 to 269
 authorities, almost all value-to-value revisions of the A3 counts, with a handful flipping between a number
-and a suppression flag. 'One or more support needs' equals `la_statutory_homelessness.support_needs_total`
+and a suppression flag. For 2025Q2, edition 2 differs from edition 1 in 2,147 of 9,176 cells (value or flag, NULL-safe) in 236 authorities. 'One or more support needs' equals `la_statutory_homelessness.support_needs_total`
 for 296 of 296 authorities in each of the seven quarters.
 
 ## Why
