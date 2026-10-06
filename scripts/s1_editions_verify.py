@@ -214,6 +214,42 @@ def gate_3g_single_edition(cur):
            "(regression guard; the old code also passes this one)")
 
 
+def _raw_chain(cur, rows):
+    """Insert editions of 2099Q1 directly with arbitrary supersedes values
+    (insert_edition would refuse them); rows = [(edition, supersedes)]."""
+    lad = _first_lad(cur)
+    for ed, sup in rows:
+        cur.execute(f"""INSERT INTO public.{TABLE} (lad24cd, period, edition,
+                        total_assessments, source_file, source_sha256,
+                        supersedes) VALUES (%s, '2099Q1', %s, 1,
+                        'gate-throwaway', %s, %s)""",
+                    (lad, ed, f"r{ed}", sup))
+
+
+def gate_3h_mutual_supersede(cur):
+    name = "latest_edition: 1 root plus two editions superseding each other raises"
+    if not table_exists(cur):
+        return report("3h", name, False, f"{TABLE} absent")
+
+    def body(cur):
+        _raw_chain(cur, [(1, None), (2, 3), (3, 2)])
+        return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
+    ok, msg = _in_savepoint(cur, body)
+    report("3h", name, ok, msg)
+
+
+def gate_3i_self_supersede(cur):
+    name = "latest_edition: an edition superseding itself raises"
+    if not table_exists(cur):
+        return report("3i", name, False, f"{TABLE} absent")
+
+    def body(cur):
+        _raw_chain(cur, [(1, None), (2, 1), (3, 3)])
+        return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
+    ok, msg = _in_savepoint(cur, body)
+    report("3i", name, ok, msg)
+
+
 def gate_3c_empty_recs(cur):
     name = "insert_edition: empty recs halts and writes nothing"
     if not table_exists(cur):
@@ -543,6 +579,8 @@ def main():
             gate_3e_superseded_never_returned(cur)
             gate_3f_two_roots_raise(cur)
             gate_3g_single_edition(cur)
+            gate_3h_mutual_supersede(cur)
+            gate_3i_self_supersede(cur)
             gate_3c_empty_recs(cur)
             gate_3d_bad_supersedes(cur)
             gate_4_coverage(cur)

@@ -18,7 +18,7 @@ Stored edition 1 turned out to be close to B on the A1 measures: the only A1 dif
 | 2024Q3 | 222 of 296 | {'value -> value': 25, 'zero -> NULL': 10} |
 | 2024Q4 | 221 of 296 | {'value -> value': 24, 'zero -> NULL': 11} |
 
-Edition 1 support_needs_total matches A (and the S1b table, which was built from A); edition 2 carries the revised A3 figures, which is why support_needs_total accounts for most of the changes below.
+Edition 1 support_needs_total matches A (and the S1b table, which was built from A); edition 2 carries the revised A3 figures, which is why support_needs_total accounts for most of the changes below. (Correction 2026-10-06 later: the S1b table has since been refreshed to the revised files; see 2026-10-06-s1b-edition-history.md.)
 
 ## Edition 2 against edition 1
 

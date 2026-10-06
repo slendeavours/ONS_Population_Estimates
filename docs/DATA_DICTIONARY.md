@@ -58,9 +58,26 @@ Source: DLUHC H-CLIC statutory homelessness return (quarterly)
 | measure columns | The six measures held in `la_statutory_homelessness` (`total_assessments`, `owed_duty`, `prevention_duty`, `relief_duty`, `households_in_ta`, `support_needs_total`). Suppressed values (`..`, `-`) are NULL, never 0. |
 | `release_label`, `published_date` | Description and date of the release. Informational only: for loaded revisions the file's HTTP Last-Modified date, for edition 1 the load date. They do not decide which edition is latest. |
 | `mental_health_suspect`, `learning_disability_suspect`, `drug_dependency_suspect`, `alcohol_dependency_suspect`, `rough_sleeping_history_suspect` | The five quarantined support-need columns; all NULL on the editions table. |
-| `source_url`, `source_file`, `source_sha256`, `loaded_at` | Provenance of the file the edition was read from. |
+| `source_url`, `source_file`, `source_sha256`, `loaded_at` | Provenance. `source_sha256` is the checksum of the source file for an edition loaded from a file; for edition 1 of a quarter loaded 'as loaded' (no source file in hand) it is the sha256 of a canonical text rendering of the stored rows, sorted by `lad24cd`. |
 
 **Live-layer rule.** `la_statutory_homelessness` holds, for each authority and period, the latest edition, where latest is the edition that no other edition supersedes. It is refreshed with `python scripts/s1_editions.py refresh-latest --commit` and changes only the six measures, `source_file` and `extracted_at`; `*_suspect` and `loaded_at` are never touched. A quarter with one edition is identical in both tables. The table and the rule are general, but `refresh-latest` is specific to the 2026-10-06 reload (hardcoded stale periods, snapshot table and row count); it must be generalised (new quarters write edition 1 first; gates parameterised) before the next S1 quarterly load.
+
+### Support-needs editions (S1b)
+
+`la_homelessness_support_needs_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, period, category_code, edition)`; 174,640 rows. `period` is a financial-year quarter (`YYYYQn`).
+
+| Column | Description |
+|---|---|
+| `edition` | Integer, 1 = first loaded. |
+| `supersedes` | The edition this one replaces; NULL for the first. |
+| `value`, `value_flag` | The A3 cell: a count, or NULL with a flag (`suppressed`, `missing`, `not_applicable`). A real zero is `value` 0 with no flag; a suppressed cell is never 0. |
+| `category_code`, `category_group`, `category_label` | The A3 category, its group (`support_need`, `needs_breakdown`, `needs_total`, `duty_total`) and the sheet header text. The label embeds that file's England total, so it differs between editions. |
+| `reference_quarter`, `layout_version`, `publisher_la_code` | As in the live table; `publisher_la_code` is the code as published (Barnsley and Sheffield resolve to E08000016 and E08000019 in `lad24cd`). |
+| `source_url`, `source_edition`, `edition_variant`, `release_page_url` | The file the edition was read from; `edition_variant` is `original`, `revised`, `corrected` or `fixed`. |
+| `release_label`, `published_date` | Description and date of the release. Informational only; they do not decide which edition is latest. |
+| `source_file`, `source_sha256`, `loaded_at` | The source file name and the insert time. `source_sha256` is the checksum of the local source file for an edition loaded from a file; for edition 1 of a quarter loaded 'as loaded' (no source file in hand) it is the sha256 of a canonical text rendering of the stored rows, sorted by `lad24cd`, `category_code`. |
+
+**Live-layer rule.** `la_homelessness_support_needs` holds, for each authority, period and category, the latest edition (the one no other edition supersedes). It is refreshed with `python scripts/s1b_editions.py refresh-latest --commit` and changes only `value`, `value_flag`, `source_url`, `source_edition`, `edition_variant` and `category_label`; `loaded_at` is never touched. A quarter with one edition is identical in both tables. Edition 2 exists for 2023Q2 to 2024Q4 (the registry 'revised' files) and 2025Q2 (the revision of 30 April 2026). `refresh-latest` is specific to the 2026-10-06 reload and must be generalised before the next S1b quarterly load.
 
 ---
 

@@ -151,17 +151,24 @@ def insert_edition(cur, recs: list, period: str, *, release_label: str,
     return edition
 
 
-def latest_edition(cur, period: str) -> int:
+EDITION_TABLES = (TABLE, "la_homelessness_support_needs_editions")
+
+
+def latest_edition(cur, period: str, table: str = TABLE) -> int:
     """Tip of the period's supersedes chain.
 
     Ordering is the `supersedes` chain, not published_date (which is
-    informational only). The latest edition is the single edition that no other
-    edition of the period supersedes. Raises if the chain is not linear: more
-    than one root (edition with no supersedes) while several editions exist, a
-    fork (several tips), an edition recorded with inconsistent supersedes, or a
-    cycle (no tip).
+    informational only). `table` must be one of EDITION_TABLES (the S1 and
+    S1b editions tables). The whole structure is validated, and ValueError is
+    raised unless it is one linear chain: exactly one root (supersedes NULL),
+    every other edition supersedes a different existing edition, no edition is
+    superseded twice (fork), and walking from the root reaches every edition
+    (so a cycle or two editions superseding each other is refused). The tip is
+    the end of that walk. LookupError if the period has no editions.
     """
-    cur.execute(f"SELECT DISTINCT edition, supersedes FROM public.{TABLE} "
+    if table not in EDITION_TABLES:
+        raise ValueError(f"latest_edition: unknown editions table {table!r}")
+    cur.execute(f"SELECT DISTINCT edition, supersedes FROM public.{table} "
                 "WHERE period = %s", (period,))
     rows = cur.fetchall()
     if not rows:
@@ -172,19 +179,33 @@ def latest_edition(cur, period: str) -> int:
             raise ValueError(f"{period}: edition {ed} has inconsistent "
                              "supersedes values across its rows")
         sup[ed] = s
-    if len(sup) == 1:
-        return next(iter(sup))
     roots = sorted(e for e, s in sup.items() if s is None)
     if len(roots) != 1:
         raise ValueError(f"{period}: {len(roots)} editions {roots} have no "
-                         "supersedes while several editions exist; the "
-                         "chain has no single root")
-    superseded = {s for s in sup.values() if s is not None}
-    tips = sorted(e for e in sup if e not in superseded)
-    if len(tips) != 1:
+                         "supersedes; the chain has no single root")
+    for e, s in sorted(sup.items()):
+        if s is not None and (s == e or s not in sup):
+            raise ValueError(f"{period}: edition {e} supersedes "
+                             f"{'itself' if s == e else f'missing edition {s}'}")
+    children = {}
+    for e, s in sup.items():
+        if s is not None:
+            children.setdefault(s, []).append(e)
+    if any(len(c) > 1 for c in children.values()):
+        tips = sorted(e for e in sup if e not in children)
         raise ValueError(f"{period}: supersedes chain has {len(tips)} tips "
-                         f"{tips}; order is ambiguous (fork or cycle)")
-    return tips[0]
+                         f"{tips}; order is ambiguous (fork)")
+    tip, seen = roots[0], {roots[0]}
+    while tip in children:
+        tip = children[tip][0]
+        if tip in seen:
+            break
+        seen.add(tip)
+    if seen != set(sup):
+        raise ValueError(f"{period}: the chain from root {roots[0]} reaches "
+                         f"{sorted(seen)} but editions {sorted(sup)} exist "
+                         "(cycle or disconnected editions)")
+    return tip
 
 
 def cmd_ddl(_args):

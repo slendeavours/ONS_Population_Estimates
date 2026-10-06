@@ -148,3 +148,5 @@ cells across the seven quarters; the 108 in the Why section is the count of stor
 **Left open.** See `README.md`, item 3. That includes the fact that `refresh-latest` is specific to this reload and must be generalised before the next S1 quarterly load.
 
 **Correction, 2026-10-06 (later).** The national year-on-year of 13.29% recorded above was then fixed in W1 run 23, which reports +3.14% over the 271 authorities reporting in both quarters. An interim figure of about -0.8% quoted in discussion was wrong. See the decisions README Closed table.
+
+**Correction, 2026-10-06 (later).** S1b was subsequently given the same edition treatment and its stale quarters were reloaded as editions; see [2026-10-06-s1b-edition-history.md](2026-10-06-s1b-edition-history.md). The statement in the decisions index that `s1b_support_needs_verify.py` "fails 6 of 7 gates" was wrong: six of seven passed.

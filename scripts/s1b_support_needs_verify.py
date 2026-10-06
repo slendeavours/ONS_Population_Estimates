@@ -2,10 +2,15 @@
 
 This suite never commits. It reads through get_readonly_conn(), and the one
 check that has to write - idempotency - runs the real upsert inside a
-transaction that is rolled back in a finally block, comparing a content
-checksum either side. The upsert SQL is imported from the build module rather
-than copied, so there is one definition of how a row is written and the test
-cannot drift from the thing it tests.
+transaction that is rolled back in a finally block, comparing a content hash
+either side. The upsert SQL is imported from the build module rather than
+copied, so there is one definition of how a row is written and the test cannot
+drift from the thing it tests.
+
+The live table holds the LATEST EDITION of each quarter (see s1b_editions.py),
+which for revised quarters is not the file the release page links. Gates 6 and
+7 therefore re-read each period's latest edition from its recorded local source
+file in data/raw/s1b_a3, not from the release-page resolver.
 
 Usage:
     python scripts/s1b_support_needs_verify.py
@@ -19,6 +24,8 @@ import psycopg2.extras
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db import get_conn, get_readonly_conn, readonly_identity  # noqa: E402
 import s1b_support_needs_build as build  # noqa: E402
+from s1b_editions import (TABLE as EDITIONS, DATA_COLS,  # noqa: E402
+                          latest_edition, raw_path)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -52,18 +59,37 @@ def expected_from_source():
     return per_period
 
 
-def checksum(cur):
+def content_hash(cur):
+    """md5 over every live column except loaded_at, which an upsert resets."""
+    line = " || '|' || ".join(f"COALESCE({c}::text, 'NULL')" for c in DATA_COLS)
     cur.execute(f"""
-        SELECT md5(string_agg(line, '' ORDER BY line))
-        FROM (
-            SELECT lad24cd || '|' || period || '|' || category_code || '|' ||
-                   COALESCE(value::text, 'NULL') || '|' ||
-                   COALESCE(value_flag, 'NULL') || '|' ||
-                   COALESCE(source_url, 'NULL') AS line
-            FROM {TABLE}
-        ) s
+        SELECT md5(string_agg(line, E'\\n' ORDER BY line))
+        FROM (SELECT {line} AS line FROM {TABLE}) s
     """)
     return cur.fetchone()[0]
+
+
+def latest_source(cur, period):
+    """(edition dict for build_rows, local raw path, edition number) of the
+    period's latest stored edition, taken from the editions table."""
+    ed = latest_edition(cur, period)
+    cur.execute(f"""SELECT DISTINCT source_url, source_edition, edition_variant,
+                           release_page_url, reference_quarter, source_file
+                    FROM {EDITIONS} WHERE period = %s AND edition = %s""",
+                (period, ed))
+    rows = cur.fetchall()
+    if len(rows) != 1:
+        raise RuntimeError(f"{period} edition {ed}: {len(rows)} source "
+                           "descriptions, expected 1")
+    url, name, variant, page, refq, source_file = rows[0]
+    path = raw_path(period, source_file)
+    if path is None:
+        raise RuntimeError(f"{period} edition {ed}: local file "
+                           f"{source_file} not found in data/raw/s1b_a3")
+    edition = {"period": period, "reference_quarter": refq, "url": url,
+               "filename": name, "variant": variant,
+               "release_page_url": page}
+    return edition, path, ed
 
 
 def main():
@@ -200,43 +226,54 @@ def main():
     cur.close()
     conn.close()
 
-    # ---- Gate 6: idempotency, inside a transaction that always rolls back -
+    # ---- Gate 6: live rows equal the latest edition's source file --------
+    # Each period's latest edition is re-extracted from its recorded local
+    # file and compared cell for cell (NULL-safe: tuples compare None equal to
+    # None, never to 0) with the live rows. Idempotency: the same rows are
+    # re-upserted inside a transaction that always rolls back, and a content
+    # hash excluding loaded_at must not move.
     probe = get_conn()
     pcur = probe.cursor()
     try:
-        before_sum = checksum(pcur)
+        before_sum = content_hash(pcur)
         pcur.execute(f"SELECT COUNT(*) FROM {TABLE}")
         before_n = pcur.fetchone()[0]
 
-        rewritten = 0
+        lines, cell_diffs, rewritten = [], 0, 0
+        extracted = {}
         for period in sorted(build.RELEASES):
-            edition = build.resolve_edition(period)
-            df = build.read_a3(build.fetch(edition))
-            _, _, rows = build.build_rows(pcur, edition, df)
+            edition, path, ed = latest_source(pcur, period)
+            _, _, rows = build.build_rows(pcur, edition, build.read_a3(path))
+            extracted[period] = rows
+            want = {tuple(r) for r in rows}
+            pcur.execute(f"SELECT {', '.join(DATA_COLS)} FROM {TABLE} "
+                         "WHERE period = %s", (period,))
+            got = {tuple(r) for r in pcur.fetchall()}
+            d = len(want ^ got) // 2 if len(want) == len(got) else \
+                len(want ^ got)
+            cell_diffs += d
+            lines.append(f"{period}: edition {ed} from {path.name}: "
+                         f"{len(rows)} rows, {d} differ from the live rows")
+        for period, rows in extracted.items():
             psycopg2.extras.execute_values(pcur, build.UPSERT, rows,
                                            page_size=1000)
             rewritten += len(rows)
 
-        after_sum = checksum(pcur)
+        after_sum = content_hash(pcur)
         pcur.execute(f"SELECT COUNT(*) FROM {TABLE}")
         after_n = pcur.fetchone()[0]
 
-        # IS DISTINCT FROM, so a NULL is never quietly matched against a zero.
-        pcur.execute(f"""
-            SELECT COUNT(*) FROM {TABLE} a
-            JOIN {TABLE} b USING (lad24cd, period, category_code)
-            WHERE a.value IS DISTINCT FROM b.value
-               OR a.value_flag IS DISTINCT FROM b.value_flag
-        """)
-        selfdiff = pcur.fetchone()[0]
-
-        gate(6, "reloading changes no row and no cell",
-             before_n == after_n and before_sum == after_sum and selfdiff == 0,
+        gate(6, "live rows equal the latest edition's source file cell for "
+             "cell, and reloading it changes nothing",
+             before_n == after_n and before_sum == after_sum
+             and cell_diffs == 0,
+             "\n".join(lines) + "\n"
              f"rows before: {before_n}\n"
              f"rows after re-upserting {rewritten} rows: {after_n}\n"
-             f"content checksum before: {before_sum}\n"
-             f"content checksum after:  {after_sum}\n"
-             f"cells differing (IS DISTINCT FROM): {selfdiff}")
+             f"content hash (excluding loaded_at) before: {before_sum}\n"
+             f"content hash (excluding loaded_at) after:  {after_sum}\n"
+             f"cells differing from the latest edition (NULL-safe): "
+             f"{cell_diffs}")
     finally:
         probe.rollback()
         pcur.close()
@@ -256,8 +293,8 @@ def main():
     cur = conn.cursor()
     lines, breaches = [], []
     for period in sorted(build.RELEASES):
-        edition = build.resolve_edition(period)
-        df = build.read_a3(build.fetch(edition))
+        _, path, _ = latest_source(cur, period)
+        df = build.read_a3(path)
         _, mapping, _ = build.map_columns(df)
         eng_row = None
         for i in range(len(df)):
