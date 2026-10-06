@@ -658,7 +658,7 @@ def main():
         ("staging_la_signals", "ctb_lte_rate_pct",
          ["ctb_empty_6m_plus", "ctb_total_dwellings"]),
         ("staging_national", "ta_yoy_pct",
-         ["ta_households_current", "ta_households_prev_year"]),
+         ["ta_households_current_matched", "ta_households_prev_year_matched"]),
     ]
     cur.execute("SELECT MAX(run_id) FROM staging_la_signals")
     latest_run = cur.fetchone()[0]
@@ -727,18 +727,24 @@ def main():
 
     # ta_yoy_pct is a ratio, not a sum. Summing per-authority percentages is
     # meaningless, so the relationship asserted is that the national
-    # percentage equals the change between the two national totals.
+    # percentage equals the change between the two MATCHED totals: authorities
+    # reporting TA in both quarters. The all-reporting totals cover different
+    # sets of authorities and are not comparable (run 22 reported +13.29% from
+    # them where the matched set gave +3.14%). Runs before the matched columns
+    # existed (NULL) fall back to the old relationship.
     cur.execute("""
         SELECT ta_yoy_pct,
-               ROUND((ta_households_current - ta_households_prev_year)::numeric
-                     / NULLIF(ta_households_prev_year, 0) * 100, 2)
+               ROUND((COALESCE(ta_households_current_matched, ta_households_current)
+                      - COALESCE(ta_households_prev_year_matched, ta_households_prev_year))::numeric
+                     / NULLIF(COALESCE(ta_households_prev_year_matched,
+                                       ta_households_prev_year), 0) * 100, 2)
         FROM staging_national WHERE run_id = %s
     """, (nat_run,))
     row = cur.fetchone()
     if row and row[0] is not None and row[1] is not None:
         if round(float(row[0]), 2) != round(float(row[1]), 2):
             breaks.append(f"ta_yoy_pct: stored {row[0]} vs derived from the "
-                          f"national totals {row[1]}")
+                          f"matched national totals {row[1]}")
 
     gate(16, "national totals reconcile to the sum of their own LA rows",
          not breaks,

@@ -25,6 +25,17 @@ Source: DLUHC H-CLIC statutory homelessness return (quarterly)
 | `ta_yoy_pct` | numeric(8,2) | -100 – +500+ | Year-on-year percentage change: `((current - prev) / prev) * 100` |
 | `ta_trend_label` | text | See below | Trend classification based on YoY movement and data completeness |
 
+**National row (`staging_national`).** The same three columns exist at England level with a different rule, because summing every authority that reports in each quarter compares two different sets of authorities:
+
+| Column | Type | Description |
+|---|---|---|
+| `ta_households_current` | integer | England total of authorities reporting TA (> 0) in the latest quarter |
+| `ta_households_prev_year` | integer | England total of authorities reporting TA (> 0) in the same quarter a year earlier. **Not comparable with `ta_households_current`**: the sets of authorities differ |
+| `ta_matched_authorities` | integer | Authorities reporting TA (> 0) in both quarters |
+| `ta_households_current_matched` | integer | Latest-quarter TA households in those authorities |
+| `ta_households_prev_year_matched` | integer | Prior-year TA households in the same authorities |
+| `ta_yoy_pct` | numeric(8,2) | `((current_matched - prev_year_matched) / prev_year_matched) * 100`: like-for-like. Quote this, not a percentage from the first two columns. Runs 22 and earlier used the all-reporting totals (run 22: +13.29%; matched set +3.14%) |
+
 **`ta_trend_label` values:**
 
 | Value | Meaning |
