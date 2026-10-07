@@ -42,6 +42,17 @@ Subcommands:
         # always rolls back. A period whose live rows equal no stored edition
         # is drift (changed outside the editions tables): the command halts
         # unless --accept-drift PERIOD names it.
+    python scripts/s1_editions.py load-new --period P
+        (--manifest-entry N | --manifest-file NAME)
+        [--expected-authorities N] [--commit | --simulate]
+        # a quarter that is NOT stored yet (no live rows, no editions): reads
+        # the file's own front sheet (Cover, or Contents in the older files)
+        # and refuses unless it agrees with the period and with the manifest
+        # entry's release_label_actual / published_date_actual; extracts;
+        # inserts edition 1 (file-backed), the live rows and the
+        # homelessness_quarter_urls row (inserted, or only marked loaded), and
+        # runs the gates in the same transaction. DRY-RUN by default; --simulate
+        # rolls back; a period that exists halts and points to `load`.
     python scripts/s1_editions.py dryrun-all --out report.md
         # both manifest candidates of 2023Q2-2024Q4 vs stored edition 1 and
         # vs each other, as markdown; writes no table
@@ -58,7 +69,7 @@ import json
 import re
 import sys
 from collections import Counter
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -1474,6 +1485,408 @@ def cmd_refresh_latest(args):
         conn.close()
 
 
+# ---------------------------------------------------------------------------
+# load-new: a brand-new quarter, loaded through the editions machinery
+# ---------------------------------------------------------------------------
+
+LAYOUT_TITLE = "statutory homelessness: detailed local authority-level tables"
+MONTH_NUMBER = {m: i for i, m in enumerate(
+    ("january", "february", "march", "april", "may", "june", "july",
+     "august", "september", "october", "november", "december"), 1)}
+# first month of a financial-year quarter -> quarter number
+QUARTER_OF_FIRST_MONTH = {4: 1, 7: 2, 10: 3, 1: 4}
+RANGE_TEXT = re.compile(r"([A-Za-z]+)\s*(?:to|-|–)\s*([A-Za-z]+)\s+(\d{4})")
+RELEASED_TEXT = re.compile(r"Released:\s*(\d{1,2} [A-Za-z]+ \d{4})")
+COVER_TITLE = re.compile(r",\s*([A-Za-z]+ to [A-Za-z]+ \d{4}),\s*England\s*$")
+DATE_FORMATS = ("%A, %B %d, %Y", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d",
+                "%d %B %Y")
+
+
+def quarter_from_range(start: str, end: str, year: int) -> tuple:
+    """(period, 'Mon-Mon YYYY') for a three-month range in one calendar year.
+
+    Financial-year quarters: April-June is Q1, July-September Q2,
+    October-December Q3 and January-March Q4 of the year that BEGAN the
+    previous April (so 'January to March' of a year is Q4 of the year before).
+    Anything that is not exactly one such quarter halts."""
+    s, e = MONTH_NUMBER.get(start.lower()), MONTH_NUMBER.get(end.lower())
+    if s is None or e is None or s not in QUARTER_OF_FIRST_MONTH \
+            or e != (s + 1) % 12 + 1:
+        halt(f"'{start} to {end} {year}' is not one financial-year quarter "
+             "(April-June, July-September, October-December, January-March)")
+    q = QUARTER_OF_FIRST_MONTH[s]
+    return (f"{year - 1 if q == 4 else year}Q{q}",
+            f"{start[:3].title()}-{end[:3].title()} {year}")
+
+
+def _text_lines(rows) -> list:
+    """One string per non-empty row: its non-empty cells, whitespace
+    collapsed, joined with ' | ' (so a one-cell row is just its text)."""
+    out = []
+    for r in rows:
+        cells = [" ".join(c.split()) for c in r if c and c.strip()]
+        if cells:
+            out.append(" | ".join(cells))
+    return out
+
+
+def _parse_release_date(text: str) -> date:
+    for fmt in DATE_FORMATS:
+        try:
+            return datetime.strptime(text.strip(), fmt).date()
+        except ValueError:
+            pass
+    halt(f"cover sheet release date {text!r} is in a format this reader does "
+         "not know; not guessing")
+
+
+def cover_sheet_info(path: Path) -> dict:
+    """What the file's own front sheet says it is: {period, range_label,
+    released (date), layout}. Two layouts exist among the files held:
+
+    'cover'    (2025Q4 onwards): a sheet named Cover whose title row reads
+               '...tables, <Month> to <Month> <year>, England' and a row
+               'Released: <D Month YYYY>'.
+    'contents' (2023Q2 to 2025Q3): no Cover sheet; the Contents sheet carries,
+               one per row, the title 'Statutory homelessness: Detailed local
+               authority-level tables', the period ('October to December
+               2025' or 'July-September 2023'), 'England' and the date.
+    Any other layout halts; nothing is guessed."""
+    from s1_extract_ods import read_sheets
+    path = Path(path)
+    try:
+        sheets = read_sheets(path, {"Cover", "Contents"},
+                             stop_after="Contents")
+    except SystemExit:
+        raise
+    except Exception as e:
+        halt(f"{path.name}: cannot read the front sheets ({type(e).__name__})")
+    if "Cover" in sheets:
+        lines = _text_lines(sheets["Cover"])
+        titles = [t for t in lines if t.lower().startswith(LAYOUT_TITLE)]
+        if len(titles) != 1:
+            halt(f"{path.name}: Cover sheet carries {len(titles)} title rows, "
+                 "expected exactly 1")
+        (title,) = titles
+        m = COVER_TITLE.search(title)
+        if LAYOUT_TITLE not in title.lower() or not m:
+            halt(f"{path.name}: Cover title {title!r} is not "
+                 "'Statutory homelessness: Detailed local authority-level "
+                 "tables, <Month> to <Month> <year>, England'")
+        rel = [m2.group(1) for t in lines
+               for m2 in [RELEASED_TEXT.fullmatch(t)] if m2]
+        if len(rel) != 1:
+            halt(f"{path.name}: Cover sheet carries {len(rel)} 'Released:' "
+                 "rows, expected exactly 1")
+        (rel_text,) = rel
+        rng, released, layout = (m.group(1), _parse_release_date(rel_text),
+                                 "cover")
+    elif "Contents" in sheets:
+        lines = _text_lines(sheets["Contents"])
+        at = [i for i, t in enumerate(lines) if t.lower() == LAYOUT_TITLE]
+        if len(at) != 1:
+            halt(f"{path.name}: no Cover sheet, and the Contents sheet has "
+                 f"{len(at)} title rows '{LAYOUT_TITLE}', expected exactly 1")
+        start = at.pop() + 1
+        block = lines[start:start + 3]
+        if len(block) != 3 or any(" | " in t for t in block):
+            halt(f"{path.name}: the rows after the Contents title are not "
+                 "period, 'England', date")
+        period_text, country, date_text = block
+        if country.lower() != "england":
+            halt(f"{path.name}: the Contents title is followed by "
+                 f"{country!r}, expected England")
+        rng, released, layout = period_text, _parse_release_date(date_text), \
+            "contents"
+    else:
+        halt(f"{path.name}: neither a Cover nor a Contents sheet found; the "
+             "front-sheet layout is unknown")
+    m = RANGE_TEXT.fullmatch(rng)
+    if not m:
+        halt(f"{path.name}: period text {rng!r} is not '<Month> to <Month> "
+             "<year>'")
+    period, label = quarter_from_range(m.group(1), m.group(2), int(m.group(3)))
+    return {"period": period, "range_label": label, "released": released,
+            "layout": layout}
+
+
+def cover_sheet_period(path: Path) -> tuple:
+    """(period, released_text) from the file's own front sheet; released_text
+    is 'D Month YYYY'. Halts with a clear message if it cannot be read."""
+    info = cover_sheet_info(path)
+    d = info["released"]
+    return info["period"], f"{d.day} {d.strftime('%B %Y')}"
+
+
+def check_cover(path: Path, period: str, entry: dict) -> list:
+    """Problems if the file's own front sheet disagrees with the period or with
+    the manifest entry's release_label_actual / published_date_actual (both
+    must be present). This refuses a file filed under the wrong release: a
+    label typed into code or the manifest is never trusted without opening the
+    file."""
+    tag = entry.get("file", Path(path).name)
+    try:
+        found, released = cover_sheet_period(path)
+    except SystemExit as e:
+        return [f"{tag}: {e}"]
+    bad = []
+    if found != period:
+        bad.append(f"{tag}: front sheet says {found}, not {period}")
+    label = entry.get("release_label_actual")
+    want = entry.get("published_date_actual")
+    if not label or not want:
+        return bad + [f"{tag}: manifest entry lacks release_label_actual / "
+                      "published_date_actual"]
+    if _parse_release_date(released).isoformat() != want:
+        bad.append(f"{tag}: front sheet says released {released}, manifest "
+                   f"published_date_actual is {want}")
+    if released.lower() not in label.lower():
+        bad.append(f"{tag}: release_label_actual {label!r} does not carry "
+                   f"the front sheet's release date {released}")
+    return bad
+
+
+def _resolve_expected(cur, given) -> int:
+    """Authorities per quarter: the count derived from the live periods, or
+    --expected-authorities where nothing can be derived (the same rule as
+    sync-new: a given count that differs from a derivable one halts)."""
+    derived = expected_authorities(cur)
+    if given is not None and derived is not None and given != derived:
+        halt(f"--expected-authorities {given} differs from the count "
+             f"{derived} derived from the live periods; it is only accepted "
+             "when nothing can be derived (or when it equals the derived "
+             "count)")
+    n = derived if derived is not None else given
+    if n is None:
+        halt("no live period to derive the authority count from; give "
+             "--expected-authorities N")
+    return n
+
+
+def require_new_period(cur, period) -> None:
+    """Halt unless the period has NO live rows and NO editions."""
+    if not re.fullmatch(r"\d{4}Q[1-4]", period or ""):
+        halt(f"{period!r} is not a period like 2026Q1")
+    cur.execute(f"SELECT COUNT(*) FROM public.{LIVE} WHERE period = %s",
+                (period,))
+    live = cur.fetchone()[0]
+    cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} WHERE period = %s",
+                (period,))
+    eds = cur.fetchone()[0]
+    if live or eds:
+        halt(f"period already exists: {period} has {live} live rows and "
+             f"{eds} edition rows. load-new is only for a quarter that is not "
+             "stored; a revision of a stored quarter is loaded with `load`, "
+             "and `status` shows what needs action")
+
+
+def load_new(cur, period, recs, *, release_label, published_date, source_url,
+             source_file, source_sha256, expected_authorities=None,
+             ta1_cells=None, a3_totals=None, quarter_label=None) -> dict:
+    """Record a brand-new quarter: file-backed edition 1, the live rows and
+    the homelessness_quarter_urls row, then run the gates; halt on any
+    failure (the caller rolls back, nothing is committed here).
+
+    Refuses, before writing, a period with live rows or editions, no records,
+    duplicate or unresolvable codes, a count other than the derived (or given)
+    number of authorities, a non-integer measure, or a missing source_url.
+    Stores NULL for a suppressed cell and 0 only for a published 0. Gates
+    after the writes: edition 1 is the chain tip with the right row count and
+    known codes; no suppressed TA1 cell is stored as 0 and every stored
+    households_in_ta equals the re-read of the raw cell (ta1_cells defaults to
+    the file's TA1 sheet, {lad: (cell, value)}); support_needs_total equals the
+    independent A3 re-read (a3_totals defaults to the file's A3 sheet); the
+    live rows equal edition 1 on every refresh column with the *_suspect
+    columns NULL; status is clean. The quarter row is inserted if absent
+    (needs quarter_label) or, if present, only marked loaded = true,
+    loaded_at = now()."""
+    require_new_period(cur, period)
+    if not recs:
+        halt(f"load-new {period}: no records supplied")
+    codes = [r["lad24cd"] for r in recs]
+    if len(set(codes)) != len(codes):
+        halt(f"load-new {period}: duplicate authorities in the records")
+    want = _resolve_expected(cur, expected_authorities)
+    if len(recs) != want:
+        halt(f"load-new {period}: {len(recs)} authorities supplied, expected "
+             f"{want}")
+    cur.execute("SELECT lad24cd FROM public.la_boundaries")
+    known = {code for (code,) in cur.fetchall()}
+    unknown = sorted(set(codes) - known)
+    if unknown:
+        halt(f"load-new {period}: {len(unknown)} code(s) do not resolve to "
+             f"la_boundaries {unknown[:5]}")
+    for r in recs:
+        for m in LIVE_MEASURES:
+            v = r.get(m)
+            if v is not None and (not isinstance(v, int)
+                                  or isinstance(v, bool) or v < 0):
+                halt(f"load-new {period} {r['lad24cd']}: {m} is {v!r}, "
+                     "expected a non-negative integer or NULL")
+    if not source_url:
+        halt(f"load-new {period}: source_url is required")
+    cur.execute("SELECT file_url FROM public.homelessness_quarter_urls "
+                "WHERE period = %s", (period,))
+    urls_row = cur.fetchone()
+    if urls_row is None and not quarter_label:
+        halt(f"load-new {period}: no homelessness_quarter_urls row and no "
+             "quarter_label to create one with")
+    path = RAW_DIR / source_file
+    if (ta1_cells is None or a3_totals is None) and not path.exists():
+        halt(f"load-new {period}: {path} not found, so the independent "
+             "re-read of the raw cells cannot run")
+
+    ed = insert_edition(cur, recs, period, release_label=release_label,
+                        published_date=published_date, source_url=source_url,
+                        source_file=source_file, source_sha256=source_sha256,
+                        supersedes=None)
+    cols = ", ".join(("lad24cd", "period") + LIVE_MEASURES
+                     + ("source_file", "extracted_at"))
+    cur.executemany(
+        f"INSERT INTO public.{LIVE} ({cols}) VALUES "
+        f"({', '.join(['%s'] * (len(LIVE_MEASURES) + 3))}, now())",
+        [[r["lad24cd"], period] + [r.get(m) for m in LIVE_MEASURES]
+         + [source_file] for r in recs])
+    fmt = Path(source_file).suffix.lstrip(".").lower()
+    cur.execute("""INSERT INTO public.homelessness_quarter_urls
+                   (period, quarter_label, file_url, file_format, loaded,
+                    loaded_at, notes)
+                   VALUES (%s, %s, %s, %s, true, now(), %s)
+                   ON CONFLICT (period) DO UPDATE
+                   SET loaded = true, loaded_at = now()""",
+                (period, quarter_label, source_url, fmt,
+                 f"Loaded by s1_editions.py load-new from {source_file}; "
+                 "edition 1."))
+
+    problems = []
+    if latest_edition(cur, period) != ed or ed != 1:
+        problems.append(f"{period}: new edition {ed} is not edition 1 / the "
+                        "chain tip")
+    problems += check_registry(cur, period, ed, require_registry=False,
+                               expected_rows=want)
+    p7, rows, zeros = check_no_suppressed_zero(
+        cur, period, ed, raw=ta1_cells if ta1_cells is not None
+        else raw_ta1(path))
+    problems += p7
+    problems += check_support_needs(
+        cur, period, ed, expected=a3_totals if a3_totals is not None
+        else a3_expected(cur, path), expected_rows=want)
+    live_diff = rows_differing(cur, LIVE, TABLE, ("lad24cd",), LIVE_MEASURES,
+                               period, ed)
+    if live_diff:
+        problems.append(f"{period}: {live_diff} live rows differ from "
+                        "edition 1")
+    cur.execute(f"SELECT COUNT(*) FROM public.{LIVE} WHERE period = %s",
+                (period,))
+    n_live = cur.fetchone()[0]
+    if n_live != want:
+        problems.append(f"{period}: {n_live} live rows, expected {want}")
+    suspect = " OR ".join(f"{c} IS NOT NULL" for c in LIVE_SUSPECT)
+    cur.execute(f"SELECT COUNT(*) FROM public.{LIVE} WHERE period = %s "
+                f"AND ({suspect})", (period,))
+    if cur.fetchone()[0]:
+        problems.append(f"{period}: a *_suspect column is not NULL")
+    st = status(cur)
+    if not st["ok"]:
+        problems.append("status after the load: " + format_status(st, "S1"))
+    cur.execute("SELECT loaded FROM public.homelessness_quarter_urls "
+                "WHERE period = %s", (period,))
+    if cur.fetchone() != (True,):
+        problems.append(f"{period}: quarter row is not marked loaded")
+    if problems:
+        halt(f"load-new {period} failed its gates, rolled back: "
+             + "; ".join(problems[:5]))
+    cells = {m: sum(1 for r in recs if r.get(m) is None) for m in LIVE_MEASURES}
+    return {"period": period, "edition": ed, "rows": len(recs),
+            "live_rows": n_live, "null_cells": cells, "ta_zeros": zeros,
+            "quarter_row": "marked loaded" if urls_row else "inserted"}
+
+
+def prepare_new_quarter(entry, period, expected) -> tuple:
+    """Everything load-new needs from a manifest entry, without writing: the
+    entry carries the actual-release fields; the file's sha256 matches; the
+    file's own front sheet agrees with the period and the entry; the
+    extraction has exactly `expected` authorities. -> (recs, path, cover)."""
+    if entry["period"] != period:
+        halt(f"manifest entry is {entry['period']}, not {period}")
+    for k in ("release_label_actual", "published_date_actual"):
+        if not entry.get(k):
+            halt(f"{entry['file']}: manifest entry has no {k}; record what "
+                 "the file's front sheet says before loading")
+    path = RAW_DIR / entry["file"]
+    if not path.exists():
+        halt(f"{path} not found")
+    if sha256_file(path) != entry["sha256"]:
+        halt(f"{entry['file']}: sha256 does not match the manifest")
+    problems = check_cover(path, period, entry)
+    if problems:
+        halt("front sheet does not match the period/manifest, refusing: "
+             + "; ".join(problems))
+    recs, path = _extract_entry(entry, expected)
+    return recs, path, cover_sheet_info(path)
+
+
+def cmd_load_new(args):
+    manifest = load_manifest()
+    if (args.manifest_entry is None) == (args.manifest_file is None):
+        halt("give exactly one of --manifest-entry and --manifest-file")
+    if args.manifest_file is not None:
+        hits = [e for e in manifest if e["file"] == args.manifest_file]
+        if len(hits) != 1:
+            halt(f"{len(hits)} manifest entries for file "
+                 f"{args.manifest_file!r}, expected exactly 1")
+        (entry,) = hits
+    else:
+        if not 0 <= args.manifest_entry < len(manifest):
+            halt(f"--manifest-entry {args.manifest_entry} outside "
+                 f"0..{len(manifest) - 1}")
+        entry = manifest[args.manifest_entry]
+    from _db import get_conn, get_readonly_conn
+    writing = args.commit or args.simulate
+    conn = get_conn() if writing else get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            require_new_period(cur, args.period)
+            want = _resolve_expected(cur, args.expected_authorities)
+            recs, path, cover = prepare_new_quarter(entry, args.period, want)
+            nulls = {m: sum(1 for r in recs if r.get(m) is None)
+                     for m in LIVE_MEASURES}
+            zeros = {m: sum(1 for r in recs if r.get(m) == 0)
+                     for m in LIVE_MEASURES}
+            print(f"load-new {args.period}: {entry['file']}\n"
+                  f"  front sheet ({cover['layout']} layout): "
+                  f"{cover['period']}, released {cover['released']}\n"
+                  f"  {len(recs)} authorities (expected {want}); NULL cells "
+                  f"{nulls}; real zeros {zeros}")
+            if not writing:
+                print("DRY RUN: nothing written (use --simulate or --commit)")
+                return
+            res = load_new(
+                cur, args.period, recs,
+                release_label=entry["release_label_actual"],
+                published_date=date.fromisoformat(
+                    entry["published_date_actual"]),
+                source_url=entry["url"], source_file=entry["file"],
+                source_sha256=entry["sha256"],
+                expected_authorities=args.expected_authorities,
+                quarter_label=cover["range_label"])
+            print(f"  edition {res['edition']}: {res['rows']} rows; live "
+                  f"{res['live_rows']} rows; quarter row {res['quarter_row']}")
+        if args.commit:
+            conn.commit()
+            print(f"COMMITTED: {args.period} loaded; gates passed in the same "
+                  "transaction")
+        else:
+            conn.rollback()
+            print("SIMULATION: gates passed, ROLLED BACK (nothing persisted)")
+    except BaseException:
+        if writing:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1507,6 +1920,21 @@ def main(argv=None):
                     help="run the full --commit path (insert, gates 6-8) and "
                     "roll back instead of committing; persists nothing")
     ld.set_defaults(func=cmd_load)
+    ln = sub.add_parser("load-new", help="load a brand-new quarter from a "
+                        "manifest file (dry-run by default)")
+    ln.add_argument("--period", required=True)
+    ln.add_argument("--manifest-entry", type=int, help="0-BASED index into "
+                    "s1_editions_manifest.json")
+    ln.add_argument("--manifest-file", help="file name of the manifest entry")
+    ln.add_argument("--expected-authorities", type=int, metavar="N",
+                    help="only when no count can be derived from the live "
+                    "periods (otherwise it must equal the derived count)")
+    lmode = ln.add_mutually_exclusive_group()
+    lmode.add_argument("--commit", action="store_true",
+                       help="record the quarter (append-only, irreversible)")
+    lmode.add_argument("--simulate", action="store_true",
+                       help="run the full path and roll back")
+    ln.set_defaults(func=cmd_load_new)
     rl = sub.add_parser("refresh-latest", help="copy latest editions into "
                         "la_statutory_homelessness (dry-run by default)")
     rmode = rl.add_mutually_exclusive_group()

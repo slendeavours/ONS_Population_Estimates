@@ -64,11 +64,14 @@ def cell_value(cell):
     return " ".join(x.strip() for x in parts if x is not None).strip()
 
 
-def read_sheets_ods(ods_path, wanted):
-    """{sheet name: [row, ...]} for the wanted sheets only."""
+def read_sheets_ods(ods_path, wanted, stop_after=None):
+    """{sheet name: [row, ...]} for the wanted sheets only.
+
+    stop_after: stop reading once the sheet of that name has ended (the front
+    sheets of a workbook come first, so a cover-sheet read need not parse the
+    whole 42 MB body)."""
     out = {}
-    z = zipfile.ZipFile(ods_path)
-    with z.open("content.xml") as f:
+    with zipfile.ZipFile(ods_path) as z, z.open("content.xml") as f:
         sheet = None
         rows = None
         for event, elem in ET.iterparse(f, events=("start", "end")):
@@ -99,9 +102,10 @@ def read_sheets_ods(ods_path, wanted):
             elif event == "end" and elem.tag == TABLE + "table":
                 if rows is not None:
                     out[sheet] = rows
+                done = stop_after is not None and sheet == stop_after
                 sheet, rows = None, None
                 elem.clear()
-                if len(out) == len(wanted):
+                if len(out) == len(wanted) or done:
                     break
     return out
 
@@ -298,11 +302,12 @@ def read_sheets_xlsx(xlsx_path, wanted):
     return out
 
 
-def read_sheets(path, wanted):
-    """Dispatch on the container, and say so rather than dying in zipfile."""
+def read_sheets(path, wanted, stop_after=None):
+    """Dispatch on the container, and say so rather than dying in zipfile.
+    stop_after only shortens the .ods read (see read_sheets_ods)."""
     suffix = path.suffix.lower()
     if suffix == ".ods":
-        return read_sheets_ods(path, wanted)
+        return read_sheets_ods(path, wanted, stop_after)
     if suffix in (".xlsx", ".xlsm"):
         return read_sheets_xlsx(path, wanted)
     halt(f"unsupported source container '{suffix}' for {path.name}")
