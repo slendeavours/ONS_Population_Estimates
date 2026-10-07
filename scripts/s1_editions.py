@@ -166,15 +166,25 @@ def insert_edition(cur, recs: list, period: str, *, release_label: str,
     return edition
 
 
-EDITION_TABLES = (TABLE, "la_homelessness_support_needs_editions")
+EDITION_TABLES = (TABLE, "la_homelessness_support_needs_editions",
+                  "ro4_housing_expenditure_editions")
 
 
-def latest_edition(cur, period: str, table: str = TABLE) -> int:
+def _ident(name: str) -> str:
+    """A bare SQL identifier (the period-column name is interpolated)."""
+    if not re.fullmatch(r"[a-z_][a-z0-9_]*", name):
+        raise ValueError(f"not a plain column name: {name!r}")
+    return name
+
+
+def latest_edition(cur, period: str, table: str = TABLE,
+                   period_col: str = "period") -> int:
     """Tip of the period's supersedes chain.
 
     Ordering is the `supersedes` chain, not published_date (which is
-    informational only). `table` must be one of EDITION_TABLES (the S1 and
-    S1b editions tables). The whole structure is validated, and ValueError is
+    informational only). `table` must be one of EDITION_TABLES (the S1, S1b
+    and RO4 editions tables); `period_col` names the column that holds the
+    period in that table ('period', or 'financial_year' for RO4). The whole structure is validated, and ValueError is
     raised unless it is one linear chain: exactly one root (supersedes NULL),
     every other edition supersedes a different existing edition, no edition is
     superseded twice (fork), and walking from the root reaches every edition
@@ -184,7 +194,7 @@ def latest_edition(cur, period: str, table: str = TABLE) -> int:
     if table not in EDITION_TABLES:
         raise ValueError(f"latest_edition: unknown editions table {table!r}")
     cur.execute(f"SELECT DISTINCT edition, supersedes FROM public.{table} "
-                "WHERE period = %s", (period,))
+                f"WHERE {_ident(period_col)} = %s", (period,))
     rows = cur.fetchall()
     if not rows:
         raise LookupError(f"no editions recorded for {period}")
@@ -837,17 +847,19 @@ NATIONAL_TA_COLS = {"ta_households_current", "ta_households_prev_year",
 # per-period before/after content hash.
 # ---------------------------------------------------------------------------
 
-def latest_map(cur, live=LIVE, editions=TABLE) -> tuple:
+def latest_map(cur, live=LIVE, editions=TABLE, period_col="period") -> tuple:
     """(tips, new_periods, chain_errors) for the periods present in `live`.
 
     tips: {period: chain-tip edition}; new_periods: periods with no editions;
     chain_errors: {period: message} where latest_edition raised ValueError.
     """
-    cur.execute(f"SELECT DISTINCT period FROM public.{live} ORDER BY 1")
+    cur.execute(f"SELECT DISTINCT {_ident(period_col)} FROM public.{live} "
+                "ORDER BY 1")
     tips, new, errors = {}, [], {}
     for (p,) in cur.fetchall():
         try:
-            tips[p] = latest_edition(cur, p, table=editions)
+            tips[p] = latest_edition(cur, p, table=editions,
+                                     period_col=period_col)
         except LookupError:
             new.append(p)
         except ValueError as e:
@@ -855,42 +867,48 @@ def latest_map(cur, live=LIVE, editions=TABLE) -> tuple:
     return tips, new, errors
 
 
-def rows_differing(cur, live, editions, key_cols, cols, period, edition) -> int:
+def rows_differing(cur, live, editions, key_cols, cols, period, edition,
+                   period_col="period") -> int:
     """Rows of `period` that are in only one of the live table and the given
     edition, compared on key_cols + cols (NULL equals NULL)."""
     sel = ", ".join(tuple(key_cols) + tuple(cols))
+    pc = _ident(period_col)
     cur.execute(f"""SELECT
-        (SELECT COUNT(*) FROM (SELECT {sel} FROM public.{live} WHERE period = %s
+        (SELECT COUNT(*) FROM (SELECT {sel} FROM public.{live} WHERE {pc} = %s
                                EXCEPT SELECT {sel} FROM public.{editions}
-                               WHERE period = %s AND edition = %s) a)
+                               WHERE {pc} = %s AND edition = %s) a)
       + (SELECT COUNT(*) FROM (SELECT {sel} FROM public.{editions}
-                               WHERE period = %s AND edition = %s
+                               WHERE {pc} = %s AND edition = %s
                                EXCEPT SELECT {sel} FROM public.{live}
-                               WHERE period = %s) b)""",
+                               WHERE {pc} = %s) b)""",
                 (period, period, edition, period, edition, period))
     return cur.fetchone()[0]
 
 
-def classify_period(cur, live, editions, key_cols, cols, period, tip) -> tuple:
+def classify_period(cur, live, editions, key_cols, cols, period, tip,
+                    period_col="period") -> tuple:
     """('current'|'pending'|'drift', matched_edition).
 
     current: live equals the chain tip. pending: live differs from the tip but
     equals an earlier edition, i.e. a newer edition has been recorded and not
     yet refreshed. drift: live differs from the tip and equals no stored
     edition, so it was changed outside the editions machinery."""
-    if rows_differing(cur, live, editions, key_cols, cols, period, tip) == 0:
+    if rows_differing(cur, live, editions, key_cols, cols, period, tip,
+                      period_col) == 0:
         return "current", tip
     cur.execute(f"SELECT DISTINCT edition FROM public.{editions} "
-                "WHERE period = %s AND edition <> %s ORDER BY 1 DESC",
-                (period, tip))
+                f"WHERE {_ident(period_col)} = %s AND edition <> %s "
+                "ORDER BY 1 DESC", (period, tip))
     for (e,) in cur.fetchall():
-        if rows_differing(cur, live, editions, key_cols, cols, period, e) == 0:
+        if rows_differing(cur, live, editions, key_cols, cols, period, e,
+                          period_col) == 0:
             return "pending", e
     return "drift", None
 
 
-def live_period_counts(cur, live=LIVE) -> dict:
-    cur.execute(f"SELECT period, COUNT(*) FROM public.{live} GROUP BY 1")
+def live_period_counts(cur, live=LIVE, period_col="period") -> dict:
+    cur.execute(f"SELECT {_ident(period_col)}, COUNT(*) FROM public.{live} "
+                "GROUP BY 1")
     return dict(cur.fetchall())
 
 
@@ -908,7 +926,7 @@ def expected_authorities(cur, live=LIVE) -> "int | None":
 
 
 def status(cur, table_live=LIVE, table_editions=TABLE, key_cols=("lad24cd",),
-           cols=LIVE_MEASURES, expected_rows=None) -> dict:
+           cols=LIVE_MEASURES, expected_rows=None, period_col="period") -> dict:
     """What needs action between the live table and its editions (read-only).
 
     new_periods:     in live with no editions (run sync-new)
@@ -922,16 +940,16 @@ def status(cur, table_live=LIVE, table_editions=TABLE, key_cols=("lad24cd",),
     ok is true only when all five are empty. expected_rows: optional
     {period: n} override; default is the most common per-period live count.
     """
-    tips, new, errors = latest_map(cur, table_live, table_editions)
+    tips, new, errors = latest_map(cur, table_live, table_editions, period_col)
     drift, pending = [], []
     for p, tip in tips.items():
         kind, _ = classify_period(cur, table_live, table_editions, key_cols,
-                                  cols, p, tip)
+                                  cols, p, tip, period_col)
         if kind == "drift":
             drift.append(p)
         elif kind == "pending":
             pending.append(p)
-    counts = live_period_counts(cur, table_live)
+    counts = live_period_counts(cur, table_live, period_col)
     mode = modal_count(counts)
     bad_counts = {}
     for p, n in counts.items():
@@ -940,7 +958,8 @@ def status(cur, table_live=LIVE, table_editions=TABLE, key_cols=("lad24cd",),
             bad_counts[p] = (n, want)
     for p, tip in tips.items():
         cur.execute(f"SELECT COUNT(*) FROM public.{table_editions} "
-                    "WHERE period = %s AND edition = %s", (p, tip))
+                    f"WHERE {_ident(period_col)} = %s AND edition = %s",
+                    (p, tip))
         n = cur.fetchone()[0]
         if n != counts.get(p) and p not in bad_counts:
             bad_counts[p] = (counts.get(p), n)
@@ -973,13 +992,14 @@ def format_status(st: dict, label: str) -> str:
     return "\n".join(lines)
 
 
-def period_hashes(cur, table, key_cols, exclude=("loaded_at",)) -> dict:
+def period_hashes(cur, table, key_cols, exclude=("loaded_at",),
+                  period_col="period") -> dict:
     """{period: (row count, md5)} of each period's content, rows ordered by
     key_cols, every column except `exclude` (as jsonb text, so NULLs, types
     and column names all count)."""
     ex = "ARRAY[" + ", ".join(f"'{c}'" for c in exclude) + "]::text[]"
     order = ", ".join(f"t.{c}" for c in key_cols)
-    cur.execute(f"""SELECT period, COUNT(*),
+    cur.execute(f"""SELECT {_ident(period_col)}, COUNT(*),
         md5(string_agg((to_jsonb(t) - {ex})::text, E'\\n' ORDER BY {order}))
         FROM public.{table} t GROUP BY 1""")
     return {p: (n, h) for p, n, h in cur.fetchall()}

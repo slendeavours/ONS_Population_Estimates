@@ -77,3 +77,5 @@ updating the refresh columns cannot repair it.
   `supersedes` = chain tip (see the index).
 - Metadata drift (for example a changed `source_url`) is not shown by `status`; the verify gates and the
   refresh's own post-check catch it.
+
+*Update 2026-10-07 (later):* the RO4 table now has edition treatment; see [2026-10-07-ro4-edition-history.md](2026-10-07-ro4-edition-history.md). The RO4 item above is left as written.

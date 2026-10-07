@@ -59,3 +59,5 @@ refresh) are kept; editions gates 9 and 10 depend on them. `scripts/s1b_editions
 - No insert-time trigger enforces `supersedes` = chain tip (only `load` checks it).
 
 *Update 2026-10-07:* `refresh-latest` is now general, no gate depends on the snapshot tables, and they are retained for Scott to drop when comfortable; see [2026-10-07-editions-quarterly-refresh.md](2026-10-07-editions-quarterly-refresh.md). The text above is left as written.
+
+*Update 2026-10-07:* the RO4 table now has the same edition treatment; see [2026-10-07-ro4-edition-history.md](2026-10-07-ro4-edition-history.md).
