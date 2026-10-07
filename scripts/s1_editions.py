@@ -96,10 +96,24 @@ a renamed header that uniquely matches the wrong column would be resolved the
 same way by `extract` and by the A1 and TA1 re-reads, so those two would still
 pass; only A3 has an independent header mapping.
 
-Helpers imported by later steps: sha256_file, create_schema, insert_edition,
-latest_edition, diff_editions, diff_records, and the table-parameterised
-latest_map, rows_differing, classify_period, status, period_hashes,
-guard_problems, modal_count.
+Helpers imported by later steps: sha256_file, create_schema, _insert (the
+only writer of S1 editions), latest_edition, diff_editions, diff_records, and
+the table-parameterised latest_map, rows_differing, classify_period, status,
+period_hashes, guard_problems, modal_count.
+
+The editions machinery itself is editions_core, driven by SPEC below:
+create_schema, the insert, the chain tip, latest_map, status, the refresh
+plan and refresh_latest's UPDATE and hash guard. The table-parameterised
+helpers keep their signatures (s1b/ro4 and the verify scripts import them)
+and are thin adapters over the core. What stays here and why: sync_new and
+its 'as loaded' recording (the editions table carries source_url, which the
+live table lacks, and the messages and monkeypatch seams are S1's own);
+period_hashes (returns (rows, md5); the verify scripts use it as a check
+independent of the core's guard); the preview's _unrepairable (no row to
+update only, so the preview is unchanged); the W1-equivalence check, plugged
+into the core's refresh through its after-update hook; reproduction_update;
+load-new and its cover-sheet and raw-cell gates; backfill, diff, load,
+dryrun-all and the manifest handling.
 """
 import argparse
 import hashlib
@@ -113,22 +127,48 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import editions_core as core  # noqa: E402
+from editions_core import halt, modal_count  # noqa: E402,F401
+
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 TABLE = "la_statutory_homelessness_editions"
-TRIGGER = "s1_editions_immutable"
-TRUNCATE_TRIGGER = "s1_editions_no_truncate"
+LIVE = "la_statutory_homelessness"
 
 MEASURES = ("total_assessments", "owed_duty", "prevention_duty", "relief_duty",
             "households_in_ta", "support_needs_total",
             "mental_health_suspect", "learning_disability_suspect",
             "drug_dependency_suspect", "alcohol_dependency_suspect",
             "rough_sleeping_history_suspect")
+LIVE_MEASURES = MEASURES[:6]
+LIVE_SUSPECT = MEASURES[6:]
+# columns refresh-latest may overwrite in the live table; nothing else changes
+REFRESH_COLS = LIVE_MEASURES + ("source_file", "extracted_at")
 
-
-def halt(msg):
-    sys.exit(f"HALT: {msg}")
+# The editions core's description of S1. Every column of the editions table
+# is declared (all eleven measures, and source_url, which the live table
+# lacks), with the real types, so create_schema reproduces the table (the
+# trigger and function names follow from name 's1'). The refresh writes
+# REFRESH_COLS: it compares live with an edition on the six live measures
+# (SPEC.compare_cols), writes a row when one of them or source_file differs
+# (SPEC.update_cols) and sets extracted_at from the edition's loaded_at. The
+# *_suspect columns and loaded_at are never compared or written.
+SPEC = core.EditionSpec(
+    name="s1",
+    live_table=LIVE,
+    editions_table=TABLE,
+    key_cols=("lad24cd",),
+    period_col="period",
+    key_types=(("period",
+                "varchar(6) NOT NULL CHECK (period ~ '^\\d{4}Q[1-4]$')"),),
+    value_cols=tuple((m, "integer") for m in MEASURES),
+    extra_cols=(("source_url", "text"),),
+    refresh_cols=REFRESH_COLS,
+    refresh_from=(("extracted_at", "loaded_at"),),
+)
+TRIGGER = SPEC.trigger                    # s1_editions_immutable
+TRUNCATE_TRIGGER = SPEC.truncate_trigger  # s1_editions_no_truncate
 
 
 def sha256_file(path: Path) -> str:
@@ -140,80 +180,37 @@ def sha256_file(path: Path) -> str:
 
 
 def create_schema(cur) -> None:
-    """Create the table and immutability triggers if absent. Idempotent."""
-    measure_cols = ",\n        ".join(f"{m} integer" for m in MEASURES)
-    cur.execute(f"""
-    CREATE TABLE IF NOT EXISTS public.{TABLE} (
-        lad24cd varchar(9) NOT NULL
-            REFERENCES public.la_boundaries (lad24cd),
-        period varchar(6) NOT NULL CHECK (period ~ '^\\d{{4}}Q[1-4]$'),
-        edition integer NOT NULL,
-        {measure_cols},
-        release_label text,
-        published_date date,
-        source_url text,
-        source_file text,
-        source_sha256 text,
-        loaded_at timestamptz DEFAULT now(),
-        supersedes integer,
-        PRIMARY KEY (lad24cd, period, edition)
-    )""")
-    cur.execute(f"""
-    CREATE OR REPLACE FUNCTION public.{TRIGGER}() RETURNS trigger AS $f$
-    BEGIN
-        RAISE EXCEPTION '{TABLE} is append-only: % is not permitted', TG_OP;
-    END
-    $f$ LANGUAGE plpgsql""")
-    cur.execute(f"""CREATE OR REPLACE TRIGGER {TRIGGER}
-        BEFORE UPDATE OR DELETE ON public.{TABLE}
-        FOR EACH ROW EXECUTE FUNCTION public.{TRIGGER}()""")
-    cur.execute(f"""CREATE OR REPLACE TRIGGER {TRUNCATE_TRIGGER}
-        BEFORE TRUNCATE ON public.{TABLE}
-        FOR EACH STATEMENT EXECUTE FUNCTION public.{TRIGGER}()""")
+    """Create the table and immutability triggers if absent. Idempotent
+    (editions_core.create_schema with SPEC: same table, trigger and function
+    names and function body as before; an existing table is left as it is)."""
+    core.create_schema(cur, SPEC)
 
 
-def insert_edition(cur, recs: list, period: str, *, release_label: str,
-                   published_date: "date | None", source_url: "str | None",
-                   source_file: str, source_sha256: str,
-                   supersedes: "int | None") -> int:
-    """Insert one edition of a period; return its edition number.
+def _insert(cur, recs: list, period: str, *, release_label: str,
+            published_date: "date | None", source_url: "str | None",
+            source_file: str, source_sha256: str,
+            supersedes: "int | None") -> int:
+    """Insert one edition of a period; return its edition number. The only
+    writer of S1 editions (backfill, load, sync-new, load-new).
 
-    If source_sha256 is already recorded for the period nothing is inserted and
-    the existing edition number is returned. Missing measures are stored NULL.
-    Empty recs is a hard stop: an edition with no rows cannot be recorded, and
-    so is a `supersedes` that is not an existing edition of the period.
-    """
+    editions_core.insert_edition with SPEC, not strict: S1's original insert
+    stored a missing measure as NULL (r.get), so a missing measure is still
+    stored NULL. source_url is one value for the whole edition and is put on
+    every row here. Every row is stored under `period`, whatever period the
+    record itself carries, as S1's original insert did (load-new's
+    end-to-end gate extracts a stored quarter's file into a fake quarter;
+    the core would refuse a record of another period). If source_sha256 is
+    already recorded for the period nothing is inserted and that edition's
+    number is returned. Empty recs halts with S1's own message; `supersedes`
+    must be the period's chain tip (None for a period with no editions), and
+    the chain must be valid."""
     if not recs:
         halt(f"insert_edition: no records supplied for {period}")
-    cur.execute(f"SELECT DISTINCT edition FROM public.{TABLE} "
-                "WHERE period = %s AND source_sha256 = %s",
-                (period, source_sha256))
-    existing = [r[0] for r in cur.fetchall()]
-    if existing:
-        return existing[0]
-    cur.execute(f"SELECT COALESCE(MAX(edition), 0) FROM public.{TABLE} "
-                "WHERE period = %s", (period,))
-    edition = cur.fetchone()[0] + 1
-    if supersedes is not None:
-        cur.execute(f"SELECT 1 FROM public.{TABLE} "
-                    "WHERE period = %s AND edition = %s LIMIT 1",
-                    (period, supersedes))
-        if cur.fetchone() is None:
-            halt(f"insert_edition: supersedes={supersedes} is not an existing "
-                 f"edition of {period}")
-    cols = (["lad24cd", "period", "edition"] + list(MEASURES) +
-            ["release_label", "published_date", "source_url", "source_file",
-             "source_sha256", "supersedes"])
-    sql = (f"INSERT INTO public.{TABLE} ({', '.join(cols)}) "
-           f"VALUES ({', '.join(['%s'] * len(cols))})")
-    rows = []
-    for r in recs:
-        rows.append([r["lad24cd"], period, edition] +
-                    [r.get(m) for m in MEASURES] +
-                    [release_label, published_date, source_url, source_file,
-                     source_sha256, supersedes])
-    cur.executemany(sql, rows)
-    return edition
+    rows = [dict(r, period=period, source_url=source_url) for r in recs]
+    return core.insert_edition(
+        cur, SPEC, rows, period, release_label=release_label,
+        published_date=published_date, source_file=source_file,
+        source_sha256=source_sha256, supersedes=supersedes, strict=False)
 
 
 EDITION_TABLES = (TABLE, "la_homelessness_support_needs_editions",
@@ -240,47 +237,15 @@ def latest_edition(cur, period: str, table: str = TABLE,
     superseded twice (fork), and walking from the root reaches every edition
     (so a cycle or two editions superseding each other is refused). The tip is
     the end of that walk. LookupError if the period has no editions.
+
+    The validator is the core's (_chain_tip, extracted from this function;
+    same messages). Raises rather than halting, as before.
     """
     if table not in EDITION_TABLES:
         raise ValueError(f"latest_edition: unknown editions table {table!r}")
     cur.execute(f"SELECT DISTINCT edition, supersedes FROM public.{table} "
                 f"WHERE {_ident(period_col)} = %s", (period,))
-    rows = cur.fetchall()
-    if not rows:
-        raise LookupError(f"no editions recorded for {period}")
-    sup = {}
-    for ed, s in rows:
-        if ed in sup:
-            raise ValueError(f"{period}: edition {ed} has inconsistent "
-                             "supersedes values across its rows")
-        sup[ed] = s
-    roots = sorted(e for e, s in sup.items() if s is None)
-    if len(roots) != 1:
-        raise ValueError(f"{period}: {len(roots)} editions {roots} have no "
-                         "supersedes; the chain has no single root")
-    for e, s in sorted(sup.items()):
-        if s is not None and (s == e or s not in sup):
-            raise ValueError(f"{period}: edition {e} supersedes "
-                             f"{'itself' if s == e else f'missing edition {s}'}")
-    children = {}
-    for e, s in sup.items():
-        if s is not None:
-            children.setdefault(s, []).append(e)
-    if any(len(c) > 1 for c in children.values()):
-        tips = sorted(e for e in sup if e not in children)
-        raise ValueError(f"{period}: supersedes chain has {len(tips)} tips "
-                         f"{tips}; order is ambiguous (fork)")
-    tip, seen = roots[0], {roots[0]}
-    while tip in children:
-        tip = children[tip][0]
-        if tip in seen:
-            break
-        seen.add(tip)
-    if seen != set(sup):
-        raise ValueError(f"{period}: the chain from root {roots[0]} reaches "
-                         f"{sorted(seen)} but editions {sorted(sup)} exist "
-                         "(cycle or disconnected editions)")
-    return tip
+    return core._chain_tip(cur.fetchall(), period)
 
 
 def cmd_ddl(_args):
@@ -357,7 +322,7 @@ def backfill(cur) -> list:
         cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
                     "WHERE period = %s", (period,))
         before = cur.fetchone()[0]
-        ed = insert_edition(cur, recs, period, **kw)
+        ed = _insert(cur, recs, period, **kw)
         cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
                     "WHERE period = %s AND edition = %s", (period, ed))
         n = cur.fetchone()[0]
@@ -783,7 +748,7 @@ def cmd_load(args):
             if not writing:
                 print("DRY RUN: nothing written (use --commit to insert)")
                 return
-            ed = insert_edition(
+            ed = _insert(
                 cur, recs, args.period, release_label=entry["release_label"],
                 published_date=published, source_url=entry["url"],
                 source_file=entry["file"], source_sha256=entry["sha256"],
@@ -903,11 +868,6 @@ def cmd_dryrun_all(args):
     print(f"wrote {path}")
 
 
-LIVE = "la_statutory_homelessness"
-LIVE_MEASURES = MEASURES[:6]
-LIVE_SUSPECT = MEASURES[6:]
-# columns refresh-latest may overwrite in the live table; nothing else changes
-REFRESH_COLS = LIVE_MEASURES + ("source_file", "extracted_at")
 W1_DIR = Path(__file__).resolve().parent / "verify" / "w1_live"
 # signals columns that legitimately move when a revised households_in_ta
 # reaches the current quarter or the prior-year quarter; data_quality is
@@ -919,47 +879,50 @@ NATIONAL_TA_COLS = {"ta_households_current", "ta_households_prev_year",
 
 
 # ---------------------------------------------------------------------------
-# Generic pieces (parameterised by table and column names so the S1b module
-# can reuse them): chain tips, live-vs-edition comparison, status, the
-# per-period before/after content hash.
+# Generic pieces (parameterised by table and column names; the S1b and RO4
+# modules and the verify scripts import them): thin adapters over
+# editions_core, with S1's signatures and S1's status keys. Called with S1's
+# own tables and columns they run on SPEC itself.
 # ---------------------------------------------------------------------------
+
+def _spec_for(live=LIVE, editions=TABLE, key_cols=("lad24cd",),
+              cols=LIVE_MEASURES, period_col="period",
+              expected_rows=None) -> "core.EditionSpec":
+    """SPEC when the arguments are S1's own; otherwise a spec for the core's
+    read-side functions with `cols` as the compared columns. It is never
+    used to create or write a table."""
+    if (live, editions, tuple(key_cols), tuple(cols), period_col,
+            expected_rows) == (LIVE, TABLE, ("lad24cd",), LIVE_MEASURES,
+                               "period", None):
+        return SPEC
+    return core.EditionSpec(
+        name="shared", live_table=live, editions_table=editions,
+        key_cols=tuple(key_cols), period_col=_ident(period_col),
+        value_cols=tuple((c, "integer") for c in cols),
+        refresh_cols=tuple(cols), fk_la_boundaries=False,
+        expected_rows_per_period=(None if expected_rows is None else
+                                  lambda _cur, p: expected_rows.get(p)))
+
 
 def latest_map(cur, live=LIVE, editions=TABLE, period_col="period") -> tuple:
     """(tips, new_periods, chain_errors) for the periods present in `live`.
 
     tips: {period: chain-tip edition}; new_periods: periods with no editions;
-    chain_errors: {period: message} where latest_edition raised ValueError.
+    chain_errors: {period: message} where the chain is invalid
+    (editions_core.latest_map, which also halts on a NULL live period).
     """
-    cur.execute(f"SELECT DISTINCT {_ident(period_col)} FROM public.{live} "
-                "ORDER BY 1")
-    tips, new, errors = {}, [], {}
-    for (p,) in cur.fetchall():
-        try:
-            tips[p] = latest_edition(cur, p, table=editions,
-                                     period_col=period_col)
-        except LookupError:
-            new.append(p)
-        except ValueError as e:
-            errors[p] = str(e)
-    return tips, new, errors
+    return core.latest_map(cur, _spec_for(live, editions,
+                                          period_col=period_col))
 
 
 def rows_differing(cur, live, editions, key_cols, cols, period, edition,
                    period_col="period") -> int:
     """Rows of `period` that are in only one of the live table and the given
-    edition, compared on key_cols + cols (NULL equals NULL)."""
-    sel = ", ".join(tuple(key_cols) + tuple(cols))
-    pc = _ident(period_col)
-    cur.execute(f"""SELECT
-        (SELECT COUNT(*) FROM (SELECT {sel} FROM public.{live} WHERE {pc} = %s
-                               EXCEPT SELECT {sel} FROM public.{editions}
-                               WHERE {pc} = %s AND edition = %s) a)
-      + (SELECT COUNT(*) FROM (SELECT {sel} FROM public.{editions}
-                               WHERE {pc} = %s AND edition = %s
-                               EXCEPT SELECT {sel} FROM public.{live}
-                               WHERE {pc} = %s) b)""",
-                (period, period, edition, period, edition, period))
-    return cur.fetchone()[0]
+    edition, compared on key_cols + cols (NULL equals NULL;
+    editions_core.rows_differing, EXCEPT ALL)."""
+    return core.rows_differing(
+        cur, _spec_for(live, editions, key_cols, cols, period_col),
+        period, edition)
 
 
 def classify_period(cur, live, editions, key_cols, cols, period, tip,
@@ -969,33 +932,16 @@ def classify_period(cur, live, editions, key_cols, cols, period, tip,
     current: live equals the chain tip. pending: live differs from the tip but
     equals an earlier edition, i.e. a newer edition has been recorded and not
     yet refreshed. drift: live differs from the tip and equals no stored
-    edition, so it was changed outside the editions machinery."""
-    if rows_differing(cur, live, editions, key_cols, cols, period, tip,
-                      period_col) == 0:
-        return "current", tip
-    cur.execute(f"SELECT DISTINCT edition FROM public.{editions} "
-                f"WHERE {_ident(period_col)} = %s AND edition <> %s "
-                "ORDER BY 1 DESC", (period, tip))
-    for (e,) in cur.fetchall():
-        if rows_differing(cur, live, editions, key_cols, cols, period, e,
-                          period_col) == 0:
-            return "pending", e
-    return "drift", None
+    edition, so it was changed outside the editions machinery
+    (editions_core.classify_period)."""
+    return core.classify_period(
+        cur, _spec_for(live, editions, key_cols, cols, period_col),
+        period, tip)
 
 
 def live_period_counts(cur, live=LIVE, period_col="period") -> dict:
-    cur.execute(f"SELECT {_ident(period_col)}, COUNT(*) FROM public.{live} "
-                "GROUP BY 1")
-    return dict(cur.fetchall())
-
-
-def modal_count(counts: dict) -> "int | None":
-    """Most common per-period row count (the larger on a tie): the expected
-    size of a period, derived from the data rather than typed in."""
-    if not counts:
-        return None
-    c = Counter(counts.values())
-    return max(c, key=lambda n: (c[n], n))
+    return core.live_period_counts(cur, _spec_for(live,
+                                                  period_col=period_col))
 
 
 def expected_authorities(cur, live=LIVE) -> "int | None":
@@ -1016,34 +962,17 @@ def status(cur, table_live=LIVE, table_editions=TABLE, key_cols=("lad24cd",),
                      the one derived from the data (or edition rows differ)
     ok is true only when all five are empty. expected_rows: optional
     {period: n} override; default is the most common per-period live count.
+
+    editions_core.status, with its keys mapped back to S1's names (drift ->
+    drift_periods, forked -> chain_errors) so format_status, the callers
+    and the verify gates read the same dict.
     """
-    tips, new, errors = latest_map(cur, table_live, table_editions, period_col)
-    drift, pending = [], []
-    for p, tip in tips.items():
-        kind, _ = classify_period(cur, table_live, table_editions, key_cols,
-                                  cols, p, tip, period_col)
-        if kind == "drift":
-            drift.append(p)
-        elif kind == "pending":
-            pending.append(p)
-    counts = live_period_counts(cur, table_live, period_col)
-    mode = modal_count(counts)
-    bad_counts = {}
-    for p, n in counts.items():
-        want = (expected_rows or {}).get(p, mode)
-        if n != want:
-            bad_counts[p] = (n, want)
-    for p, tip in tips.items():
-        cur.execute(f"SELECT COUNT(*) FROM public.{table_editions} "
-                    f"WHERE {_ident(period_col)} = %s AND edition = %s",
-                    (p, tip))
-        n = cur.fetchone()[0]
-        if n != counts.get(p) and p not in bad_counts:
-            bad_counts[p] = (counts.get(p), n)
-    ok = not (new or drift or pending or errors or bad_counts)
-    return {"new_periods": sorted(new), "drift_periods": sorted(drift),
-            "pending_refresh": sorted(pending), "chain_errors": errors,
-            "bad_counts": bad_counts, "periods": len(counts), "ok": ok}
+    st = core.status(cur, _spec_for(table_live, table_editions, key_cols,
+                                    cols, period_col, expected_rows))
+    return {"new_periods": st["new_periods"], "drift_periods": st["drift"],
+            "pending_refresh": st["pending_refresh"],
+            "chain_errors": st["forked"], "bad_counts": st["bad_counts"],
+            "periods": st["periods"], "ok": st["ok"]}
 
 
 def format_status(st: dict, label: str) -> str:
@@ -1073,11 +1002,15 @@ def period_hashes(cur, table, key_cols, exclude=("loaded_at",),
                   period_col="period") -> dict:
     """{period: (row count, md5)} of each period's content, rows ordered by
     key_cols, every column except `exclude` (as jsonb text, so NULLs, types
-    and column names all count)."""
+    and column names all count).
+
+    Kept here, not taken from the core: it returns (rows, md5) where the
+    core's returns md5 only, and the S1 and S1b verify scripts use it as a
+    check independent of the core's own refresh guard."""
     ex = "ARRAY[" + ", ".join(f"'{c}'" for c in exclude) + "]::text[]"
     order = ", ".join(f"t.{c}" for c in key_cols)
     cur.execute(f"""SELECT {_ident(period_col)}, COUNT(*),
-        md5(string_agg((to_jsonb(t) - {ex})::text, E'\\n' ORDER BY {order}))
+        md5(string_agg((to_jsonb(t) - {ex})::text, E'\n' ORDER BY {order}))
         FROM public.{table} t GROUP BY 1""")
     return {p: (n, h) for p, n, h in cur.fetchall()}
 
@@ -1088,19 +1021,9 @@ def guard_problems(full_before, full_after, kept_before, kept_after,
     loaded_at only. kept_*: period_hashes excluding the refresh columns (so
     loaded_at and every other column count). A period outside `intended`
     must be identical in full and in loaded_at; a period inside it may differ
-    only in the refresh columns."""
-    bad = []
-    for p in sorted(set(full_before) | set(full_after)):
-        if p in intended:
-            continue
-        if (full_before.get(p) != full_after.get(p)
-                or kept_before.get(p) != kept_after.get(p)):
-            bad.append(f"guard: {p} changed but was not being refreshed")
-    for p in sorted(intended):
-        if kept_before.get(p) != kept_after.get(p):
-            bad.append(f"guard: {p} changed outside the refresh columns "
-                       "(or its row count moved)")
-    return bad
+    only in the refresh columns (editions_core.guard_problems)."""
+    return core.guard_problems(full_before, full_after, kept_before,
+                               kept_after, intended)
 
 
 # ---------------------------------------------------------------------------
@@ -1124,7 +1047,7 @@ def _record_as_loaded(cur, period, expected) -> int:
     if len(loaded) != 1 or len(files) != 1:
         halt(f"{period}: live rows differ in loaded_at/source_file "
              f"({len(loaded)} dates, {len(files)} files)")
-    return insert_edition(
+    return _insert(
         cur, recs, period, release_label=LIVE_LABEL,
         published_date=loaded.pop(), source_url=None,
         source_file=files.pop(), source_sha256=live_text_sha256(recs),
@@ -1164,49 +1087,24 @@ def sync_new(cur, expected_authorities_n=None) -> list:
 
 
 def _plan(cur, accept_drift=()) -> tuple:
-    """({period: {edition, kind, rows}}, unaccepted drift periods)."""
-    tips, new, errors = latest_map(cur)
-    if new:
-        halt(f"periods with no editions {new}; run sync-new first")
-    if errors:
-        halt("invalid edition chain: " + "; ".join(
-            f"{p}: {m}" for p, m in errors.items()))
-    plan, drift = {}, []
-    for p, tip in tips.items():
-        kind, _ = classify_period(cur, LIVE, TABLE, ("lad24cd",),
-                                  LIVE_MEASURES, p, tip)
-        if kind == "current":
-            continue
-        if kind == "drift" and p not in accept_drift:
-            drift.append(p)
-        plan[p] = {"edition": tip, "kind": kind}
-    stray = sorted(set(accept_drift) - {p for p, v in plan.items()
-                                        if v["kind"] == "drift"})
-    if stray:
-        halt(f"--accept-drift {stray}: not drifted periods, nothing to accept")
-    diff = " OR ".join(f"l.{m} IS DISTINCT FROM e.{m}" for m in LIVE_MEASURES)
-    for p, v in plan.items():
-        cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} l
-                        JOIN public.{TABLE} e ON e.lad24cd = l.lad24cd
-                         AND e.period = l.period AND e.edition = %s
-                        WHERE l.period = %s AND ({diff}
-                          OR l.source_file IS DISTINCT FROM e.source_file)""",
-                    (v["edition"], p))
-        v["rows"] = cur.fetchone()[0]
-    return plan, drift
+    """({period: {edition, kind, rows, one_sided}}, unaccepted drift periods)
+    (editions_core._plan with SPEC: the same halts and messages; rows counts
+    the live rows whose six measures or source_file differ, as before)."""
+    return core._plan(cur, SPEC, accept_drift)
 
 
 def _unrepairable(plan) -> list:
     """Planned periods that differ from their edition but have no row to
     update (rows missing from, or extra in, the live table): an UPDATE of the
-    refresh columns cannot repair them."""
+    refresh columns cannot repair them. Kept for the refresh-latest preview
+    so its output is unchanged; refresh_latest itself uses the core's
+    stricter rule (also any key in only one of live and the edition)."""
     return sorted(p for p, v in plan.items() if not v["rows"])
 
 
 def refresh_counts(cur, accept_drift=()) -> dict:
     """{period: rows refresh_latest would write} (read-only)."""
-    plan, _ = _plan(cur, accept_drift)
-    return {p: v["rows"] for p, v in sorted(plan.items())}
+    return core.refresh_counts(cur, SPEC, accept_drift)
 
 
 def _w1_select(filename, table) -> str:
@@ -1314,63 +1212,40 @@ def refresh_latest(cur, accept_drift=(), _after_update_hook=None) -> dict:
 
     Result: {'updated': {period: rows}, 'rows': n, 'drift_accepted': [...],
     'w1': summary or None, 'reproduction': [...]}.
+
+    The plan, UPDATE, hash guard and after-checks are
+    editions_core.refresh_latest with SPEC (in the core's own savepoint,
+    which it rolls back if they fail). S1's part: the W1 'before' snapshot
+    is taken here, before the core is called, when there is something to
+    refresh; the W1 'after' snapshot and the equivalence check run in the
+    core's after-update hook (after the test seam above), and their problems
+    halt here once the core's own checks have passed, so a guard failure is
+    still reported first. reproduction_update then runs in the caller's
+    transaction, as before.
     """
     plan, drift = _plan(cur, accept_drift)
-    if drift:
-        halt("live differs from the latest edition and matches no stored "
-             f"edition for {drift}: changed outside the editions tables. "
-             "Load it as an edition, or re-run with --accept-drift PERIOD to "
-             "overwrite it with the latest edition")
-    stuck = _unrepairable(plan)
-    if stuck:
-        halt(f"{stuck} differ from the latest edition in rows present in only "
-             "one of them; an update of the refresh columns cannot repair that")
-    result = {"updated": {}, "rows": 0,
-              "drift_accepted": sorted(p for p, v in plan.items()
-                                       if v["kind"] == "drift"),
-              "w1": None, "reproduction": []}
-    todo = {p: v for p, v in plan.items() if v["rows"]}
-    if not todo:
+    w1 = {"before": None}
+    if plan and not drift and not core._unrepairable(plan):
+        w1["before"] = w1_snapshot(cur)
+
+    def hook(c, _core_plan):
+        if _after_update_hook is not None:
+            _after_update_hook(c)
+        if w1["before"] is None:
+            halt("refresh-latest: the W1 'before' snapshot was not taken")
+        w1["bad"], w1["summary"] = check_w1_equivalence(w1["before"],
+                                                        w1_snapshot(c))
+
+    result = core.refresh_latest(cur, SPEC, accept_drift,
+                                 _after_update_hook=hook)
+    result["w1"], result["reproduction"] = None, []
+    if "summary" not in w1:
         return result
-    refreshed = set(todo)
-    key = ("period", "lad24cd")
-    full_b = period_hashes(cur, LIVE, key)
-    kept_b = period_hashes(cur, LIVE, key, exclude=REFRESH_COLS)
-    w1_b = w1_snapshot(cur)
-    sets = ", ".join(f"{m} = e.{m}" for m in LIVE_MEASURES)
-    diff = " OR ".join(f"l.{m} IS DISTINCT FROM e.{m}" for m in LIVE_MEASURES)
-    pairs = tuple((p, v["edition"]) for p, v in sorted(todo.items()))
-    cur.execute(f"""UPDATE public.{LIVE} l SET {sets},
-                    source_file = e.source_file, extracted_at = e.loaded_at
-                    FROM public.{TABLE} e
-                    WHERE e.lad24cd = l.lad24cd AND e.period = l.period
-                      AND (e.period, e.edition) IN %s
-                      AND ({diff} OR l.source_file IS DISTINCT FROM e.source_file)""",
-                (pairs,))
-    n = cur.rowcount
-    expected = sum(v["rows"] for v in todo.values())
-    if _after_update_hook is not None:
-        _after_update_hook(cur)
-    full_a = period_hashes(cur, LIVE, key)
-    kept_a = period_hashes(cur, LIVE, key, exclude=REFRESH_COLS)
-    bad = guard_problems(full_b, full_a, kept_b, kept_a, refreshed)
-    if n != expected:
-        bad.append(f"wrote {n} rows, expected {expected}")
-    for p, v in sorted(todo.items()):
-        k = rows_differing(cur, LIVE, TABLE, ("lad24cd",), LIVE_MEASURES, p,
-                           v["edition"])
-        if k:
-            bad.append(f"{p}: {k} rows still differ from edition "
-                       f"{v['edition']} after the refresh")
-    w1_bad, summary = check_w1_equivalence(w1_b, w1_snapshot(cur))
-    bad += [f"W1: {x}" for x in w1_bad]
-    if bad:
+    if w1["bad"]:
         halt("refresh-latest failed its before/after checks, rolled back: "
-             + "; ".join(bad[:6]))
-    result["updated"] = {p: v["rows"] for p, v in sorted(todo.items())}
-    result["rows"] = n
-    result["w1"] = summary
-    result["reproduction"] = reproduction_update(cur, sorted(refreshed))
+             + "; ".join([f"W1: {x}" for x in w1["bad"]][:6]))
+    result["w1"] = w1["summary"]
+    result["reproduction"] = reproduction_update(cur, sorted(result["updated"]))
     return result
 
 
@@ -1884,10 +1759,10 @@ def load_new(cur, period, recs, *, release_label, published_date, source_url,
         halt(f"load-new {period}: {path} not found, so the independent "
              "re-read of the raw cells cannot run")
 
-    ed = insert_edition(cur, recs, period, release_label=release_label,
-                        published_date=published_date, source_url=source_url,
-                        source_file=source_file, source_sha256=source_sha256,
-                        supersedes=None)
+    ed = _insert(cur, recs, period, release_label=release_label,
+                 published_date=published_date, source_url=source_url,
+                 source_file=source_file, source_sha256=source_sha256,
+                 supersedes=None)
     cols = ", ".join(("lad24cd", "period") + LIVE_MEASURES
                      + ("source_file", "extracted_at"))
     cur.executemany(

@@ -404,14 +404,12 @@ class EditionsCoreDB(unittest.TestCase):
         order are known to differ and are not compared."""
         import dataclasses
         import ro4_editions
+        import s1_editions
         import s1b_editions
-        specs = {"s1": None, "s1b": s1b_editions.SPEC,
+        specs = {"s1": s1_editions.SPEC, "s1b": s1b_editions.SPEC,
                  "ro4": ro4_editions.SPEC}
         for name, spec in specs.items():
             with self.subTest(spec=name):
-                if spec is None:
-                    self.skipTest(f"{name}: no SPEC declared yet (Task 7 "
-                                  "moves S1 onto the core)")
                 copy = dataclasses.replace(
                     spec, name=f"zz_core_{name}",
                     editions_table=f"zz_core_{name}_editions")

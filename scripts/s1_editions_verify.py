@@ -39,7 +39,7 @@ from s1_editions import (TABLE, MEASURES, STALE_PERIODS,  # noqa: E402
                          check_no_suppressed_zero, check_registry,
                          check_support_needs, check_w1_equivalence,
                          A1_MEASURES, MANIFEST_FIELDS, check_a1_raw, classify_a1_cell,
-                         expected_authorities, insert_edition, latest_edition,
+                         expected_authorities, _insert, latest_edition,
                          load_new, prepare_new_quarter,
                          LIVE_LABEL, live_text_sha256, modal_count,
                          period_hashes,
@@ -162,8 +162,8 @@ def _chain(cur, specs):
     in edition order. Distinct values and a distinct sha per edition."""
     lad = _first_lad(cur)
     for i, (sup, d, v) in enumerate(specs):
-        insert_edition(cur, _rec(lad, v), "2099Q1",
-                       **dict(_kw("t", d, f"h{i}"), supersedes=sup))
+        _insert(cur, _rec(lad, v), "2099Q1",
+                **dict(_kw("t", d, f"h{i}"), supersedes=sup))
 
 
 def gate_3a_chain_tip(cur):
@@ -184,8 +184,8 @@ def gate_3b_fork_raises(cur):
         return report("3b", name, False, f"{TABLE} absent")
 
     def body(cur):
-        _chain(cur, [(None, date(2099, 1, 1), 1), (1, date(2099, 2, 1), 2),
-                     (1, date(2099, 3, 1), 3)])
+        # planted directly: the loader's writer refuses a fork
+        _raw_chain(cur, [(1, None), (2, 1), (3, 1)])
         return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
     ok, msg = _in_savepoint(cur, body)
     report("3b", name, ok and "tips" in msg, msg)
@@ -211,8 +211,9 @@ def gate_3f_two_roots_raise(cur):
         return report("3f", name, False, f"{TABLE} absent")
 
     def body(cur):
-        # identical values and date: the old date/value rule accepted this
-        _chain(cur, [(None, date(2099, 1, 1), 1), (None, date(2099, 1, 1), 1)])
+        # identical values: the old date/value rule accepted this; planted
+        # directly, as the loader's writer refuses a second root
+        _raw_chain(cur, [(1, None), (2, None)])
         return _raises(lambda: latest_edition(cur, "2099Q1"), ValueError)
     ok, msg = _in_savepoint(cur, body)
     report("3f", name, ok and "no single root" in msg, msg)
@@ -233,7 +234,8 @@ def gate_3g_single_edition(cur):
 
 def _raw_chain(cur, rows):
     """Insert editions of 2099Q1 directly with arbitrary supersedes values
-    (insert_edition would refuse them); rows = [(edition, supersedes)]."""
+    (the loader's writer, _insert, would refuse them); rows = [(edition,
+    supersedes)]."""
     lad = _first_lad(cur)
     for ed, sup in rows:
         cur.execute(f"""INSERT INTO public.{TABLE} (lad24cd, period, edition,
@@ -273,8 +275,8 @@ def gate_3c_empty_recs(cur):
         return report("3c", name, False, f"{TABLE} absent")
 
     def body(cur):
-        r = _raises(lambda: insert_edition(cur, [], "2099Q1",
-                                           **_kw("t", None, "h0")), SystemExit)
+        r = _raises(lambda: _insert(cur, [], "2099Q1",
+                                    **_kw("t", None, "h0")), SystemExit)
         cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
                     "WHERE period = '2099Q1'")
         return r, cur.fetchone()[0]
@@ -289,13 +291,13 @@ def gate_3d_bad_supersedes(cur):
 
     def body(cur):
         lad = _first_lad(cur)
-        insert_edition(cur, _rec(lad, 1), "2099Q1",
-                       **_kw("t", date(2099, 1, 1), "h0"))
+        _insert(cur, _rec(lad, 1), "2099Q1",
+                **_kw("t", date(2099, 1, 1), "h0"))
         bad = dict(_kw("t", date(2099, 2, 1), "h1"), supersedes=7)
-        r = _raises(lambda: insert_edition(cur, _rec(lad, 2), "2099Q1", **bad),
+        r = _raises(lambda: _insert(cur, _rec(lad, 2), "2099Q1", **bad),
                     SystemExit)
         good = dict(_kw("t", date(2099, 2, 1), "h1"), supersedes=1)
-        ed = insert_edition(cur, _rec(lad, 2), "2099Q1", **good)
+        ed = _insert(cur, _rec(lad, 2), "2099Q1", **good)
         cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
                     "WHERE period = '2099Q1'")
         return r, ed, cur.fetchone()[0]
@@ -541,11 +543,11 @@ def _fake_edition(cur, period, mutate=None, *, file="gate-fake.ods") -> int:
     if mutate:
         mutate(maps)
     recs = [dict(lad24cd=k, **v) for k, v in maps.items()]
-    return insert_edition(cur, recs, period, release_label="gate-fake",
-                          published_date=date(2099, 1, 1), source_url=None,
-                          source_file=file,
-                          source_sha256=f"gate-fake-{period}-{tip}",
-                          supersedes=tip)
+    return _insert(cur, recs, period, release_label="gate-fake",
+                   published_date=date(2099, 1, 1), source_url=None,
+                   source_file=file,
+                   source_sha256=f"gate-fake-{period}-{tip}",
+                   supersedes=tip)
 
 
 def _bump(col, by=1, lad=LAD):
@@ -1176,7 +1178,7 @@ def gate_22_load_new_refuses_existing(cur):
         return h, _counts(cur, real)
 
     def editions_only(cur):
-        insert_edition(cur, _new_recs(cur), NEW, **dict(
+        _insert(cur, _new_recs(cur), NEW, **dict(
             NEW_KW, supersedes=None))
         return _halts(lambda: _new(cur, _new_recs(cur))), _counts(cur)
 
