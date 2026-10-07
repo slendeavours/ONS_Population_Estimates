@@ -433,7 +433,7 @@ def _diff_maps(new_map: dict, old_map: dict) -> dict:
         "cells_changed": cells,
         "no_change": not changed_auth and not only_new and not only_old,
         "transitions": {m: dict(c) for m, c in transitions.items() if c},
-        "transition_totals": {t: totals.get(t, 0) for t in (
+        "transition_totals": {t: totals.get(t, 0) for t in (  # not a source value
             "zero -> NULL", "NULL -> zero", "value -> value",
             "NULL -> value", "value -> NULL")},
         "only_in_new": only_new,

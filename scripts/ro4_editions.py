@@ -314,7 +314,7 @@ def check_coverage(cur) -> tuple:
             bad.append(f"{fy}: no edition 1")
     for fy, e in sorted(eds.items()):
         for k, v in sorted(e.items()):
-            n1 += v[1] if k == 1 else 0
+            n1 += v[1] if k == 1 else 0  # not a source value
             if v != (want, want):
                 bad.append(f"{fy} ed{k}: {v[0]} authorities/{v[1]} rows, "
                            f"expected {want}/{want}")
