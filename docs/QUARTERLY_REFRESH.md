@@ -48,8 +48,23 @@ says `ACTION NEEDED`, read the line above it and go to the matching case:
 ## Step 2. A NEW quarter has been published
 
 1. **Load it into the live tables as before.** S1: the n8n S1 workflow. S1b:
-   `python scripts/s1b_support_needs_build.py --load` (add `--period 2026Q1`,
-   for example, to load one quarter). Downloading a file needs Scott's permission.
+   `python scripts/s1b_support_needs_build.py --load --period 2026Q1` (use the
+   new quarter).
+
+   **Always give `--period` for S1b. Without it the builder reloads all 11
+   quarters from the release-page files, overwrites the revised quarters in the
+   live table with the older release-page values and resets `loaded_at`.**
+   (`--period` can be repeated to load several quarters.)
+
+   The builder only knows the quarters listed in its `RELEASES` dictionary
+   (`scripts/s1b_support_needs_build.py`, around line 84, which currently ends
+   at `"2025Q4"`). A new quarter needs **one line added to `RELEASES`** before
+   `--period 2026Q1` will run (otherwise it halts `unknown period`). The line is
+   the release-page slug and the publisher's calendar quarter, in the pattern of
+   the others, for example:
+   `"2026Q1": ("april-to-june-2026", "2026-06"),`. Check the slug against the
+   release page. This is a code change: commit it.
+   Downloading a file needs Scott's permission.
 2. **Record each new quarter as edition 1 ('as loaded').** For each table:
    ```
    python scripts/s1_editions.py sync-new               # dry run
@@ -59,10 +74,11 @@ says `ACTION NEEDED`, read the line above it and go to the matching case:
    python scripts/s1b_editions.py sync-new --simulate
    python scripts/s1b_editions.py sync-new --commit
    ```
-   The dry run lists `periods with no editions`. It is safe to repeat: a
-   second run finds nothing. It refuses (`HALT`) a quarter that is short: one
-   authority missing, one cell missing, or (S1b) a different category set from
-   the previous quarter. If the category set changed because the publisher
+   The dry run only lists `periods with no editions`. It is safe to repeat: a
+   second run finds nothing. `--simulate` and `--commit` refuse (`HALT`) a
+   quarter that is short: one authority missing, one cell missing, or (S1b) a
+   different category set from the previous quarter. (The dry run does not
+   check; run `--simulate` before `--commit`.) If the category set changed because the publisher
    changed the layout, confirm that against the release notes and add
    `--accept-categories 2026Q1` (S1b only). `--expected-authorities N` is only
    needed the very first time a table has no editions at all; leave it out.
@@ -89,39 +105,51 @@ order.
    | `last_modified` | The `Last-Modified` header of the download, as `YYYY-MM-DDTHH:MM:SSZ`: `curl -sI <url>` shows it (convert to UTC). It becomes the edition's informational published date. |
 
    The loader refuses a file whose checksum does not match the manifest.
-3. **Load it as a new edition, for S1 and for S1b** (rehearse first):
+3. **S1 first: load the revised file as a new edition** (rehearse first):
    ```
    python scripts/s1_editions.py load --period 2026Q1 --manifest-label registry
    python scripts/s1_editions.py load --period 2026Q1 --manifest-label registry --simulate
    python scripts/s1_editions.py load --period 2026Q1 --manifest-label registry --commit
-   python scripts/s1b_editions.py load --period 2026Q1 --manifest-label registry
-   python scripts/s1b_editions.py load --period 2026Q1 --manifest-label registry --simulate
-   python scripts/s1b_editions.py load --period 2026Q1 --manifest-label registry --commit
    ```
    If the quarter has several `registry` entries, `--manifest-label` halts
    with that message; use `--manifest-entry N` instead (N counts from 0).
    The dry run prints the difference from the previous edition: read it. A
    `--commit` inserts one new edition (append-only, cannot be undone) after the
    quarter's own checks pass. The live table is **not** changed yet.
-4. **Check:** `status` now reports `NEWER EDITION NOT YET IN LIVE` for the
-   quarter.
-5. **Refresh the live table** (S1 first, then S1b):
+4. **S1: refresh the live table.** `status` now reports `NEWER EDITION NOT YET
+   IN LIVE` for the quarter.
    ```
    python scripts/s1_editions.py refresh-latest             # lists the rows it would write
    python scripts/s1_editions.py refresh-latest --simulate
    python scripts/s1_editions.py refresh-latest --commit
-   python scripts/s1b_editions.py refresh-latest
-   python scripts/s1b_editions.py refresh-latest --simulate
-   python scripts/s1b_editions.py refresh-latest --commit
    ```
    The dry run must name only the quarter you loaded. If it names others,
    stop: each should be explained by a revision you meant to load. A `HALT`
    with `guard:` means a quarter that was not being refreshed would have
    changed, so everything was rolled back; do not work around it, investigate.
    S1 will also halt if the workflow 1 signal outputs would move for an
-   authority whose temporary accommodation figures did not change.
-6. **Check:** both `status` commands report `OK`.
-7. Re-run workflow 1 and re-export the map data as for any other change to S1.
+   authority whose temporary accommodation figures did not change. A
+   `file_url` in `homelessness_quarter_urls` that differs from the edition's
+   source URL is printed as a `NOTE` and recorded; it is not a failure (only a
+   cell-by-cell difference from the edition's file is).
+5. **Then S1b: load the revised file as a new edition.** The S1b load
+   cross-checks its support-need totals against the live S1
+   `support_needs_total`, so the S1 revision must already be in the live S1
+   table (steps 3 and 4) or the S1b load halts at that check.
+   ```
+   python scripts/s1b_editions.py load --period 2026Q1 --manifest-label registry
+   python scripts/s1b_editions.py load --period 2026Q1 --manifest-label registry --simulate
+   python scripts/s1b_editions.py load --period 2026Q1 --manifest-label registry --commit
+   ```
+6. **S1b: refresh the live table**, with the same reading of the dry run as
+   in step 4:
+   ```
+   python scripts/s1b_editions.py refresh-latest
+   python scripts/s1b_editions.py refresh-latest --simulate
+   python scripts/s1b_editions.py refresh-latest --commit
+   ```
+7. **Check:** both `status` commands report `OK`.
+8. Re-run workflow 1 and re-export the map data as for any other change to S1.
 
 ## Step 4. `status` reports DRIFT
 
@@ -153,12 +181,26 @@ locks on the editions tables, so a second one waits or fails.
 | --- | --- | --- |
 | 1 | `python scripts/verify_source_registry.py` | a few seconds |
 | 2 | `python scripts/verify_national_ta.py` | under a second |
-| 3 | `python scripts/s1_editions_verify.py` | not timed; wait for it to finish |
+| 3 | `python scripts/s1_editions_verify.py` | about 1.5 minutes |
 | 4 | `python scripts/s1b_support_needs_verify.py` | about 3 minutes |
-| 5 | `python scripts/s1b_editions_verify.py` | **about 14 minutes** (gate 7 re-reads every raw file) |
+| 5 | `python scripts/s1b_editions_verify.py` | about 4 minutes (3 min 59 s measured) |
 
-Each exits 0 when everything passes; any `FAIL` exits non-zero. They leave the
-tables unchanged (they finish by rolling back).
+Each exits 0 when everything passes; any `FAIL` exits non-zero. Never run two
+at once: a parallel run waits on database locks held by the other (an earlier
+figure of about 14 minutes for the last one was that wait, not its real run
+time). `verify_national_ta.py`, `s1_editions_verify.py`, `s1b_editions_verify.py`
+and `s1b_support_needs_verify.py` leave the tables unchanged (they finish by
+rolling back). **`verify_source_registry.py` is different: its gate 9
+regenerates the registry notes and commits them.**
+
+## A change in the number of authorities
+
+Counts are derived from the data, so a quarter with a different number of
+authorities from the others is refused, not absorbed. If the number of
+authorities genuinely changes (a local government reorganisation), there is
+**no override flag yet**: handling it is a code change (the derived expected
+count and the lad24cd lookups), to be made and reviewed before loading that
+quarter.
 
 ## What is still manual
 

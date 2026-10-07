@@ -53,9 +53,19 @@ them when comfortable.
 
 ## Verification run time
 
-`python scripts/s1b_editions_verify.py` takes about **14 minutes** (gate 7 re-reads the raw files);
-`s1b_support_needs_verify.py` about 3 minutes. Run the verify scripts one at a time: the seeded gates take
-exclusive locks.
+Measured: `python scripts/s1b_editions_verify.py` takes about **4 minutes** (3 min 59 s, exit 0, 38 PASS),
+`s1_editions_verify.py` about 1.5 minutes, `s1b_support_needs_verify.py` about 3 minutes. Run the verify
+scripts one at a time, never in parallel: the seeded gates take exclusive locks, and an earlier figure of
+14 minutes was the time spent waiting for locks held by runs in parallel, not the script's own time.
+
+## Reproduction check
+
+S1 `refresh-latest` re-extracts each refreshed quarter's edition file (when it is in the manifest) and
+compares it cell by cell with the live layer; that comparison alone decides `reproduces_from_source`. A
+`file_url` in `homelessness_quarter_urls` that differs from the edition's `source_url` is printed and
+recorded in the note, not treated as a failure (it differs for 2025Q1 to Q4, and a revised file loaded from
+the manifest has a new URL). An accepted drift that is only a missing or extra live row halts, since
+updating the refresh columns cannot repair it.
 
 ## Still open
 
