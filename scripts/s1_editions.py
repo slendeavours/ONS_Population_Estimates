@@ -57,6 +57,35 @@ Subcommands:
         # both manifest candidates of 2023Q2-2024Q4 vs stored edition 1 and
         # vs each other, as markdown; writes no table
 
+New-quarter procedure (load-new). The operator adds one object to
+scripts/s1_editions_manifest.json with exactly these fields, all required
+(load-new halts naming any that is missing):
+    period                  e.g. 2026Q1 (financial-year quarter; April to
+                            June 2026 is 2026Q1, January to March 2026 is
+                            2025Q4)
+    file                    <period>_<original name>, the name the file is
+                            saved under in data/raw/s1b_a3/ (gitignored)
+    url                     where it was published (becomes source_url)
+    sha256                  of the saved file, e.g.
+                            python -c "import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" FILE
+                            or sha256sum FILE
+    release_label           how the file was found (e.g. 'release page')
+    last_modified           the publisher's timestamp, e.g. 2026-10-29T09:30:00Z
+    release_label_actual    free text that must contain the release date as
+                            printed on the file's own cover, 'D Month YYYY'
+                            (e.g. 'April to June 2026 release, released 29
+                            October 2026'); it becomes the edition's
+                            release_label (unlike 'Original', 'Revised',
+                            'registry' or 'as loaded')
+    published_date_actual   that same date, ISO yyyy-mm-dd; it becomes the
+                            edition's published_date
+The loader opens the file, reads its own Cover/Contents sheet and refuses unless
+the period and date agree with the entry. Then: `load-new ... ` (dry run, runs
+the database gates and rolls back), `--simulate`, then `--commit`.
+Independent raw-cell re-reads run inside the transaction and cover all six
+stored measures: households_in_ta (TA1 cells), support_needs_total (A3 cells)
+and total_assessments, owed_duty, prevention_duty, relief_duty (A1 cells).
+
 Helpers imported by later steps: sha256_file, create_schema, insert_edition,
 latest_edition, diff_editions, diff_records, and the table-parameterised
 latest_map, rows_differing, classify_period, status, period_hashes,
@@ -571,7 +600,8 @@ def edition_source_path(cur, period, edition):
     cur.execute(f"""SELECT DISTINCT source_file FROM public.{TABLE}
                     WHERE period = %s AND edition = %s""", (period, edition))
     files = [r[0] for r in cur.fetchall()]
-    path = RAW_DIR / files[0] if len(files) == 1 else None
+    path = (RAW_DIR / files[0] if len(files) == 1 and files[0] is not None
+            else None)
     return (path if path is not None and path.exists() else None), files
 
 
@@ -1489,6 +1519,8 @@ def cmd_refresh_latest(args):
 # load-new: a brand-new quarter, loaded through the editions machinery
 # ---------------------------------------------------------------------------
 
+PROCEDURE = __doc__[__doc__.index("New-quarter procedure"):
+                   __doc__.index("Helpers imported by later steps")]
 LAYOUT_TITLE = "statutory homelessness: detailed local authority-level tables"
 MONTH_NUMBER = {m: i for i, m in enumerate(
     ("january", "february", "march", "april", "may", "june", "july",
@@ -1646,6 +1678,79 @@ def check_cover(path: Path, period: str, entry: dict) -> list:
     return bad
 
 
+A1_MEASURES = ("total_assessments", "owed_duty", "prevention_duty",
+               "relief_duty")
+# the markers the publisher uses for a suppressed / not-available cell; this
+# list is the A1 re-read's own and is not shared with the extractor
+A1_MARKERS = frozenset(("", "-", "..", ":", "*", "x", "[x]", "[c]", "[z]",
+                        "[low]", "n/a"))
+
+
+def classify_a1_cell(cell) -> tuple:
+    """('suppressed', None) for a marker or blank, ('number', n) for a numeric
+    cell (rounded as the publisher's rounded figures are stored), else
+    ('unrecognised', None). Deliberately independent of the extractor's num."""
+    t = str(cell if cell is not None else "").strip().lower()
+    if t in A1_MARKERS:
+        return "suppressed", None
+    try:
+        return "number", int(round(float(t.replace(",", ""))))
+    except ValueError:
+        return "unrecognised", None
+
+
+def raw_a1_cells(path) -> dict:
+    """lad24cd -> {measure: published cell text} for the four A1 measures of
+    one file. Shares only the column resolution (header text) and the code
+    recode with the extractor; the cell text is kept as published."""
+    from s1_extract_ods import (LA_CODE, COLUMN_LABELS, code_resolution,
+                                read_sheets, resolve_columns)
+    rows = read_sheets(path, {"A1"})["A1"]
+    idx = resolve_columns(rows, COLUMN_LABELS["A1"], "A1")
+    _, recode = code_resolution()
+    out = {}
+    for row in rows:
+        code = (next(iter(row), "") or "").strip()
+        if LA_CODE.fullmatch(code):
+            out[recode.get(code, code)] = {
+                m: (row[j] if j < len(row) else "") for m, j in idx.items()}
+    return out
+
+
+def check_a1_raw(cur, period, edition, raw=None) -> tuple:
+    """The independent raw-cell gate for the four A1 measures
+    (total_assessments, owed_duty, prevention_duty, relief_duty) of one
+    edition: each stored value must equal its own classification of the
+    published cell (marker -> NULL, number -> that number, so a stored 0 needs
+    a published 0). raw ({lad: {measure: cell}}) defaults to a re-read of the
+    edition's source file. -> (problems, rows, zeros)."""
+    tag = f"{period} ed{edition}"
+    if raw is None:
+        path, files = edition_source_path(cur, period, edition)
+        if path is None:
+            return [f"{tag}: source file {files} not found in raw dir"], 0, 0
+        raw = raw_a1_cells(path)
+    cur.execute(f"""SELECT lad24cd, {', '.join(A1_MEASURES)} FROM
+                    public.{TABLE} WHERE period = %s AND edition = %s""",
+                (period, edition))
+    bad, n, zeros = [], 0, 0
+    for lad, *stored in cur.fetchall():
+        n += 1
+        cells = raw.get(lad, {})
+        for m, val in zip(A1_MEASURES, stored):
+            cell = cells.get(m)
+            kind, want = classify_a1_cell(cell)
+            if val == 0:
+                zeros += 1
+            if kind == "unrecognised":
+                bad.append(f"{tag} {lad} {m}: unrecognised A1 cell {cell!r}")
+            elif val != want:
+                bad.append(f"{tag} {lad} {m}: stored {val}, A1 cell "
+                           f"{cell!r}" + (" (suppressed)"
+                                          if kind == "suppressed" else ""))
+    return bad, n, zeros
+
+
 def _resolve_expected(cur, given) -> int:
     """Authorities per quarter: the count derived from the live periods, or
     --expected-authorities where nothing can be derived (the same rule as
@@ -1682,7 +1787,8 @@ def require_new_period(cur, period) -> None:
 
 def load_new(cur, period, recs, *, release_label, published_date, source_url,
              source_file, source_sha256, expected_authorities=None,
-             ta1_cells=None, a3_totals=None, quarter_label=None) -> dict:
+             ta1_cells=None, a3_totals=None, a1_cells=None,
+             quarter_label=None) -> dict:
     """Record a brand-new quarter: file-backed edition 1, the live rows and
     the homelessness_quarter_urls row, then run the gates; halt on any
     failure (the caller rolls back, nothing is committed here).
@@ -1696,7 +1802,12 @@ def load_new(cur, period, recs, *, release_label, published_date, source_url,
     households_in_ta equals the re-read of the raw cell (ta1_cells defaults to
     the file's TA1 sheet, {lad: (cell, value)}); support_needs_total equals the
     independent A3 re-read (a3_totals defaults to the file's A3 sheet); the
-    live rows equal edition 1 on every refresh column with the *_suspect
+    four A1 measures (total_assessments, owed_duty, prevention_duty,
+    relief_duty) equal their own classification of the published A1 cells
+    (a1_cells defaults to the file's A1 sheet, {lad: {measure: cell}}).
+    Coverage of the independent raw re-reads: households_in_ta (TA1),
+    support_needs_total (A3) and the four A1 measures, i.e. all six measures
+    that are stored; the *_suspect columns are never written. The live rows equal edition 1 on every refresh column with the *_suspect
     columns NULL; status is clean. The quarter row is inserted if absent
     (needs quarter_label) or, if present, only marked loaded = true,
     loaded_at = now()."""
@@ -1732,7 +1843,8 @@ def load_new(cur, period, recs, *, release_label, published_date, source_url,
         halt(f"load-new {period}: no homelessness_quarter_urls row and no "
              "quarter_label to create one with")
     path = RAW_DIR / source_file
-    if (ta1_cells is None or a3_totals is None) and not path.exists():
+    if (ta1_cells is None or a3_totals is None or a1_cells is None) \
+            and not path.exists():
         halt(f"load-new {period}: {path} not found, so the independent "
              "re-read of the raw cells cannot run")
 
@@ -1771,6 +1883,10 @@ def load_new(cur, period, recs, *, release_label, published_date, source_url,
     problems += check_support_needs(
         cur, period, ed, expected=a3_totals if a3_totals is not None
         else a3_expected(cur, path), expected_rows=want)
+    p1, _, a1_zeros = check_a1_raw(
+        cur, period, ed, raw=a1_cells if a1_cells is not None
+        else raw_a1_cells(path))
+    problems += p1
     live_diff = rows_differing(cur, LIVE, TABLE, ("lad24cd",), LIVE_MEASURES,
                                period, ed)
     if live_diff:
@@ -1798,8 +1914,13 @@ def load_new(cur, period, recs, *, release_label, published_date, source_url,
              + "; ".join(problems[:5]))
     cells = {m: sum(1 for r in recs if r.get(m) is None) for m in LIVE_MEASURES}
     return {"period": period, "edition": ed, "rows": len(recs),
-            "live_rows": n_live, "null_cells": cells, "ta_zeros": zeros,
+            "live_rows": n_live, "null_cells": cells, "ta_zeros": zeros, "a1_zeros": a1_zeros,
             "quarter_row": "marked loaded" if urls_row else "inserted"}
+
+
+MANIFEST_FIELDS = ("period", "file", "url", "sha256", "release_label",
+                   "last_modified", "release_label_actual",
+                   "published_date_actual")
 
 
 def prepare_new_quarter(entry, period, expected) -> tuple:
@@ -1807,12 +1928,18 @@ def prepare_new_quarter(entry, period, expected) -> tuple:
     entry carries the actual-release fields; the file's sha256 matches; the
     file's own front sheet agrees with the period and the entry; the
     extraction has exactly `expected` authorities. -> (recs, path, cover)."""
+    missing = [k for k in MANIFEST_FIELDS if not entry.get(k)]
+    if missing:
+        halt(f"manifest entry for {entry.get('file', '<no file>')} is missing "
+             f"{missing}; a load-new entry needs {list(MANIFEST_FIELDS)} (see "
+             "the load-new procedure in the module docstring)")
+    try:
+        date.fromisoformat(entry["published_date_actual"])
+    except ValueError:
+        halt(f"{entry['file']}: published_date_actual "
+             f"{entry['published_date_actual']!r} is not an ISO yyyy-mm-dd date")
     if entry["period"] != period:
         halt(f"manifest entry is {entry['period']}, not {period}")
-    for k in ("release_label_actual", "published_date_actual"):
-        if not entry.get(k):
-            halt(f"{entry['file']}: manifest entry has no {k}; record what "
-                 "the file's front sheet says before loading")
     path = RAW_DIR / entry["file"]
     if not path.exists():
         halt(f"{path} not found")
@@ -1841,9 +1968,8 @@ def cmd_load_new(args):
             halt(f"--manifest-entry {args.manifest_entry} outside "
                  f"0..{len(manifest) - 1}")
         entry = manifest[args.manifest_entry]
-    from _db import get_conn, get_readonly_conn
-    writing = args.commit or args.simulate
-    conn = get_conn() if writing else get_readonly_conn()
+    from _db import get_conn
+    conn = get_conn()  # the dry run runs the database gates too, then rolls back
     try:
         with conn.cursor() as cur:
             require_new_period(cur, args.period)
@@ -1858,9 +1984,6 @@ def cmd_load_new(args):
                   f"{cover['period']}, released {cover['released']}\n"
                   f"  {len(recs)} authorities (expected {want}); NULL cells "
                   f"{nulls}; real zeros {zeros}")
-            if not writing:
-                print("DRY RUN: nothing written (use --simulate or --commit)")
-                return
             res = load_new(
                 cur, args.period, recs,
                 release_label=entry["release_label_actual"],
@@ -1878,10 +2001,12 @@ def cmd_load_new(args):
                   "transaction")
         else:
             conn.rollback()
-            print("SIMULATION: gates passed, ROLLED BACK (nothing persisted)")
+            print("SIMULATION: gates passed, ROLLED BACK (nothing persisted)"
+                  if args.simulate else
+                  "DRY RUN: the database gates ran in a transaction that was "
+                  "ROLLED BACK; nothing written (use --commit to record)")
     except BaseException:
-        if writing:
-            conn.rollback()
+        conn.rollback()
         raise
     finally:
         conn.close()
@@ -1920,8 +2045,11 @@ def main(argv=None):
                     help="run the full --commit path (insert, gates 6-8) and "
                     "roll back instead of committing; persists nothing")
     ld.set_defaults(func=cmd_load)
-    ln = sub.add_parser("load-new", help="load a brand-new quarter from a "
-                        "manifest file (dry-run by default)")
+    ln = sub.add_parser(
+        "load-new", help="load a brand-new quarter from a manifest file "
+        "(dry-run by default; the dry run also runs the database gates and "
+        "rolls back)", formatter_class=argparse.RawDescriptionHelpFormatter,
+        description="Load a quarter that is not stored yet.\n" + PROCEDURE)
     ln.add_argument("--period", required=True)
     ln.add_argument("--manifest-entry", type=int, help="0-BASED index into "
                     "s1_editions_manifest.json")

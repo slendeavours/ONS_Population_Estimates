@@ -38,7 +38,9 @@ from s1_editions import (TABLE, MEASURES, STALE_PERIODS,  # noqa: E402
                          NATIONAL_TA_COLS, REFRESH_COLS, TA_SIGNAL_COLS,
                          check_no_suppressed_zero, check_registry,
                          check_support_needs, check_w1_equivalence,
-                         expected_authorities, insert_edition, latest_edition, load_new,
+                         A1_MEASURES, MANIFEST_FIELDS, check_a1_raw, classify_a1_cell,
+                         expected_authorities, insert_edition, latest_edition,
+                         load_new, prepare_new_quarter,
                          LIVE_LABEL, live_text_sha256, modal_count,
                          period_hashes,
                          refresh_counts, refresh_latest, reproduction_update,
@@ -1069,6 +1071,8 @@ def _new_recs(cur):
     recs[0]["households_in_ta"] = 0
     recs[1]["households_in_ta"] = None
     recs[1]["support_needs_total"] = None
+    recs[2]["total_assessments"] = None  # a suppressed A1 cell
+    recs[3]["owed_duty"] = 0             # a published A1 zero
     return recs
 
 
@@ -1081,9 +1085,15 @@ def _raw_maps(recs):
     return ta1, a3
 
 
+def _raw_a1(recs):
+    """The A1 cell text an independent re-read would give for recs."""
+    return {r["lad24cd"]: {m: ".." if r.get(m) is None else str(r[m])
+                           for m in A1_MEASURES} for r in recs}
+
+
 def _new(cur, recs, **over):
     ta1, a3 = _raw_maps(recs)
-    kw = dict(NEW_KW, ta1_cells=ta1, a3_totals=a3,
+    kw = dict(NEW_KW, ta1_cells=ta1, a3_totals=a3, a1_cells=_raw_a1(recs),
               quarter_label="Jan-Mar 2099")
     kw.update(over)
     return load_new(cur, NEW, recs, **kw)
@@ -1107,7 +1117,8 @@ def gate_21_load_new_success(cur):
         res = _new(cur, recs)
         n = len(recs)
         cur.execute(f"""SELECT lad24cd, households_in_ta, support_needs_total,
-                        source_file, extracted_at IS NOT NULL
+                        source_file, extracted_at IS NOT NULL,
+                        total_assessments, owed_duty
                         FROM public.{LIVE} WHERE period = %s""", (NEW,))
         live = {r[0]: r[1:] for r in cur.fetchall()}
         cur.execute(f"""SELECT lad24cd, households_in_ta, release_label,
@@ -1137,6 +1148,8 @@ def gate_21_load_new_success(cur):
     ok = (res["edition"] == 1 and res["rows"] == n and counts == (n, n, 1)
           and live[zero][0] == 0 and live[supp][0] is None
           and live[supp][1] is None
+          and live[recs[2]["lad24cd"]][4] is None
+          and live[recs[3]["lad24cd"]][5] == 0
           and ed[zero][0] == 0 and ed[supp][0] is None
           and all(v[2] == "gate-new.ods" and v[3] for v in live.values())
           and all(v[1] == "gate-new" and v[2] is None for v in ed.values())
@@ -1239,8 +1252,9 @@ def gate_23_load_new_refuses_short_and_unresolved(cur):
 
 
 def gate_24_load_new_suppressed_zero_refused(cur):
-    name = ("seeded: a suppressed cell stored as 0 (or a published value "
-            "stored as NULL) fails load-new's raw re-read gate")
+    name = ("seeded: a suppressed cell stored as 0 (TA1, A3 or A1), or a "
+            "published value stored as NULL/other, fails load-new's raw "
+            "re-read gates")
 
     def zero_for_suppressed(cur):
         recs = _new_recs(cur)
@@ -1259,17 +1273,42 @@ def gate_24_load_new_suppressed_zero_refused(cur):
         ta1, a3 = _raw_maps(recs)
         a3[recs[4]["lad24cd"]] += 1
         return _halts(lambda: _new(cur, recs, ta1_cells=ta1, a3_totals=a3))
+    def a1_zero_for_suppressed(cur):
+        recs = _new_recs(cur)
+        a1 = _raw_a1(recs)  # authority 2's total_assessments cell is '..'
+        recs[2]["total_assessments"] = 0
+        return _halts(lambda: _new(cur, recs, a1_cells=a1))
+
+    def a1_null_for_value(cur):
+        recs = _new_recs(cur)
+        a1 = _raw_a1(recs)
+        recs[5]["relief_duty"] = None  # the cell holds a number
+        return _halts(lambda: _new(cur, recs, a1_cells=a1))
+
+    def a1_wrong_value(cur):
+        recs = _new_recs(cur)
+        a1 = _raw_a1(recs)
+        recs[6]["prevention_duty"] += 1
+        return _halts(lambda: _new(cur, recs, a1_cells=a1))
     try:
         z = _in_savepoint(cur, zero_for_suppressed)
         v = _in_savepoint(cur, null_for_value)
         a = _in_savepoint(cur, wrong_a3)
+        z1 = _in_savepoint(cur, a1_zero_for_suppressed)
+        v1 = _in_savepoint(cur, a1_null_for_value)
+        w1 = _in_savepoint(cur, a1_wrong_value)
     except (psycopg2.Error, SystemExit) as e:
         return report(24, name, False, str(e).splitlines()[0])
     ok = (z[0] and "stored 0, TA1 cell '..'" in z[1]
           and v[0] and "stored None, re-extracted" in v[1]
-          and a[0] and "equal" in a[1])
+          and a[0] and "equal" in a[1]
+          and z1[0] and "total_assessments: stored 0, A1 cell '..' "
+          "(suppressed)" in z1[1]
+          and v1[0] and "relief_duty: stored None, A1 cell" in v1[1]
+          and w1[0] and "prevention_duty: stored" in w1[1])
     report(24, name, ok, f"zero for suppressed: {z[1][:90]}; "
-           f"null for a value: {v[1][:70]}; wrong A3 total: {a[1][:60]}")
+           f"null for a value: {v[1][:70]}; wrong A3 total: {a[1][:60]}; "
+           f"A1 suppressed stored as 0: {z1[1][-90:]}")
 
 
 def gate_25_load_new_quarter_row_untouched(cur):
@@ -1475,6 +1514,7 @@ def gate_27_load_new_real_file_end_to_end(cur):
     entry = {"period": "2025Q4", "file": path.name,
              "sha256": sha256_file(path), "url": "https://example.invalid/x",
              "release_label": "gate",
+             "last_modified": "2026-08-13T09:30:00Z",
              "release_label_actual": "Q4 2025-26, released 13 August 2026",
              "published_date_actual": "2026-08-13"}
     n = expected_authorities(cur)
@@ -1549,12 +1589,93 @@ def gate_28_load_new_cli_halts_on_existing(cur):
         f"{k}: {v[1][:45]}" for k, v in res.items()))
 
 
+def gate_30_manifest_entry_fields(cur):
+    name = ("load-new: a manifest entry missing any required field halts "
+            "naming the field (no KeyError); a non-ISO date halts")
+    full = {"period": "2099Q1", "file": "2099Q1_gate.ods",
+            "url": "https://example.invalid/x.ods", "sha256": "0" * 64,
+            "release_label": "release page",
+            "last_modified": "2099-01-01T00:00:00Z",
+            "release_label_actual": "released 1 January 2099",
+            "published_date_actual": "2099-01-01"}
+    assert set(full) == set(MANIFEST_FIELDS)
+    bad = []
+    for k in MANIFEST_FIELDS:
+        entry = {f: v for f, v in full.items() if f != k}
+        try:
+            prepare_new_quarter(entry, "2099Q1", 1)
+            bad.append(f"{k}: no halt")
+        except SystemExit as e:
+            if k not in str(e) or "KeyError" in str(e):
+                bad.append(f"{k}: {str(e)[:80]}")
+        except Exception as e:  # a KeyError traceback is the failure
+            bad.append(f"{k}: {type(e).__name__}")
+    h = _halts(lambda: prepare_new_quarter(
+        dict(full, published_date_actual="1/1/2099"), "2099Q1", 1))
+    ok = not bad and h[0] and "ISO" in h[1]
+    report(30, name, ok, f"{bad[:3]}; bad date: {h[1][:70]}" if not ok else
+           f"{len(MANIFEST_FIELDS)} fields each named in the halt; "
+           f"bad date: {h[1][:60]}")
+
+
+def gate_31_a1_raw_reread(cur):
+    name = ("A1 raw re-read: every stored edition whose source file is held "
+            "equals its own classification of the published A1 cells; the "
+            "classifier and the check are exercised on seeded input")
+    cur.execute(f"SELECT DISTINCT period, edition FROM public.{TABLE} "
+                "ORDER BY 1, 2")
+    checked, skipped, bad, nulls, zeros = [], [], [], 0, 0
+    for period, ed in cur.fetchall():
+        probs, n, z = check_a1_raw(cur, period, ed)
+        if n == 0:
+            skipped.append(f"{period} ed{ed}")  # no file held (csv / as loaded)
+            continue
+        checked.append(f"{period} ed{ed}")
+        zeros += z
+        bad += probs
+    cases = [(".", "unrecognised", None), ("..", "suppressed", None),
+             ("", "suppressed", None), ("[x]", "suppressed", None),
+             ("0", "number", 0), ("1,234", "number", 1234),
+             ("12.0", "number", 12), ("abc", "unrecognised", None)]
+    cls = [(c, classify_a1_cell(c)) for c, _, _ in cases]
+    cls_ok = all(got == (k, v) for (_, got), (_, k, v) in zip(cls, cases))
+    # seeded check_a1_raw on a real stored edition: truthful passes, a
+    # suppressed cell stored as 0 and a wrong value are flagged
+    cur.execute(f"""SELECT lad24cd, total_assessments, owed_duty,
+                    prevention_duty, relief_duty FROM public.{TABLE}
+                    WHERE period = '2025Q4' AND edition = 1 ORDER BY 1""")
+    rows = cur.fetchall()
+    truth = {r[0]: dict(zip(A1_MEASURES, ["..", "..", "..", ".."]))
+             for r in rows}
+    for lad, *vals in rows:
+        for m, v in zip(A1_MEASURES, vals):
+            truth[lad][m] = ".." if v is None else str(v)
+    clean = check_a1_raw(cur, "2025Q4", 1, raw=truth)[0]
+    lad = rows[0][0]
+    flip = {k: dict(v) for k, v in truth.items()}
+    flip[lad]["total_assessments"] = ".."   # published suppressed, stored value
+    flip2 = {k: dict(v) for k, v in truth.items()}
+    flip2[lad]["owed_duty"] = "999999"      # published different number
+    flagged1 = check_a1_raw(cur, "2025Q4", 1, raw=flip)[0]
+    flagged2 = check_a1_raw(cur, "2025Q4", 1, raw=flip2)[0]
+    ok = (not bad and len(checked) >= 9 and cls_ok and not clean
+          and any("(suppressed)" in x for x in flagged1)
+          and any("owed_duty: stored" in x for x in flagged2))
+    report(31, name, ok, f"problems={bad[:2]} classifier ok={cls_ok} "
+           f"clean seeded={clean[:1]} flagged={len(flagged1)}/{len(flagged2)}"
+           if not ok else
+           f"{len(checked)} editions re-read from their files ({zeros} A1 "
+           f"zeros confirmed as published); {len(skipped)} without a file "
+           f"held skipped: {skipped}")
+
+
 # Where the load-new path must not read a column by position, and what no
 # part of s1_editions.py may do to a missing value.
 LOAD_NEW_PATH = ("quarter_from_range", "_text_lines", "_parse_release_date",
                  "cover_sheet_info", "cover_sheet_period", "check_cover",
                  "_resolve_expected", "require_new_period", "load_new",
-                 "prepare_new_quarter", "cmd_load_new")
+                 "prepare_new_quarter", "cmd_load_new", "classify_a1_cell",
+                 "raw_a1_cells", "check_a1_raw")
 MEASURE_NAMES = "|".join(MEASURES)
 
 
@@ -1669,6 +1790,8 @@ def main():
             gate_27_load_new_real_file_end_to_end(cur)
             gate_28_load_new_cli_halts_on_existing(cur)
             gate_29_no_positional_reads_or_zero_coercion(cur)
+            gate_30_manifest_entry_fields(cur)
+            gate_31_a1_raw_reread(cur)
     finally:
         conn.rollback()
         conn.close()
