@@ -302,7 +302,7 @@ def latest_edition(cur, spec: EditionSpec, period: str) -> int:
 def insert_edition(cur, spec: EditionSpec, rows: list, period: str, *,
                    release_label: str, published_date: "date | None",
                    source_file: "str | None", source_sha256: str,
-                   supersedes: "int | None") -> int:
+                   supersedes: "int | None", strict: bool = False) -> int:
     """Insert one edition of a period; return its edition number.
 
     If source_sha256 is already recorded for the period nothing is inserted
@@ -310,7 +310,11 @@ def insert_edition(cur, spec: EditionSpec, rows: list, period: str, *,
     rows must be non-empty, every key column present in each row, any period
     in a row equal to `period`, and `supersedes` must be the period's current
     chain tip (None only when the period has no editions); anything else
-    halts. A missing value or extra column is stored NULL, never 0."""
+    halts. A missing value or extra column is stored NULL, never 0, unless
+    strict is true: then every row must carry every data column (spec.data_cols,
+    the period included) and a row that lacks one halts before anything is
+    written (S1b's original insert refused a missing column; its value and
+    value_flag are both nullable, so the table alone would not catch one)."""
     from psycopg2.extras import execute_values
     t, pc = spec.editions_table, spec.period_col
     if not rows:
@@ -340,6 +344,11 @@ def insert_edition(cur, spec: EditionSpec, rows: list, period: str, *,
         if missing:
             halt(f"insert_edition: a row of {period} lacks key column(s) "
                  f"{missing}")
+        if strict:
+            missing = [c for c in spec.data_cols if c not in r]
+            if missing:
+                halt(f"insert_edition: a row of {period} lacks column(s) "
+                     f"{missing} (strict)")
     other = spec.data_cols[len(spec.key_cols) + 1:]
     cols = spec.data_cols + ("edition", "release_label", "published_date",
                              "source_file", "source_sha256", "supersedes")

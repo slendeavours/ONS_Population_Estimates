@@ -166,6 +166,43 @@ class EditionsCoreDB(unittest.TestCase):
                 ins(cur, "z", None, period="2025Q3",
                     rows=[{"lad24cd": "E06000001", "period": "2025Q4"}])
 
+    def test_strict_insert_refuses_a_missing_column(self):
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, SPEC)
+            short = [{"lad24cd": "E06000001", "period": "2025Q1"}]
+            with savepoint(cur):
+                with self.assertRaises(SystemExit) as cm:
+                    core.insert_edition(
+                        cur, SPEC, short, "2025Q1", release_label="test",
+                        published_date=None, source_file=None,
+                        source_sha256="s", supersedes=None, strict=True)
+                self.assertIn("value", str(cm.exception))
+                cur.execute("SELECT COUNT(*) FROM public.zz_core_editions")
+                self.assertEqual(cur.fetchone()[0], 0)
+            # strict also needs the period column in each row
+            with self.assertRaises(SystemExit) as cm:
+                core.insert_edition(
+                    cur, SPEC, [{"lad24cd": "E06000001", "value": 1}],
+                    "2025Q1", release_label="test", published_date=None,
+                    source_file=None, source_sha256="s", supersedes=None,
+                    strict=True)
+            self.assertIn("period", str(cm.exception))
+            # every column present: inserted as usual
+            full = [{"lad24cd": "E06000001", "period": "2025Q1", "value": None}]
+            self.assertEqual(core.insert_edition(
+                cur, SPEC, full, "2025Q1", release_label="test",
+                published_date=None, source_file=None, source_sha256="s",
+                supersedes=None, strict=True), 1)
+            # not strict (the default): a missing value column is stored NULL
+            self.assertEqual(core.insert_edition(
+                cur, SPEC, [{"lad24cd": "E06000001"}], "2025Q2",
+                release_label="test",
+                published_date=None, source_file=None, source_sha256="t",
+                supersedes=None), 1)
+            cur.execute("SELECT value FROM public.zz_core_editions "
+                        "WHERE period = '2025Q2'")
+            self.assertEqual(cur.fetchall(), [(None,)])
+
     def test_latest_edition_follows_chain(self):
         with rolled_back(self.conn) as cur:
             core.create_schema(cur, SPEC)
