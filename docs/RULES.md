@@ -2,7 +2,7 @@
 
 One page for the rules that apply to every source. Each rule says what to do and where the detail is. If a source needs an exception, it is written in that source's own doc and says why.
 
-Status: drafted 2026-10-07 from the review. Rules 1 and 2 are new decisions; the rest collect existing rules that were spread across `METHODOLOGY.md`, the decision notes and session notes. A loader standard (preview mode, stop checks, verify script) is the next piece and will extend rule 5.
+Status: drafted 2026-10-07 from the review. Rules 1 and 2 are new decisions; the rest collect existing rules that were spread across `METHODOLOGY.md`, the decision notes and session notes. The loader standard is described under rule 5.
 
 ---
 
@@ -19,7 +19,7 @@ A zero is a measured count. A blank is a count nobody gave us. They are never sw
 7. **A total built from parts is NULL unless every part is present.** The publisher's own published total is the headline figure. A sum of the known parts is never stored as a total.
 8. **Calculations:** NULL in gives NULL out. Divide using `NULLIF(denominator, 0)`. A year-on-year change needs both years, otherwise NULL. A national total compared across years uses the same set of authorities in both years.
 9. **Maps and reports:** NULL displays as "No data" or a dash. 0 displays as 0.
-10. **Every load reports** how many cells were NULL, flagged, and 0, per column. A load where zeros appear in cells the previous edition held as blank, or the reverse, stops for review.
+10. **Every load reports** how many cells were NULL, flagged, and 0, per column. A load where zeros appear in cells the previous edition held as blank, or the reverse, is listed in the preview for review and is accepted only by a stated acknowledgement. Genuine publisher revisions do occur (for example RO4 2024-25), so this is a check for a person to decide, not an automatic stop. The acknowledgement mechanism is built when each loader adopts the check.
 
 Known breaches until corrected: S4 (care leavers) stores suppressed cells as 0 and builds totals from them; S22 (council taxbase) treats suppressed exemption classes as 0 in its total. S10 and S8b are unchecked. Detail: `DATA_DICTIONARY.md` (S1b `value_flag`), `docs/s1b_support_needs_source.md`, `docs/decisions/2026-10-06-s1-edition-history-design.md`.
 
@@ -55,7 +55,17 @@ Detail: `METHODOLOGY.md` (Boundary Data), `docs/decisions/2026-08-14-barnsley-sh
 3. Every source has a verify script that is run after the load.
 4. The source register (`source_registry`) is the authority for source numbers, not the run log.
 
-The common standard that every loader meets is still to be written.
+### The loader standard
+
+Every loader meets one standard, built from shared parts in `scripts/`:
+
+- **Editions core** (`editions_core.py`): the append-only editions table, the supersedes chain, the latest-edition layer and the gates around them. A loader describes its table in a spec and supplies its own parser. Its commands are `status` (read-only health check), `load` (a revised or first edition of a period), `sync-new` (a newly published period) and `refresh-latest` (copy the latest edition into the live table).
+- **Blank reader** (`blank_reader.py`): turns the publisher's markers into NULL or a number as rule 1 requires, so no loader writes its own conversion.
+- **Shared checks** (`load_checks.py`): the per-column NULL, flagged and zero report, the check against the previous edition (rule 1.10), file identity (rule 3), geography resolution (rule 4) and row counts.
+- **Preview by default:** every command that writes is a dry run unless given `--commit`; `--simulate` runs everything and rolls back.
+- **Conformance checker:** `python scripts/check_loaders.py` lists each loader as PASS or with the reasons it does not conform. It reports only and does not yet gate a push. Its checks are heuristics; the verify script remains the real test.
+
+S1, S1b and RO4 run on the core. The other loaders are brought across one at a time; the checker's FAIL list is that worklist. A source that is never revised may declare `NO_EDITIONS = "<reason>"` instead of using the core, but still uses the blank reader and shared checks. Related: `docs/decisions/2026-10-07-editions-quarterly-refresh.md`.
 
 ## 6. Publishing and privacy
 

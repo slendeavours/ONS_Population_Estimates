@@ -23,6 +23,8 @@ safety checks and then rolls back, so it is the rehearsal before `--commit`.
 `--commit` and `--simulate` cannot be given together. A command that stops
 prints a line starting `HALT:` and writes nothing.
 
+S1, S1b and RO4 now run on one shared editions core (`scripts/editions_core.py`), so the three loaders offer the same commands: `status`, `load`, `sync-new` and `refresh-latest`, each a dry run unless given `--commit`. The steps below are unchanged. `python scripts/check_loaders.py` shows which loaders meet the loader standard (see `RULES.md`, section 5).
+
 ## The two ideas to hold on to
 
 - **Never put a revised figure straight into a live table.** A revision goes in
