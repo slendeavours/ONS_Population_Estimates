@@ -27,17 +27,36 @@ Subcommands:
         # chain tip.
     python scripts/s1b_editions.py dryrun-all --out report.md
         # plain-English diff of all seven registry files vs stored editions
+    python scripts/s1b_editions.py status
+        # what needs action (new quarter, newer edition not yet in live, live
+        # changed outside the editions tables, bad row counts); exit 1 if any
+    python scripts/s1b_editions.py sync-new [--expected-authorities N]
+                                            [--accept-categories PERIOD]
+                                            [--commit | --simulate]
+        # records every live quarter that has no editions as edition 1 'as
+        # loaded'; idempotent; DRY-RUN by default. Refuses a quarter whose
+        # authority count or row count (authorities x categories) is not the
+        # derived one, and a quarter whose category set differs from the
+        # nearest earlier quarter's edition 1 unless --accept-categories names
+        # it (a real layout change). --expected-authorities is only needed
+        # (and only accepted) when no live quarter has editions yet.
     python scripts/s1b_editions.py refresh-latest [--commit | --simulate]
-        # copies each period's latest edition into la_homelessness_support_needs
-        # (value, value_flag, category_label, source_url, source_edition,
-        # edition_variant only;
-        # never loaded_at or any other column/period). DRY-RUN by default;
-        # --commit runs the live-equals-latest and snapshot gates in the same
-        # transaction and rolls back on failure; --simulate always rolls back.
-        # Needs the snapshot table la_homelessness_support_needs_bak_20261006.
+                                                  [--accept-drift PERIOD]
+        # copies the latest edition into la_homelessness_support_needs for
+        # every period whose live rows differ from it (value, value_flag,
+        # category_label, source_url, source_edition, edition_variant only;
+        # never loaded_at or any other column). DRY-RUN by default (prints
+        # counts per period). --commit takes a per-period content hash before
+        # and after in the same transaction (only the periods being refreshed
+        # may change, and only in the refresh columns) and re-checks that each
+        # refreshed period equals its edition; it rolls back on any failure.
+        # --simulate does the same and always rolls back. A period whose live
+        # rows equal no stored edition is drift (changed outside the editions
+        # tables): the command halts unless --accept-drift PERIOD names it.
 
 Helpers imported by later steps: create_schema, insert_edition, latest_edition,
-check_coverage, check_latest_equals_live, check_q2_pair.
+check_coverage, check_latest_equals_live, check_q2_pair, status, sync_new,
+refresh_latest.
 """
 import argparse
 import csv
@@ -47,8 +66,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from s1_editions import (Q2_FILES, STALE_PERIODS, halt,  # noqa: E402
-                         load_manifest, select_entry, sha256_file)
+from s1_editions import (Q2_FILES, STALE_PERIODS, classify_period,  # noqa: E402
+                         format_status, guard_problems, halt, latest_map,
+                         load_manifest, modal_count, period_hashes,
+                         rows_differing, select_entry, sha256_file)
+from s1_editions import status as _status  # noqa: E402
 from s1_editions import latest_edition as _s1_latest_edition  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -83,13 +105,45 @@ Q2_SPECS = (
     (Q2_REVISED, Q2_FILES[1][1], "Revised", 1),
 )
 
-EDITION_ROWS_TOTAL = 101232   # edition 1 of the eleven quarters
-BACKFILL_ROWS_TOTAL = 110408  # plus 2025Q2 edition 2
+
+def authority_counts(cur, table=LIVE) -> dict:
+    """{period: distinct authorities} of a table."""
+    cur.execute(f"SELECT period, COUNT(DISTINCT lad24cd) FROM public.{table} "
+                "GROUP BY 1")
+    return dict(cur.fetchall())
 
 
-def expected_rows(period) -> int:
-    """296 authorities x 31 categories (32 in the 2025Q4 layout)."""
-    return 296 * (32 if period == "2025Q4" else 31)
+def expected_authorities(cur) -> "int | None":
+    """Authorities per period, derived: the most common per-period count in
+    the live table (None if the live table is empty)."""
+    return modal_count(authority_counts(cur))
+
+
+def edition1_category_counts(cur) -> dict:
+    """{period: categories in the period's edition 1}."""
+    cur.execute(f"""SELECT period, COUNT(DISTINCT category_code)
+                    FROM public.{TABLE} WHERE edition = 1 GROUP BY 1""")
+    return dict(cur.fetchall())
+
+
+def expected_rows(cur, period) -> int:
+    """Rows of one edition of a period: the derived authority count x the
+    category count of the period's edition 1 (31 in the legacy layout, 32 in
+    the 2025Q4 layout; read from the data, not typed)."""
+    a = expected_authorities(cur)
+    c = edition1_category_counts(cur).get(period)
+    if a is None or c is None:
+        raise LookupError(f"cannot derive the expected rows of {period}: "
+                          "no live authority count or no edition 1")
+    return a * c
+
+
+def _live_expected_rows(cur, period) -> int:
+    """As expected_rows, for a period whose edition 1 may not exist yet: the
+    category count comes from the live rows."""
+    cur.execute(f"SELECT COUNT(DISTINCT category_code) FROM public.{LIVE} "
+                "WHERE period = %s", (period,))
+    return expected_authorities(cur) * cur.fetchone()[0]
 
 
 def create_schema(cur) -> None:
@@ -199,9 +253,9 @@ def latest_edition(cur, period: str) -> int:
 # ---------------------------------------------------------------- checks
 
 def check_coverage(cur) -> tuple:
-    """Gate 4: every live period has edition 1; every edition has 296
-    authorities and the period's expected row count. -> (problems, rows in
-    edition 1, rows in table)."""
+    """Gate 4: every live period has edition 1; every edition has the derived
+    authority count and that count x the period's edition-1 category count in
+    rows. -> (problems, rows in edition 1, rows in table)."""
     cur.execute(f"SELECT DISTINCT period FROM public.{LIVE}")
     periods = sorted(r[0] for r in cur.fetchall())
     cur.execute(f"""SELECT period, edition, COUNT(DISTINCT lad24cd), COUNT(*)
@@ -209,6 +263,8 @@ def check_coverage(cur) -> tuple:
     eds = {}
     for p, e, n, rows in cur.fetchall():
         eds.setdefault(p, {})[e] = (n, rows)
+    auths = expected_authorities(cur)
+    cats = edition1_category_counts(cur)
     bad, n1 = [], 0
     for p in periods:
         e = eds.get(p, {})
@@ -216,7 +272,10 @@ def check_coverage(cur) -> tuple:
             bad.append(f"{p}: no edition 1")
         n1 += e.get(1, (0, 0))[1]
     for p, e in sorted(eds.items()):
-        want = (296, expected_rows(p))
+        if p not in cats:
+            bad.append(f"{p}: editions {sorted(e)} but no edition 1")
+            continue
+        want = (auths, auths * cats[p])
         bad += [f"{p} ed{k}: {v[0]} authorities/{v[1]} rows, expected "
                 f"{want[0]}/{want[1]}" for k, v in sorted(e.items())
                 if v != want]
@@ -281,7 +340,7 @@ def check_q2_pair(cur, csv_rows=None) -> list:
                       AND edition = 1""")
     ed1 = set(cur.fetchall())
     bad = []
-    want = expected_rows("2025Q2")
+    want = expected_rows(cur, "2025Q2")
     if len(csv_rows) != want:
         bad.append(f"CSV holds {len(csv_rows)} distinct rows, expected {want}")
     if len(ed1) != want:
@@ -413,15 +472,16 @@ def backfill(cur, plan_only=False) -> list:
             out.append(("2025Q2", prev, _count(cur, "2025Q2", prev), "present"))
             continue
         if plan_only:
-            out.append(("2025Q2", None, expected_rows("2025Q2"), "would insert"))
+            out.append(("2025Q2", None, _live_expected_rows(cur, "2025Q2"),
+                        "would insert"))
             continue
         edition = _q2_edition(cur, path, urls[fname])
         df = s1b.read_a3(path)
         _, _, tuples = s1b.build_rows(cur, edition, df)
         rows = [dict(zip(DATA_COLS, t)) for t in tuples]
-        if len(rows) != expected_rows("2025Q2"):
-            halt(f"{fname}: {len(rows)} rows extracted, expected "
-                 f"{expected_rows('2025Q2')}")
+        want = _live_expected_rows(cur, "2025Q2")
+        if len(rows) != want:
+            halt(f"{fname}: {len(rows)} rows extracted, expected {want}")
         ed = insert_edition(cur, rows, "2025Q2", release_label=label,
                             published_date=published, source_url=None,
                             source_file=edition["filename"], source_sha256=sha,
@@ -432,15 +492,10 @@ def backfill(cur, plan_only=False) -> list:
 
 
 def run_backfill_gates(cur) -> None:
-    """Gates 4-5 plus the 2025Q2 pair and the row total; halt on any problem."""
-    bad, n1, _ = check_coverage(cur)
-    if n1 != EDITION_ROWS_TOTAL:
-        bad.append(f"edition 1 holds {n1} rows, expected {EDITION_ROWS_TOTAL}")
-    cur.execute(f"""SELECT COUNT(*) FROM public.{TABLE}
-                    WHERE edition = 1 OR (period = '2025Q2' AND edition = 2)""")
-    n = cur.fetchone()[0]
-    if n != BACKFILL_ROWS_TOTAL:
-        bad.append(f"backfill rows {n}, expected {BACKFILL_ROWS_TOTAL}")
+    """Gates 4-5 plus the 2025Q2 pair; halt on any problem. Row totals are
+    derived (authorities x categories per edition, in check_coverage), not
+    typed."""
+    bad, _, _ = check_coverage(cur)
     bad += check_q2_pair(cur)
     bad += check_latest_equals_live(cur)
     if bad:
@@ -601,8 +656,8 @@ def format_diff(d) -> str:
 
 def check_loaded(cur, period, edition, known_codes=None,
                  require_registry=True) -> list:
-    """Gate 6 for one edition: 296 authorities and the period's category rows,
-    every lad24cd inside la_code_lookup, a source_url, the same category set as
+    """Gate 6 for one edition: the derived authority count and that count x the
+    period's edition-1 category count in rows, every lad24cd inside la_code_lookup, a source_url, the same category set as
     edition 1, and (require_registry) label registry and variant revised."""
     cur.execute(f"""SELECT lad24cd, category_code, release_label, source_url,
                            edition_variant FROM public.{TABLE}
@@ -615,9 +670,10 @@ def check_loaded(cur, period, edition, known_codes=None,
     tag = f"{period} ed{edition}"
     bad = []
     n = len({r[0] for r in rows})
-    if (n, len(rows)) != (296, expected_rows(period)):
+    want = (expected_authorities(cur), expected_rows(cur, period))
+    if (n, len(rows)) != want:
         bad.append(f"{tag}: {n} authorities/{len(rows)} rows, expected "
-                   f"296/{expected_rows(period)}")
+                   f"{want[0]}/{want[1]}")
     orphans = sorted({r[0] for r in rows} - set(known_codes))
     if orphans:
         bad.append(f"{tag}: {len(orphans)} lad24cd outside la_code_lookup "
@@ -708,16 +764,16 @@ def check_flag_integrity(cur, period, edition, raw=None) -> tuple:
         if (v, f) != (ev, ef):
             bad.append(f"{tag} {lad} {cat}: stored ({v}, {f}), raw cell "
                        f"{raw[(lad, cat)]!r} -> ({ev}, {ef})")
-    if len(stored) != expected_rows(period):
-        bad.append(f"{tag}: {len(stored)} stored cells, expected "
-                   f"{expected_rows(period)}")
+    want = expected_rows(cur, period)
+    if len(stored) != want:
+        bad.append(f"{tag}: {len(stored)} stored cells, expected {want}")
     return bad, len(stored), zeros
 
 
 def check_s1_cross(cur, period, edition, s1=None) -> list:
     """Gate 8 for one edition: the 'one or more support needs' value of each
     authority equals la_statutory_homelessness.support_needs_total for the same
-    lad24cd and period, NULL-safe, 296/296; a flagged S1b cell against a
+    lad24cd and period, NULL-safe, for every authority; a flagged S1b cell against a
     non-NULL S1 value (or the reverse) is called out."""
     tag = f"{period} ed{edition}"
     if s1 is None:
@@ -741,8 +797,9 @@ def check_s1_cross(cur, period, edition, s1=None) -> list:
             bad.append(f"{lad}: S1b value {v}, S1 NULL")
         else:
             bad.append(f"{lad}: S1b {v}, S1 {s1[lad]}")
-    if n != 296 or len(got) != 296:
-        return [f"{tag}: {n}/296 equal ({len(got)} stored rows)"
+    auths = expected_authorities(cur)
+    if n != auths or len(got) != auths:
+        return [f"{tag}: {n}/{auths} equal ({len(got)} stored rows)"
                 + (f"; e.g. {bad[:3]}" if bad else "")]
     return []
 
@@ -811,7 +868,7 @@ def cmd_load(args):
         if args.commit:
             conn.commit()
             print(f"loaded {args.period} edition {ed} "
-                  f"({expected_rows(args.period)} rows); gates 6-8 passed in "
+                  f"({len(rows)} rows); gates 6-8 passed in "
                   "the same transaction")
         else:
             conn.rollback()
@@ -869,7 +926,7 @@ def cmd_dryrun_all(args):
                 same_layout = layout == facts["layout_version"]
                 out += [f"- structure: {len(auths)} authorities, {len(cats)} "
                         f"categories, {len(rows)} rows (expected 296, "
-                        f"{expected_rows(p) // 296}, {expected_rows(p)}); "
+                        f"{expected_rows(cur, p) // 296}, {expected_rows(cur, p)}); "
                         f"layout {layout} ("
                         f"{'same as' if same_layout else 'DIFFERENT from'} "
                         f"edition 1: {facts['layout_version']}); category set "
@@ -909,27 +966,17 @@ def cmd_dryrun_all(args):
     print(f"wrote {path}")
 
 
-# ----------------------------------------------------- refresh-latest (Task 4)
+# --------------------------------------------- status, sync-new, refresh-latest
+#
+# Generic for any quarter: nothing below names a period, a snapshot table or a
+# row total. What needs doing is derived from the data (live vs the editions
+# table), and a refresh is checked by a per-period before/after content hash in
+# the same transaction.
 
-BAK = "la_homelessness_support_needs_bak_20261006"
 REFRESH_COLS = ("value", "value_flag", "category_label", "source_url",
                 "source_edition", "edition_variant")
-BAK_B = "la_homelessness_support_needs_bak_20261006b"
-# live columns that must never change (key columns are the join, loaded_at is
-# compared separately)
-FIXED_COLS = tuple(c for c in DATA_COLS
-                   if c not in REFRESH_COLS
-                   and c not in ("lad24cd", "period", "category_code"))
-LIVE_ROWS_TOTAL = 101232
-
-
-def _latest_map(cur) -> dict:
-    cur.execute(f"SELECT DISTINCT period FROM public.{LIVE} ORDER BY 1")
-    return {p: latest_edition(cur, p) for (p,) in cur.fetchall()}
-
-
-def _pairs(latest: dict) -> tuple:
-    return tuple(sorted(latest.items()))
+KEY = ("lad24cd", "category_code")
+HASH_KEY = ("period", "lad24cd", "category_code")
 
 
 def _refresh_where() -> str:
@@ -937,160 +984,307 @@ def _refresh_where() -> str:
                              for c in REFRESH_COLS) + ")"
 
 
-def refresh_counts(cur) -> dict:
-    """{period: live rows refresh_latest would write} (read-only)."""
-    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
-                    JOIN public.{TABLE} e USING (lad24cd, period, category_code)
-                    WHERE (e.period, e.edition) IN %s AND {_refresh_where()}
-                    GROUP BY 1 ORDER BY 1""", (_pairs(_latest_map(cur)),))
-    return dict(cur.fetchall())
+def status(cur) -> dict:
+    """What needs action between the live table and its editions (read-only);
+    the shape is s1_editions.status. The row count expected of a period is the
+    derived authority count x the period's category count (that of its edition
+    1, or the live rows' own for a period with no editions yet)."""
+    auths = expected_authorities(cur)
+    cats = edition1_category_counts(cur)
+    cur.execute(f"""SELECT period, COUNT(DISTINCT category_code)
+                    FROM public.{LIVE} GROUP BY 1""")
+    want = {p: auths * cats.get(p, c) for p, c in cur.fetchall()}
+    return _status(cur, LIVE, TABLE, KEY, REFRESH_COLS, expected_rows=want)
 
 
-def refresh_latest(cur) -> int:
-    """Copy each period's latest edition into the live table; return rows
-    written. Updates ONLY value, value_flag, category_label, source_url,
-    source_edition and edition_variant, and only where the latest edition differs (NULL-safe).
-    Every other column, including loaded_at, and every other row is untouched.
+def _edition1_categories(cur, period) -> set:
+    cur.execute(f"""SELECT DISTINCT category_code FROM public.{TABLE}
+                    WHERE period = %s AND edition = 1""", (period,))
+    return {r[0] for r in cur.fetchall()}
+
+
+def _neighbour_with_editions(cur, period) -> "str | None":
+    """The nearest earlier period that has editions (else the nearest later)."""
+    cur.execute(f"SELECT MAX(period) FROM public.{TABLE} WHERE period < %s",
+                (period,))
+    prev = cur.fetchone()[0]
+    if prev is not None:
+        return prev
+    cur.execute(f"SELECT MIN(period) FROM public.{TABLE} WHERE period > %s",
+                (period,))
+    return cur.fetchone()[0]
+
+
+def _record_as_loaded(cur, period, expected, accept_categories=False) -> int:
+    """Edition 1 'as loaded' for a live period that has no editions (same
+    convention as backfill: canonical-text sha256 of the rows, source_file =
+    source_edition, published_date = load date). Halts unless the live rows are
+    `expected` authorities x their categories, share one loaded_at date,
+    source_edition and source_url, and (unless accept_categories) have the
+    category set of the nearest period that has editions. Returns the edition
+    number."""
+    cols = ", ".join(DATA_COLS)
+    cur.execute(f"""SELECT {cols}, (loaded_at AT TIME ZONE 'UTC')::date
+                    FROM public.{LIVE} WHERE period = %s""", (period,))
+    fetched = cur.fetchall()
+    rows = [dict(zip(DATA_COLS, r[:-1])) for r in fetched]
+    auths = {r["lad24cd"] for r in rows}
+    cats = {r["category_code"] for r in rows}
+    if expected is not None and (len(auths) != expected
+                                 or len(rows) != expected * len(cats)):
+        halt(f"{period}: {len(auths)} authorities and {len(rows)} live rows "
+             f"over {len(cats)} categories, expected {expected} authorities "
+             f"and {expected * len(cats)} rows")
+    nb = _neighbour_with_editions(cur, period)
+    if nb is not None and not accept_categories:
+        ref = _edition1_categories(cur, nb)
+        if cats != ref:
+            halt(f"{period}: category set differs from {nb} edition 1 (only "
+                 f"here {sorted(cats - ref)[:4]}, only in {nb} "
+                 f"{sorted(ref - cats)[:4]}); if the publisher changed the "
+                 f"layout, re-run with --accept-categories {period}")
+    loaded = {r[-1] for r in fetched}
+    files = {r["source_edition"] for r in rows}
+    urls = {r["source_url"] for r in rows}
+    if len(loaded) != 1 or len(files) != 1 or len(urls) != 1:
+        halt(f"{period}: live rows differ in loaded_at/source_edition/"
+             f"source_url ({len(loaded)}/{len(files)}/{len(urls)})")
+    return insert_edition(cur, rows, period, release_label=LIVE_LABEL,
+                          published_date=loaded.pop(), source_url=None,
+                          source_file=files.pop(),
+                          source_sha256=live_rows_sha256(rows),
+                          supersedes=None)
+
+
+def sync_new(cur, expected_authorities_n=None, accept_categories=()) -> list:
+    """Give every live period that has no editions its edition 1, 'as loaded'.
+    Never touches a period that already has editions, so it is idempotent.
+    Halts on a period whose authority or row count is not the one derived from
+    the periods that have editions, or whose category set differs from the
+    nearest such period's unless named in accept_categories. Returns the
+    periods that were given an edition. If no live period has editions yet
+    there is nothing to derive the count from, so expected_authorities_n (CLI
+    --expected-authorities N) must be given; once a count can be derived N is
+    accepted only if it equals it."""
+    tips, new, errors = latest_map(cur, LIVE, TABLE)
+    if errors:
+        halt("sync-new: invalid edition chain " + "; ".join(
+            f"{p}: {m}" for p, m in errors.items()))
+    known = {p: n for p, n in authority_counts(cur).items() if p not in new}
+    derived = modal_count(known)
+    if (expected_authorities_n is not None and derived is not None
+            and expected_authorities_n != derived):
+        halt(f"sync-new: --expected-authorities {expected_authorities_n} "
+             f"differs from the count {derived} derived from periods that "
+             "already have editions; it is only accepted when nothing can be "
+             "derived (or when it equals the derived count)")
+    expected = derived if derived is not None else expected_authorities_n
+    if new and expected is None:
+        halt("sync-new: no live period has editions, so the authority count "
+             "cannot be derived; give --expected-authorities N")
+    stray = sorted(set(accept_categories) - set(new))
+    if stray:
+        halt(f"--accept-categories {stray}: not periods awaiting sync-new")
+    done = []
+    for p in sorted(new):
+        _record_as_loaded(cur, p, expected, p in accept_categories)
+        done.append(p)
+    return done
+
+
+def _plan(cur, accept_drift=()) -> tuple:
+    """({period: {edition, kind, rows}} for every period whose live rows differ
+    from the latest edition, unaccepted drift periods). kind is 'pending' (live
+    equals an earlier edition) or 'drift' (it equals none)."""
+    tips, new, errors = latest_map(cur, LIVE, TABLE)
+    if new:
+        halt(f"periods with no editions {new}; run sync-new first")
+    if errors:
+        halt("invalid edition chain: " + "; ".join(
+            f"{p}: {m}" for p, m in errors.items()))
+    plan, drift = {}, []
+    for p, tip in tips.items():
+        kind, _ = classify_period(cur, LIVE, TABLE, KEY, REFRESH_COLS, p, tip)
+        if kind == "current":
+            continue
+        if kind == "drift" and p not in accept_drift:
+            drift.append(p)
+        plan[p] = {"edition": tip, "kind": kind}
+    stray = sorted(set(accept_drift) - {p for p, v in plan.items()
+                                        if v["kind"] == "drift"})
+    if stray:
+        halt(f"--accept-drift {stray}: not drifted periods, nothing to accept")
+    for p, v in plan.items():
+        cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} l
+                        JOIN public.{TABLE} e ON e.lad24cd = l.lad24cd
+                         AND e.period = l.period
+                         AND e.category_code = l.category_code
+                         AND e.edition = %s
+                        WHERE l.period = %s AND {_refresh_where()}""",
+                    (v["edition"], p))
+        v["rows"] = cur.fetchone()[0]
+    return plan, drift
+
+
+def _unrepairable(plan) -> list:
+    """Planned periods that differ from their edition but have no row to
+    update (rows missing from, or extra in, the live table): an UPDATE cannot
+    repair them."""
+    return sorted(p for p, v in plan.items() if not v["rows"])
+
+
+def refresh_counts(cur, accept_drift=()) -> dict:
+    """{period: rows refresh_latest would write} (read-only)."""
+    plan, _ = _plan(cur, accept_drift)
+    return {p: v["rows"] for p, v in sorted(plan.items())}
+
+
+def refresh_latest(cur, accept_drift=(), _after_update_hook=None) -> dict:
+    """Copy the latest edition into the live table for every period whose live
+    rows differ from it (NULL-safe); return a result dict.
+
+    Updates ONLY value, value_flag, category_label, source_url, source_edition
+    and edition_variant, on the rows of those periods that differ. Every other
+    column, including loaded_at, and every other period is untouched. Inside
+    the caller's transaction the per-period content hash (excluding loaded_at)
+    is taken before and after: a period not being refreshed must be identical,
+    a refreshed one may differ only in the refresh columns; each refreshed
+    period must then equal its latest edition on every column bar loaded_at.
+    A period whose live rows equal no stored edition is drift: it halts unless
+    named in accept_drift. Any failure halts (the caller rolls back).
+    _after_update_hook(cur) is a test seam that runs after the UPDATE and
+    before the after-checks.
+
+    Result: {'updated': {period: rows}, 'rows': n, 'drift_accepted': [...]}.
     """
+    plan, drift = _plan(cur, accept_drift)
+    if drift:
+        halt("live differs from the latest edition and matches no stored "
+             f"edition for {drift}: changed outside the editions tables. "
+             "Load it as an edition, or re-run with --accept-drift PERIOD to "
+             "overwrite it with the latest edition")
+    stuck = _unrepairable(plan)
+    if stuck:
+        halt(f"{stuck} differ from the latest edition in rows present in only "
+             "one of them; an update of the refresh columns cannot repair that")
+    result = {"updated": {}, "rows": 0,
+              "drift_accepted": sorted(p for p, v in plan.items()
+                                       if v["kind"] == "drift")}
+    if not plan:
+        return result
+    refreshed = set(plan)
+    full_b = period_hashes(cur, LIVE, HASH_KEY)
+    kept_b = period_hashes(cur, LIVE, HASH_KEY, exclude=REFRESH_COLS)
     sets = ", ".join(f"{c} = e.{c}" for c in REFRESH_COLS)
+    pairs = tuple((p, v["edition"]) for p, v in sorted(plan.items()))
     cur.execute(f"""UPDATE public.{LIVE} l SET {sets}
                     FROM public.{TABLE} e
                     WHERE e.lad24cd = l.lad24cd AND e.period = l.period
                       AND e.category_code = l.category_code
                       AND (e.period, e.edition) IN %s AND {_refresh_where()}""",
-                (_pairs(_latest_map(cur)),))
-    return cur.rowcount
-
-
-def check_live_preserved(cur) -> list:
-    """Live versus the pre-refresh snapshot: same keys; loaded_at identical on
-    every row; every period outside the seven revised quarters (single-edition
-    periods and 2025Q2) identical on every column; the seven quarters differ
-    only in the six refresh columns, and each of them did change."""
-    cur.execute("SELECT to_regclass(%s)", (f"public.{BAK}",))
-    if cur.fetchone()[0] is None:
-        return [f"snapshot table {BAK} is absent"]
-    bad = []
-    cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} l
-                    FULL JOIN public.{BAK} b USING (lad24cd, period,
-                                                    category_code)
-                    WHERE l.period IS NULL OR b.period IS NULL
-                       OR l.loaded_at IS NULL OR b.loaded_at IS NULL""")
-    k = cur.fetchone()[0]
-    if k:
-        bad.append(f"{k} rows present in only one of live and snapshot")
-    cur.execute(f"SELECT COUNT(*) FROM public.{LIVE}")
-    n = cur.fetchone()[0]
-    if n != LIVE_ROWS_TOTAL:
-        bad.append(f"live table has {n} rows, expected {LIVE_ROWS_TOTAL}")
-    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
-                    JOIN public.{BAK} b USING (lad24cd, period, category_code)
-                    WHERE l.loaded_at IS DISTINCT FROM b.loaded_at
-                    GROUP BY 1""")
-    bad += [f"{p}: {c} rows with loaded_at changed" for p, c in cur.fetchall()]
-    allc = ", ".join(f"{{a}}.{c}" for c in DATA_COLS)
-    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
-                    JOIN public.{BAK} b USING (lad24cd, period, category_code)
-                    WHERE l.period <> ALL(%s)
-                      AND ROW({allc.format(a='l')}) IS DISTINCT FROM
-                          ROW({allc.format(a='b')})
-                    GROUP BY 1""", (list(STALE_PERIODS),))
-    bad += [f"{p}: {c} rows not identical to snapshot"
-            for p, c in cur.fetchall()]
-    fx = ", ".join(f"{{a}}.{c}" for c in FIXED_COLS)
-    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
-                    JOIN public.{BAK} b USING (lad24cd, period, category_code)
-                    WHERE l.period = ANY(%s)
-                      AND ROW({fx.format(a='l')}) IS DISTINCT FROM
-                          ROW({fx.format(a='b')})
-                    GROUP BY 1""", (list(STALE_PERIODS),))
-    bad += [f"{p}: {c} rows differ outside the six refresh columns"
-            for p, c in cur.fetchall()]
-    rc = ", ".join(f"{{a}}.{c}" for c in REFRESH_COLS)
-    cur.execute(f"""SELECT l.period, COUNT(*) FILTER (WHERE
-                           ROW({rc.format(a='l')}) IS DISTINCT FROM
-                           ROW({rc.format(a='b')}))
-                    FROM public.{LIVE} l
-                    JOIN public.{BAK} b USING (lad24cd, period, category_code)
-                    WHERE l.period = ANY(%s) GROUP BY 1""",
-                (list(STALE_PERIODS),))
-    got = dict(cur.fetchall())
-    bad += [f"{p}: no row refreshed" for p in STALE_PERIODS
-            if not got.get(p)]
-    return bad
-
-
-def check_live_vs_snapshot_b(cur) -> list:
-    """Live versus the second snapshot (taken just before category_label was
-    refreshed): same keys, loaded_at identical, every column identical except
-    category_label; category_label differs only in the seven revised quarters,
-    and in each of them it did change."""
-    cur.execute("SELECT to_regclass(%s)", (f"public.{BAK_B}",))
-    if cur.fetchone()[0] is None:
-        return [f"snapshot table {BAK_B} is absent"]
-    bad = []
-    cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} l
-                    FULL JOIN public.{BAK_B} b USING (lad24cd, period,
-                                                      category_code)
-                    WHERE l.period IS NULL OR b.period IS NULL""")
-    k = cur.fetchone()[0]
-    if k:
-        bad.append(f"{k} rows present in only one of live and snapshot")
-    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
-                    JOIN public.{BAK_B} b USING (lad24cd, period, category_code)
-                    WHERE l.loaded_at IS DISTINCT FROM b.loaded_at
-                    GROUP BY 1""")
-    bad += [f"{p}: {c} rows with loaded_at changed" for p, c in cur.fetchall()]
-    other = ", ".join(f"{{a}}.{c}" for c in DATA_COLS if c != "category_label")
-    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
-                    JOIN public.{BAK_B} b USING (lad24cd, period, category_code)
-                    WHERE ROW({other.format(a='l')}) IS DISTINCT FROM
-                          ROW({other.format(a='b')})
-                    GROUP BY 1""")
-    bad += [f"{p}: {c} rows differ outside category_label"
-            for p, c in cur.fetchall()]
-    cur.execute(f"""SELECT l.period, COUNT(*) FROM public.{LIVE} l
-                    JOIN public.{BAK_B} b USING (lad24cd, period, category_code)
-                    WHERE l.category_label IS DISTINCT FROM b.category_label
-                    GROUP BY 1""")
-    got = dict(cur.fetchall())
-    bad += [f"{p}: {c} rows with category_label changed (not a revised "
-            "quarter)" for p, c in sorted(got.items())
-            if p not in STALE_PERIODS]
-    bad += [f"{p}: category_label not refreshed" for p in STALE_PERIODS
-            if not got.get(p)]
-    return bad
-
-
-def run_refresh_gates(cur) -> None:
-    """Live equals latest edition (all columns bar loaded_at) and live versus
-    snapshot; halt on any problem."""
-    bad = ([f"live!=latest: {x}" for x in check_latest_equals_live(cur)]
-           + [f"snapshot: {x}" for x in check_live_preserved(cur)]
-           + [f"snapshot b: {x}" for x in check_live_vs_snapshot_b(cur)])
+                (pairs,))
+    n = cur.rowcount
+    expected = sum(v["rows"] for v in plan.values())
+    if _after_update_hook is not None:
+        _after_update_hook(cur)
+    full_a = period_hashes(cur, LIVE, HASH_KEY)
+    kept_a = period_hashes(cur, LIVE, HASH_KEY, exclude=REFRESH_COLS)
+    bad = guard_problems(full_b, full_a, kept_b, kept_a, refreshed)
+    if n != expected:
+        bad.append(f"wrote {n} rows, expected {expected}")
+    for p, v in sorted(plan.items()):
+        k = rows_differing(cur, LIVE, TABLE, KEY, REFRESH_COLS, p, v["edition"])
+        if k:
+            bad.append(f"{p}: {k} rows still differ from edition "
+                       f"{v['edition']} after the refresh")
+    bad += [f"live!=latest: {x}"
+            for x in check_latest_equals_live(cur, sorted(refreshed))]
     if bad:
-        halt("refresh-latest failed its gates, rolled back: "
+        halt("refresh-latest failed its before/after checks, rolled back: "
              + "; ".join(bad[:6]))
+    result["updated"] = {p: v["rows"] for p, v in sorted(plan.items())}
+    result["rows"] = n
+    return result
 
 
-def cmd_refresh_latest(args):
+def cmd_status(_args):
+    from _db import get_readonly_conn
+    conn = get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            st = status(cur)
+    finally:
+        conn.close()
+    print(format_status(st, "S1b support needs"))
+    sys.exit(0 if st["ok"] else 1)
+
+
+def cmd_sync_new(args):
     from _db import get_conn, get_readonly_conn
     writing = args.commit or args.simulate
     conn = get_conn() if writing else get_readonly_conn()
     try:
         with conn.cursor() as cur:
-            counts = refresh_counts(cur)
-            print("rows refresh-latest would write: "
-                  + (", ".join(f"{p}={n}" for p, n in counts.items())
-                     or "none") + f" (total {sum(counts.values())})")
+            tips, new, errors = latest_map(cur, LIVE, TABLE)
+            print("periods with no editions: " + (", ".join(new) or "none"))
             if not writing:
                 print("DRY RUN: nothing written (use --commit or --simulate)")
                 return
-            n = refresh_latest(cur)
-            if n != sum(counts.values()):
-                halt(f"wrote {n} rows, expected {sum(counts.values())}")
-            run_refresh_gates(cur)
-        print(f"{n} live rows refreshed; gates passed")
+            done = sync_new(cur, args.expected_authorities,
+                            tuple(args.accept_categories or ()))
+            for p in done:
+                cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
+                            "WHERE period = %s AND edition = 1", (p,))
+                print(f"  {p}: edition 1 recorded, {cur.fetchone()[0]} rows")
+            st = status(cur)
+            if st["new_periods"] or st["chain_errors"]:
+                halt(f"after sync-new: {format_status(st, 'S1b')}")
+        if args.commit:
+            conn.commit()
+            print(f"COMMITTED: {len(done)} period(s) recorded as edition 1")
+        else:
+            conn.rollback()
+            print("SIMULATION: ROLLED BACK (nothing persisted)")
+    except BaseException:
+        if writing:
+            conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def cmd_refresh_latest(args):
+    from _db import get_conn, get_readonly_conn
+    writing = args.commit or args.simulate
+    accept = tuple(args.accept_drift or ())
+    conn = get_conn() if writing else get_readonly_conn()
+    try:
+        with conn.cursor() as cur:
+            plan, drift = _plan(cur, accept)
+            print("rows refresh-latest would write: "
+                  + (", ".join(f"{p}={v['rows']} (edition {v['edition']}, "
+                               f"{v['kind']})" for p, v in sorted(plan.items()))
+                     or "none")
+                  + f" (total {sum(v['rows'] for v in plan.values())})")
+            if drift:
+                halt(f"drift: live differs from the latest edition and matches "
+                     f"no stored edition for {drift}; load it as an edition or "
+                     "pass --accept-drift PERIOD to overwrite it")
+            if _unrepairable(plan):
+                halt(f"{_unrepairable(plan)} differ from the latest edition "
+                     "in rows present in only one of them; an update cannot "
+                     "repair that")
+            if not writing:
+                print("DRY RUN: nothing written (use --commit or --simulate)")
+                return
+            res = refresh_latest(cur, accept)
+        if not res["rows"]:
+            print("nothing to refresh")
+        else:
+            print(f"{res['rows']} live rows refreshed in "
+                  f"{sorted(res['updated'])}; before/after guard passed")
+            if res["drift_accepted"]:
+                print(f"drift overwritten by request: {res['drift_accepted']}")
         if args.commit:
             conn.commit()
             print("COMMITTED")
@@ -1143,11 +1337,29 @@ def main(argv=None):
                         "edition into the live table (dry-run by default)")
     rm = rl.add_mutually_exclusive_group()
     rm.add_argument("--commit", action="store_true",
-                    help="refresh the live table (gates in the same "
-                    "transaction)")
+                    help="refresh the live table (before/after guard in the "
+                    "same transaction)")
     rm.add_argument("--simulate", action="store_true",
                     help="do everything, then roll back")
+    rl.add_argument("--accept-drift", action="append", metavar="PERIOD",
+                    help="overwrite this period although its live rows equal "
+                    "no stored edition (repeatable)")
     rl.set_defaults(func=cmd_refresh_latest)
+    sub.add_parser("status", help="what needs action; exit 1 if anything"
+                   ).set_defaults(func=cmd_status)
+    sn = sub.add_parser("sync-new", help="record live quarters with no "
+                        "editions as edition 1 (dry-run by default)")
+    sn.add_argument("--expected-authorities", type=int, metavar="N",
+                    help="authorities per quarter; required only when no live "
+                    "period has editions yet (otherwise derived)")
+    sn.add_argument("--accept-categories", action="append", metavar="PERIOD",
+                    help="the category set of this new quarter really differs "
+                    "from the previous quarter's (a layout change); repeatable")
+    smode = sn.add_mutually_exclusive_group()
+    smode.add_argument("--commit", action="store_true")
+    smode.add_argument("--simulate", action="store_true",
+                       help="do everything, then roll back")
+    sn.set_defaults(func=cmd_sync_new)
     args = ap.parse_args(argv)
     args.func(args)
 

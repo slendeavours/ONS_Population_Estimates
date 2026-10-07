@@ -5,10 +5,19 @@ table shape and immutability, 4-5 the backfill, 6-8 the revised 2023Q2-2024Q4
 editions (registry source, no suppressed value stored as 0, support-need totals
 equal to an independent S1b-reader re-read of the same file). Gates 6-8 print `FAIL (pending load)` while any of those seven
 quarters has no edition 2 or later, so the exit code is 1 until they are loaded.
-Gates 9-11 cover the live layer after refresh-latest: it equals the latest
-edition (9), untouched rows/columns match the snapshot (10), and the W1
-signals/national queries differ from the snapshot only where TA was revised
-(11).
+Gates 9-17 cover the generalised refresh, each as a seeded scenario inside a
+rolled-back savepoint (the editions table is append-only, so a seeded edition
+can only exist inside one): an edition 2 of one real period is refreshed and
+nothing else moves (9); tampering outside the refresh inside the transaction
+halts it (10, 10b); the W1 outputs move only where a current-quarter or
+prior-year TA figure changed (11, 11s); a new live quarter makes status fail
+and sync-new records it as edition 1, idempotently (12); a live row changed
+directly is reported as drift and refresh halts unless accepted (13); today's
+database is clean (14); a short quarter is flagged because counts are derived
+(15); a forked chain is reported (16); nothing depends on the retired snapshot
+tables, fixed counts or period lists (17); sync-new needs an explicit
+count when no period has editions (18). The per-period before/after content hash
+(excluding loaded_at) replaces the old snapshot comparison.
 
 Usage:
     python scripts/s1_editions_verify.py
@@ -25,10 +34,15 @@ import psycopg2
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db import get_conn  # noqa: E402
 from s1_editions import (TABLE, MEASURES, STALE_PERIODS,  # noqa: E402
+                         NATIONAL_TA_COLS, REFRESH_COLS, TA_SIGNAL_COLS,
                          check_no_suppressed_zero, check_registry,
-                         check_live_equals_latest, check_live_preserved,
-                         check_signals_equivalence, check_support_needs,
-                         insert_edition, latest_edition, LIVE, LIVE_MEASURES)
+                         check_support_needs, check_w1_equivalence,
+                         expected_authorities, insert_edition, latest_edition,
+                         LIVE_LABEL, live_text_sha256, modal_count,
+                         period_hashes,
+                         refresh_counts, refresh_latest, reproduction_update,
+                         reproduction_verdict, status, sync_new,
+                         w1_snapshot, LIVE)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -288,11 +302,12 @@ def gate_3d_bad_supersedes(cur):
 
 
 def gate_4_coverage(cur):
-    name = "every quarter has edition 1 and 296 authorities per edition"
+    name = "every quarter has edition 1 and the derived authority count per edition"
     if not table_exists(cur):
         return report(4, name, False, f"{TABLE} absent")
     cur.execute("SELECT DISTINCT period FROM public.la_statutory_homelessness")
     periods = sorted(r[0] for r in cur.fetchall())
+    want = expected_authorities(cur)
     cur.execute(f"""SELECT period, edition, COUNT(DISTINCT lad24cd), COUNT(*)
                     FROM public.{TABLE} GROUP BY 1, 2""")
     eds = {}
@@ -304,7 +319,7 @@ def gate_4_coverage(cur):
         if 1 not in e:
             bad.append(f"{p}: no edition 1")
         bad += [f"{p} ed{k}: {v[0]} authorities/{v[1]} rows"
-                for k, v in e.items() if v != (296, 296)]
+                for k, v in e.items() if v != (want, want)]
     cur.execute(f"SELECT COUNT(*) FROM public.{TABLE}")
     total = cur.fetchone()[0]
     report(4, name, bool(periods) and not bad,
@@ -343,13 +358,18 @@ def gate_5_latest_equals_live(cur):
     cur.execute(f"""SELECT edition, total_assessments FROM public.{TABLE}
                     WHERE period = '2025Q2' AND lad24cd = 'E06000001'
                     ORDER BY edition""")
-    hart = cur.fetchall()
-    if hart != [(1, 138), (2, 159)]:
-        bad.append(f"Hartlepool 2025Q2 total_assessments {hart}, "
-                   "expected [(1, 138), (2, 159)]")
+    hart = dict(cur.fetchall())
+    cur.execute(f"""SELECT total_assessments FROM public.{LIVE}
+                    WHERE period = '2025Q2' AND lad24cd = 'E06000001'""")
+    live_h = cur.fetchone()[0]
+    latest_h = hart.get(latest_edition(cur, "2025Q2"))
+    if hart.get(1) != 138 or hart.get(2) != 159 or latest_h != live_h:
+        bad.append(f"Hartlepool 2025Q2 total_assessments by edition {hart}, "
+                   f"live {live_h}: expected edition 1 = 138, edition 2 = 159 "
+                   "and live = the latest edition")
     report(5, name, bool(periods) and not bad,
            "; ".join(bad[:5]) if bad else f"{len(periods)} periods match; "
-           "Hartlepool 138 -> 159")
+           "Hartlepool ed1 138, ed2 159, live = latest")
 
 
 def _revised_editions(cur):
@@ -372,7 +392,7 @@ def _clean_fail(n, name, fn, cur):
 
 
 def gate_6_revised_registry(cur):
-    name = "2023Q2-2024Q4 have a registry edition >= 2, 296 authorities"
+    name = "2023Q2-2024Q4 have a registry edition >= 2, derived authority count"
     if not table_exists(cur):
         return report(6, name, False, f"{TABLE} absent")
 
@@ -420,7 +440,7 @@ def gate_7_no_suppressed_zero(cur):
 
 
 def gate_8_support_needs_vs_a3(cur):
-    name = "support_needs_total equals independent S1b-reader A3 re-read, 296/296"
+    name = "support_needs_total equals independent S1b-reader A3 re-read, every authority"
     if not table_exists(cur):
         return report(8, name, False, f"{TABLE} absent")
 
@@ -438,7 +458,7 @@ def gate_8_support_needs_vs_a3(cur):
         if missing:
             return report(8, name, False,
                           f"no edition >= 2 yet for {missing}", pending=True)
-        report(8, name, True, f"{done} periods 296/296")
+        report(8, name, True, f"{done} periods {expected_authorities(cur)}/{expected_authorities(cur)}")
     _clean_fail(8, name, body, cur)
 
 
@@ -488,7 +508,7 @@ def gate_7s_seeded(cur):
 
 
 def gate_8s_seeded(cur):
-    name = "seeded: gate 8 check flags 295/296"
+    name = "seeded: gate 8 check flags one authority short of the derived count"
     if not table_exists(cur):
         return report("8s", name, False, f"{TABLE} absent")
     cur.execute(f"""SELECT lad24cd, support_needs_total FROM public.{TABLE}
@@ -498,73 +518,528 @@ def gate_8s_seeded(cur):
     lad = min(exp)
     exp[lad] = -1 if exp[lad] is None else exp[lad] + 1
     bad = check_support_needs(cur, "2023Q2", 1, expected=exp)
-    report("8s", name, not clean and any("295/296" in x for x in bad),
+    n = expected_authorities(cur)
+    report("8s", name, not clean and any(f"{n - 1}/{n}" in x for x in bad),
            f"clean={clean}; seeded={bad}")
 
 
-def gate_9_live_equals_latest(cur):
-    name = "live table equals latest edition for every row"
+LAD = "E06000001"  # a real authority present in every period
+
+
+def _fake_edition(cur, period, mutate=None, *, file="gate-fake.ods") -> int:
+    """Append a fake next edition of a real period, a copy of the chain tip
+    with `mutate({lad: {measure: value}})` applied. The editions table is
+    append-only, so the caller must be inside a savepoint it rolls back."""
+    tip = latest_edition(cur, period)
+    cols = ", ".join(("lad24cd",) + MEASURES)
+    cur.execute(f"SELECT {cols} FROM public.{TABLE} "
+                "WHERE period = %s AND edition = %s", (period, tip))
+    maps = {r[0]: dict(zip(MEASURES, r[1:])) for r in cur.fetchall()}
+    if mutate:
+        mutate(maps)
+    recs = [dict(lad24cd=k, **v) for k, v in maps.items()]
+    return insert_edition(cur, recs, period, release_label="gate-fake",
+                          published_date=date(2099, 1, 1), source_url=None,
+                          source_file=file,
+                          source_sha256=f"gate-fake-{period}-{tip}",
+                          supersedes=tip)
+
+
+def _bump(col, by=1, lad=LAD):
+    def f(maps):
+        maps[lad][col] = (maps[lad][col] or 0) + by
+    return f
+
+
+def _fake_live_period(cur, drop_one=False):
+    """Copy the current quarter's live rows into a fake 2099Q1 (a brand-new
+    quarter)."""
+    cur.execute(f"""INSERT INTO public.{LIVE}
+        (lad24cd, period, {', '.join(MEASURES)}, loaded_at, source_file,
+         extracted_at)
+        SELECT lad24cd, '2099Q1', {', '.join(MEASURES)}, loaded_at,
+               source_file, extracted_at
+        FROM public.{LIVE} WHERE period = (SELECT MAX(period)
+                                           FROM public.{LIVE})""")
+    if drop_one:
+        cur.execute(f"DELETE FROM public.{LIVE} WHERE period = '2099Q1' "
+                    "AND lad24cd = %s", (LAD,))
+
+
+def _hashes(cur):
+    key = ("period", "lad24cd")
+    return (period_hashes(cur, LIVE, key),
+            period_hashes(cur, LIVE, key, exclude=REFRESH_COLS))
+
+
+def _halts(fn):
+    """(True, message) if fn raised SystemExit (a halt)."""
     try:
-        bad = check_live_equals_latest(cur)
-    except (ValueError, LookupError) as e:
-        return report(9, name, False, str(e))
-    report(9, name, not bad, "; ".join(bad[:5]) if bad else "3256 rows match")
+        fn()
+    except SystemExit as e:
+        return True, str(e)
+    return False, "no halt"
 
 
-def gate_10_live_preserved(cur):
-    name = "single-edition quarters, 2025Q2, *_suspect, loaded_at match snapshot"
-    try:
-        bad = check_live_preserved(cur)
-    except (ValueError, LookupError) as e:
-        return report(10, name, False, str(e))
-    report(10, name, not bad, "; ".join(bad[:5]) if bad else "identical")
+def gate_9_refresh_updates_only_the_revised_period(cur):
+    name = "seeded: edition 2 of one real period -> refresh updates exactly it"
 
-
-def gate_11_signals_equivalence(cur):
-    name = "W1 signals/national differ from snapshot only where TA revised"
-    try:
-        bad, summ = check_signals_equivalence(cur)
-    except (ValueError, LookupError) as e:
-        return report(11, name, False, str(e))
-    report(11, name, not bad, "; ".join(bad[:5]) if bad else
-           f"{len(summ['authorities_differing'])} authorities differ, "
-           f"columns {summ['columns']}, national columns "
-           f"{summ['national_columns_changed']}")
-
-
-def gate_10s_seeded(cur):
-    name = "seeded: gate 10 flags a changed suspect column and a changed 2025Q3 row"
     def body(cur):
-        cur.execute(f"""UPDATE public.{LIVE} SET mental_health_suspect =
-                        COALESCE(mental_health_suspect, 0) + 1
-                        WHERE period = '2023Q2' AND lad24cd = 'E06000001'""")
-        cur.execute(f"""UPDATE public.{LIVE} SET households_in_ta =
-                        COALESCE(households_in_ta, 0) + 1
-                        WHERE period = '2025Q3' AND lad24cd = 'E06000001'""")
-        return check_live_preserved(cur)
+        _fake_edition(cur, "2025Q3", _bump("owed_duty"))
+        before = status(cur)
+        full_b, kept_b = _hashes(cur)
+        res = refresh_latest(cur)
+        full_a, kept_a = _hashes(cur)
+        after = status(cur)
+        others = [p for p in full_b if p != "2025Q3"]
+        return (before, res, after,
+                all(full_b[p] == full_a[p] and kept_b[p] == kept_a[p]
+                    for p in others),
+                kept_b["2025Q3"] == kept_a["2025Q3"],
+                full_b["2025Q3"] != full_a["2025Q3"])
     try:
-        bad = _in_savepoint(cur, body)
-    except psycopg2.Error as e:
-        return report("10s", name, False, str(e).splitlines()[0])
-    ok = (any("2025Q3" in x and "byte-identical" in x for x in bad)
-          and any("2023Q2" in x and "suspect" in x for x in bad))
-    report("10s", name, ok, "; ".join(bad))
+        before, res, after, others_same, kept_same, changed = _in_savepoint(
+            cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(9, name, False, str(e).splitlines()[0])
+    ok = (before["pending_refresh"] == ["2025Q3"] and not before["ok"]
+          and list(res["updated"]) == ["2025Q3"] and others_same
+          and kept_same and changed and after["ok"])
+    report(9, name, ok, f"pending={before['pending_refresh']} "
+           f"updated={res['updated']} other periods unchanged={others_same} "
+           f"suspect/loaded_at unchanged={kept_same} status after ok="
+           f"{after['ok']}")
 
 
-def gate_11s_seeded(cur):
-    name = "seeded: gate 11 flags a TA change in the current quarter"
+def gate_10_tamper_rolls_back(cur):
+    name = "seeded: tampering outside the refresh inside the transaction halts"
+    cases = {
+        "another period's measure":
+            "UPDATE public.{live} SET total_assessments = "
+            "COALESCE(total_assessments, 0) + 1 "
+            "WHERE period = '2024Q1' AND lad24cd = '{lad}'",
+        "another period's loaded_at":
+            "UPDATE public.{live} SET loaded_at = loaded_at + interval '1 day' "
+            "WHERE period = '2024Q1' AND lad24cd = '{lad}'",
+        "another period's row count":
+            "DELETE FROM public.{live} WHERE period = '2024Q1' "
+            "AND lad24cd = '{lad}'",
+        "a *_suspect column of an untouched period":
+            "UPDATE public.{live} SET drug_dependency_suspect = "
+            "COALESCE(drug_dependency_suspect, 0) + 1 "
+            "WHERE period = '2024Q2' AND lad24cd = '{lad}'",
+        "a *_suspect column of the refreshed period":
+            "UPDATE public.{live} SET mental_health_suspect = "
+            "COALESCE(mental_health_suspect, 0) + 1 "
+            "WHERE period = '2025Q3' AND lad24cd = '{lad}'",
+    }
+    fails, seen = [], []
+    for what, sql in cases.items():
+        def body(cur, sql=sql):
+            _fake_edition(cur, "2025Q3", _bump("owed_duty"))
+            return _halts(lambda: refresh_latest(
+                cur, _after_update_hook=lambda c: c.execute(
+                    sql.format(live=LIVE, lad=LAD))))
+        try:
+            halted, msg = _in_savepoint(cur, body)
+        except psycopg2.Error as e:
+            return report(10, name, False, str(e).splitlines()[0])
+        seen.append(msg[:70])
+        if not (halted and "guard:" in msg):
+            fails.append(f"{what}: {msg[:80]}")
+    report(10, name, not fails, "; ".join(fails) if fails else
+           f"{len(cases)} tamper kinds caught by the guard")
+
+
+def gate_10b_noop_changes_nothing(cur):
+    name = "refresh with nothing to do writes nothing (today's database)"
     def body(cur):
+        full_b, kept_b = _hashes(cur)
+        res = refresh_latest(cur)
+        full_a, kept_a = _hashes(cur)
+        return res, full_b == full_a and kept_b == kept_a, refresh_counts(cur)
+    try:
+        res, same, counts = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report("10b", name, False, str(e).splitlines()[0])
+    report("10b", name, res["rows"] == 0 and same and counts == {},
+           f"rows={res['rows']} hashes identical={same} plan={counts}")
+
+
+def gate_11_w1_equivalence(cur):
+    name = "W1 outputs move only for authorities whose current/prior-year TA changed"
+    out = []
+
+    def run(period, col, by, lad=LAD):
+        def body(cur):
+            _fake_edition(cur, period, _bump(col, by, lad))
+            return refresh_latest(cur)
+        return _in_savepoint(cur, body)
+    try:
+        snap = w1_snapshot(cur)  # derives current/prior quarter as W1 does
+        top, prev = snap["top"], snap["prev"]
+        cur_res = run(top, "households_in_ta", 7)
+        prev_res = run(prev, "households_in_ta", 5, "E06000002")
+        non_ta = run(top, "owed_duty", 3)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(11, name, False, str(e).splitlines()[0])
+    w = cur_res["w1"]
+    ok = (w["ta_changed_authorities"] == [LAD]
+          and set(w["authorities_differing"]) <= set(w["ta_changed_authorities"])
+          and w["authorities_differing"]
+          and set(w["columns"]) <= TA_SIGNAL_COLS
+          and w["national_columns_changed"]
+          and set(w["national_columns_changed"]) <= NATIONAL_TA_COLS)
+    out.append(f"{top} (current) TA +7 -> signals differ for "
+               f"{w['authorities_differing']} in {sorted(w['columns'])}, "
+               f"national {w['national_columns_changed']}")
+    w = prev_res["w1"]
+    ok = ok and (w["ta_changed_authorities"] == ["E06000002"]
+                 and set(w["authorities_differing"]) <= {"E06000002"}
+                 and set(w["columns"]) <= TA_SIGNAL_COLS)
+    out.append(f"{prev} (prior year) TA +5 -> {w['authorities_differing']}")
+    w = non_ta["w1"]
+    ok = ok and not w["authorities_differing"] and not w["national_columns_changed"]
+    out.append("non-TA measure change -> no signals move")
+    report(11, name, ok, "; ".join(out))
+
+
+def gate_11s_w1_negative(cur):
+    name = "seeded: W1 check flags signals moving where TA did not, and non-TA columns"
+
+    def body(cur):
+        before = w1_snapshot(cur)
         cur.execute(f"""UPDATE public.{LIVE} SET households_in_ta =
                         COALESCE(households_in_ta, 0) + 7
-                        WHERE period = (SELECT MAX(period) FROM public.{LIVE})
-                          AND lad24cd = 'E06000001'""")
-        return check_signals_equivalence(cur)[0]
+                        WHERE period = %s AND lad24cd = %s""",
+                    (before["top"], LAD))
+        after = w1_snapshot(cur)
+        return before, after
     try:
-        bad = _in_savepoint(cur, body)
+        before, after = _in_savepoint(cur, body)
     except psycopg2.Error as e:
         return report("11s", name, False, str(e).splitlines()[0])
-    ok = any("E06000001" in x and "not revised" in x for x in bad)
-    report("11s", name, ok, "; ".join(bad[:2]))
+    truthful, _ = check_w1_equivalence(before, after)
+    # claim the TA figure did not change: the same signals movement is wrong
+    denied = dict(after, ta=dict(before["ta"]))
+    untrue, _ = check_w1_equivalence(before, denied)
+    # a non-TA signal column moving
+    j = before["cols"].index("la_name")
+    row = list(after["signals"][LAD])
+    row[j] = "changed"
+    tampered = dict(after, signals=dict(after["signals"], **{LAD: tuple(row)}))
+    non_ta, _ = check_w1_equivalence(before, tampered)
+    ok = (not truthful and any("did not" in x for x in untrue)
+          and any("non-TA signal columns" in x for x in non_ta))
+    report("11s", name, ok, f"truthful={truthful}; denied={untrue[:1]}; "
+           f"non-TA={non_ta[:1]}")
+
+
+def gate_12_new_period(cur):
+    name = "seeded: a new live quarter -> status not ok; sync-new gives edition 1, idempotent"
+
+    def body(cur):
+        _fake_live_period(cur)
+        s1 = status(cur)
+        halted = _halts(lambda: refresh_latest(cur))
+        done = sync_new(cur)
+        tip = latest_edition(cur, "2099Q1")
+        cur.execute(f"""SELECT COUNT(*), MIN(release_label), MIN(source_sha256)
+                        FROM public.{TABLE} WHERE period = '2099Q1'
+                        AND edition = 1""")
+        rows, label, sha = cur.fetchone()
+        again = sync_new(cur)
+        cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
+                    "WHERE period = '2099Q1'")
+        total = cur.fetchone()[0]
+        return s1, halted, done, tip, rows, label, sha, again, total, status(cur)
+    try:
+        s1, halted, done, tip, rows, label, sha, again, total, s2 = \
+            _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(12, name, False, str(e).splitlines()[0])
+    n_auth = expected_authorities(cur)
+    cur.execute(f"SELECT MAX(period) FROM public.{LIVE}")
+    newest = cur.fetchone()[0]
+    cur.execute(f"SELECT {', '.join(('lad24cd',) + MEASURES)} "
+                f"FROM public.{TABLE} WHERE period = %s AND edition = %s",
+                (newest, latest_edition(cur, newest)))
+    want = live_text_sha256([dict(zip(("lad24cd",) + MEASURES, r))
+                             for r in cur.fetchall()])
+    ok = (s1["new_periods"] == ["2099Q1"] and not s1["ok"]
+          and halted[0] and "sync-new" in halted[1]
+          and done == ["2099Q1"] and tip == 1 and rows == n_auth
+          and label == LIVE_LABEL and sha == want
+          and again == [] and total == n_auth and s2["ok"])
+    report(12, name, ok, f"new={s1['new_periods']} refresh halted={halted[0]} "
+           f"synced={done} edition rows={rows} label={label!r} sha matches "
+           f"current quarter's canonical hash={sha == want} second sync={again} "
+           f"status after ok={s2['ok']}")
+
+
+def gate_13_drift(cur):
+    name = "seeded: live changed directly -> status reports drift; refresh halts unless accepted"
+
+    def body(cur, period):
+        cur.execute(f"""UPDATE public.{LIVE} SET total_assessments =
+                        COALESCE(total_assessments, 0) + 1000
+                        WHERE period = %s AND lad24cd = %s""", (period, LAD))
+        st = status(cur)
+        halted = _halts(lambda: refresh_latest(cur))
+        stray = _halts(lambda: refresh_latest(cur, accept_drift=("2024Q1",)))
+        full_b, _ = _hashes(cur)
+        res = refresh_latest(cur, accept_drift=(period,))
+        st2 = status(cur)
+        return st, halted, stray, res, st2
+    oks, notes = [], []
+    for period in ("2025Q3", "2025Q2"):  # one edition; two editions
+        try:
+            st, halted, stray, res, st2 = _in_savepoint(
+                cur, lambda c, p=period: body(c, p))
+        except (psycopg2.Error, SystemExit) as e:
+            return report(13, name, False, str(e).splitlines()[0])
+        oks.append(st["drift_periods"] == [period] and not st["ok"]
+                   and halted[0] and "--accept-drift" in halted[1]
+                   and stray[0] and period in res["drift_accepted"]
+                   and list(res["updated"]) == [period] and st2["ok"])
+        notes.append(f"{period}: drift={st['drift_periods']} halted="
+                     f"{halted[0]} accepted->{list(res['updated'])} "
+                     f"status after ok={st2['ok']}")
+    report(13, name, all(oks), "; ".join(notes))
+
+
+def gate_14_today(cur):
+    name = "today's database: status ok, nothing to refresh, chain valid for every period"
+    try:
+        st = status(cur)
+        plan = refresh_counts(cur)
+    except (SystemExit, ValueError, LookupError) as e:
+        return report(14, name, False, str(e))
+    report(14, name, st["ok"] and plan == {},
+           f"periods={st['periods']} status ok={st['ok']} plan={plan}")
+
+
+def gate_15_derived_counts(cur):
+    name = "seeded: a quarter one authority short is flagged, not absorbed (counts derived)"
+
+    def body(cur):
+        _fake_live_period(cur, drop_one=True)
+        st = status(cur)
+        halted = _halts(lambda: sync_new(cur))
+        return st, halted
+    try:
+        st, halted = _in_savepoint(cur, body)
+    except psycopg2.Error as e:
+        return report(15, name, False, str(e).splitlines()[0])
+    n = expected_authorities(cur)
+    unit = (modal_count({"a": 7, "b": 7, "c": 6}) == 7
+            and modal_count({}) is None)
+    ok = (st["bad_counts"].get("2099Q1") == (n - 1, n) and not st["ok"]
+          and halted[0] and f"{n - 1} live rows, expected {n}" in halted[1]
+          and unit)
+    report(15, name, ok, f"bad_counts={st['bad_counts']} sync-new: "
+           f"{halted[1][:80]}")
+
+
+def gate_16_chain_error_reported(cur):
+    name = "seeded: a forked supersedes chain shows up in status as a chain error"
+
+    def body(cur):
+        tip0 = latest_edition(cur, "2025Q3")
+        ed = _fake_edition(cur, "2025Q3", _bump("owed_duty"))
+        # another edition that also supersedes the old tip forks the chain
+        cur.execute(f"""INSERT INTO public.{TABLE} (lad24cd, period, edition,
+                        total_assessments, source_file, source_sha256,
+                        supersedes) VALUES (%s, '2025Q3', %s, 1, 'gate-fake',
+                        'gate-fork', %s)""", (LAD, ed + 1, tip0))
+        return status(cur), ed
+    try:
+        st, _ = _in_savepoint(cur, body)
+    except psycopg2.Error as e:
+        return report(16, name, False, str(e).splitlines()[0])
+    report(16, name, "2025Q3" in st["chain_errors"] and not st["ok"],
+           str(st["chain_errors"])[:120])
+
+
+def gate_19_url_mismatch_not_a_failure(cur):
+    name = "reproduction verdict rests on cells only; a file_url mismatch is a note"
+    same = reproduction_verdict(0, "u", "u")
+    differ = reproduction_verdict(0, "page", "registry")
+    cells = reproduction_verdict(3, "u", "u")
+    both = reproduction_verdict(3, "page", "registry")
+    ok = (same == (True, "")
+          and differ[0] is True and "file_url differs" in differ[1]
+          and cells == (False, "")
+          and both[0] is False and "file_url differs" in both[1])
+
+    # end to end where a manifest file is available: 2025Q1-Q4 and the
+    # revised quarters carry URLs that differ from the edition's source_url
+    cur.execute("""SELECT h.period FROM public.homelessness_quarter_urls h
+                   JOIN (SELECT DISTINCT period, source_url FROM
+                         public.{t}) e USING (period)
+                   WHERE h.file_url IS DISTINCT FROM e.source_url""".format(
+        t=TABLE))
+    mism = [r[0] for r in cur.fetchall()]
+
+    def body(cur):
+        return reproduction_update(cur, mism[:1]) if mism else []
+    try:
+        res = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(19, name, False, str(e).splitlines()[0])
+    e2e = all(r[2] is not False for r in res)
+    report(19, name, ok and e2e,
+           f"verdicts ok={ok}; periods whose file_url differs from the "
+           f"edition URL: {len(mism)}; reproduction_update on one -> {res}")
+
+
+def gate_20_missing_row_halts(cur):
+    name = "seeded: an accepted drift that is only a missing live row halts, not 'nothing to refresh'"
+
+    def body(cur):
+        cur.execute(f"DELETE FROM public.{LIVE} WHERE period = '2025Q3' "
+                    "AND lad24cd = %s", (LAD,))
+        st = status(cur)
+        plan_halt = _halts(lambda: refresh_latest(cur, accept_drift=("2025Q3",)))
+        return st, plan_halt
+    try:
+        st, h = _in_savepoint(cur, body)
+    except psycopg2.Error as e:
+        return report(20, name, False, str(e).splitlines()[0])
+    ok = (not st["ok"] and h[0] and "only one of them" in h[1])
+    report(20, name, ok, f"status ok={st['ok']}; refresh: {h[1][:90]}")
+
+
+# Retired literals: the snapshot table names, the fixed live row count, the
+# fixed period list and a typed authority count.
+RETIRED = ("_bak_", "BAK", "3256", "STALE_PERIODS", "296")
+# Functions allowed to mention them, by name, each with the reason.
+ALLOWED_S1 = {
+    # one-off historical markdown report of the 2026-10 reload candidates:
+    # iterates the seven restated quarters on purpose; writes no table
+    "cmd_dryrun_all",
+}
+ALLOWED_VERIFY = {
+    # gates 6-8 check the seven quarters restated in the 2026-10 reload, which
+    # is historical by definition
+    "_revised_editions",
+    # this gate has to name the literals it looks for (and plants them)
+    "gate_17_no_snapshot_dependency",
+}
+# Module-level assignments allowed to carry a retired literal:
+ALLOWED_MODULE = {
+    # defined for the historical dryrun-all reports and gates 6-8 (both tables)
+    "STALE_PERIODS",
+    # the scanner's own literal list and this allow-list (this file only)
+    "RETIRED",
+    "ALLOWED_MODULE",
+}
+REFRESH_PATH = ("refresh_latest", "refresh_counts", "status", "sync_new",
+                "classify_period", "guard_problems", "check_w1_equivalence",
+                "_plan", "reproduction_update", "latest_map",
+                "w1_snapshot", "period_hashes")
+
+
+def scan_retired(text, allowed_funcs, allowed_module=ALLOWED_MODULE,
+                 literals=RETIRED) -> list:
+    """[(function or '<module>', literal)] for every retired literal found in
+    the source text: inside each top-level function not in allowed_funcs, and
+    in module-level statements other than docstrings, imports of an allowed
+    name, and assignments to an allowed name."""
+    import ast
+    tree = ast.parse(text)
+    out = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in allowed_funcs:
+                continue
+            where = node.name
+        elif isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id in allowed_module
+                for t in node.targets):
+            continue
+        elif isinstance(node, ast.Expr) and isinstance(
+                getattr(node, "value", None), ast.Constant):
+            continue  # docstring / bare string
+        elif isinstance(node, ast.ImportFrom) and all(
+                a.name in allowed_module for a in node.names
+                if a.name in literals):
+            continue
+        else:
+            where = "<module>"
+        src = ast.get_source_segment(text, node) or ""
+        out += [(where, w) for w in literals if w in src]
+    return out
+
+
+def _defined_functions(text):
+    import ast
+    return {n.name for n in ast.parse(text).body
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+
+
+def gate_17_no_snapshot_dependency(cur):
+    name = "no code path depends on the retired snapshot tables, fixed counts or period lists"
+    here = Path(__file__).resolve().parent
+    s1_text = (here / "s1_editions.py").read_text(encoding="utf-8")
+    vf_text = (here / "s1_editions_verify.py").read_text(encoding="utf-8")
+    missing = [f for f in REFRESH_PATH if f not in _defined_functions(s1_text)]
+    hits = [f"s1_editions.{fn}: {w}"
+            for fn, w in scan_retired(s1_text, ALLOWED_S1)]
+    hits += [f"s1_editions_verify.{fn}: {w}"
+             for fn, w in scan_retired(vf_text, ALLOWED_VERIFY)]
+    # seeded: the scanner reports a planted literal in a function that is not
+    # allow-listed, ignores it in an allow-listed one, and sees module level
+    planted = ("def refresh_x(cur):\n    cur.execute('SELECT 1 FROM "
+               "la_statutory_homelessness_bak_1')\n"
+               "def old_report(cur):\n    return 3256\n"
+               "X = 296\nSTALE_PERIODS = ('2023Q2',)\n")
+    got = scan_retired(planted, {"old_report"})
+    seeded = (("refresh_x", "_bak_") in got
+              and not any(f == "old_report" for f, _ in got)
+              and ("<module>", "296") in got
+              and not any(w == "STALE_PERIODS" for _, w in got))
+    report(17, name, not hits and not missing and seeded,
+           f"missing={missing} hits={hits[:6]} seeded scanner ok={seeded}"
+           if hits or missing or not seeded else
+           f"both files scanned (functions and module level); allow-listed: "
+           f"{sorted(ALLOWED_S1 | ALLOWED_VERIFY)}; planted literal "
+           f"reported={got}")
+
+
+def gate_18_bootstrap_needs_explicit_count(cur):
+    name = "seeded: --expected-authorities only when no count is derivable (or equal to it)"
+    import s1_editions as m
+    n = expected_authorities(cur)
+
+    def body(cur):
+        _fake_live_period(cur, drop_one=True)
+        # derivable count (real periods have editions): a different N halts
+        differs = _halts(lambda: sync_new(cur, n - 1))
+        # derivable and equal to N: accepted, the short quarter still halts
+        equal = _halts(lambda: sync_new(cur, n))
+        # no period has editions: simulate the bootstrap
+        saved = m.latest_map, m.live_period_counts
+        m.latest_map = lambda cur, *a, **k: ({}, ["2099Q1"], {})
+        m.live_period_counts = lambda cur, *a, **k: {"2099Q1": n - 1}
+        try:
+            no_arg = _halts(lambda: sync_new(cur))
+            short = _halts(lambda: sync_new(cur, n))
+            explicit = sync_new(cur, n - 1)
+        finally:
+            m.latest_map, m.live_period_counts = saved
+        return differs, no_arg, short, explicit, equal
+    try:
+        differs, no_arg, short, explicit, equal = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(18, name, False, str(e).splitlines()[0])
+    ok = (differs[0] and "differs from the count" in differs[1]
+          and no_arg[0] and "--expected-authorities" in no_arg[1]
+          and short[0] and f"{n - 1} live rows, expected {n}" in short[1]
+          and explicit == ["2099Q1"]
+          and equal[0] and f"{n - 1} live rows, expected {n}" in equal[1])
+    report(18, name, ok, f"derivable, N differs: {differs[1][:50]}; bootstrap "
+           f"no N: {no_arg[1][:40]}; explicit {n - 1}: {explicit}")
 
 
 def main():
@@ -591,11 +1066,20 @@ def main():
             gate_6s_seeded(cur)
             gate_7s_seeded(cur)
             gate_8s_seeded(cur)
-            gate_9_live_equals_latest(cur)
-            gate_10_live_preserved(cur)
-            gate_11_signals_equivalence(cur)
-            gate_10s_seeded(cur)
-            gate_11s_seeded(cur)
+            gate_9_refresh_updates_only_the_revised_period(cur)
+            gate_10_tamper_rolls_back(cur)
+            gate_10b_noop_changes_nothing(cur)
+            gate_11_w1_equivalence(cur)
+            gate_11s_w1_negative(cur)
+            gate_12_new_period(cur)
+            gate_13_drift(cur)
+            gate_14_today(cur)
+            gate_15_derived_counts(cur)
+            gate_16_chain_error_reported(cur)
+            gate_17_no_snapshot_dependency(cur)
+            gate_18_bootstrap_needs_explicit_count(cur)
+            gate_19_url_mismatch_not_a_failure(cur)
+            gate_20_missing_row_halts(cur)
     finally:
         conn.rollback()
         conn.close()
