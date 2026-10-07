@@ -161,6 +161,23 @@ All spend figures are in **£ thousands (£000s)**. Multiply by 1,000 for £ ste
 | `ro4_nightly_spend_000` | numeric(12,2) | 0 – 100,000+ | LA expenditure on nightly-paid / SWEP accommodation (£000s) |
 | `ro4_total_homelessness_000` | numeric(12,2) | 0 – 200,000+ | Total LA gross expenditure on homelessness services (£000s) |
 
+### Housing expenditure editions (RO4)
+
+`ro4_housing_expenditure_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, financial_year, edition)`; 888 rows (296 authorities in each of 2024-25 editions 1 and 2 and 2025-26 edition 1). `financial_year` is `YYYY-YY` (e.g. `2024-25`). All spend figures are £ thousands, `numeric(12,2)`.
+
+| Column | Description |
+|---|---|
+| `edition` | Integer, 1 = first recorded for that financial year. |
+| `supersedes` | The edition this one replaces; NULL for the first. |
+| `lad24cd`, `la_name` | Canonical authority code (Barnsley and Sheffield stay E08000016 and E08000019, as in the live table) and name. |
+| `nightly_paid_ta_gross_exp_000`, `nightly_paid_ta_net_exp_000`, `hostels_gross_exp_000`, `hostels_net_exp_000`, `bb_gross_exp_000`, `bb_net_exp_000`, `hra_admin_prevention_relief_net_exp_000`, `total_homelessness_gross_exp_000`, `total_homelessness_net_exp_000`, `total_housing_gross_exp_000`, `total_housing_net_exp_000` | The eleven measures. A real zero is 0; an authority that has not reported, or whose cells the publisher marks `[x]`, is NULL. |
+| `data_missing` | True where the authority's spending is not published in that release (equivalent to a NULL total homelessness gross). |
+| `source` | Text label of the release the row came from. |
+| `release_label`, `published_date` | Description and date of the release. Informational only; they do not decide which edition is latest. |
+| `source_file`, `source_sha256`, `loaded_at` | The source file name and the insert time. `source_sha256` is the checksum of the local source file for an edition loaded from a file; for 2024-25 edition 1, recorded 'as loaded' (no source file in hand), it is the sha256 of a canonical text rendering of the stored rows, sorted by `lad24cd`. |
+
+**Live-layer rule.** `ro4_housing_expenditure` holds, for each authority and financial year, the latest edition (the one no other edition supersedes). It is refreshed with `python scripts/ro4_editions.py refresh-latest --commit` and changes only the eleven measures, `la_name`, `data_missing` and `source`; `loaded_at` is never touched. A financial year with one edition is identical in both tables. 2024-25 has two editions: edition 1 is what the live table held before 2026-10-07, edition 2 the third release (published 11 Jun 2026), which is now in live. Eight authorities are NULL in edition 2 with `data_missing` true (the file marks them `[x]`); their earlier figures are in edition 1. The first and second releases of 2024-25 are not held. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
+
 ---
 
 ## Fiscal Risk Flags

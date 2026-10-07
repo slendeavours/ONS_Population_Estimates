@@ -5,14 +5,14 @@ a record that gets quietly edited later is no longer evidence of anything.
 This index is the reconciliation. **Read it first** — it says which findings
 are settled and which are still live.
 
-Status as at **2026-10-07** (the quarterly refresh generalisation; before that, **2026-10-06**: S1 items 1 and 3, the S1b edition work and the open items below; the rest as at 2026-09-30). The verification suite exits **0**, all **21**
+Status as at **2026-10-07** (the RO4 edition history and the quarterly refresh generalisation; before that, **2026-10-06**: S1 items 1 and 3, the S1b edition work and the open items below; the rest as at 2026-09-30). The verification suite exits **0**, all **21**
 gates pass, and `known_red.json` is empty. The eight records of 2026-08-20
 and 2026-08-21 were reconciled on 2026-09-30, each checked against the
 live database, git tree or Pages runs rather than taken from its own text.
 
 ## Still open
 
-Three things are registered but unresolved; the three bullets under item 2 are latent. Each is discoverable from the data
+Three things are registered but unresolved; the bullet under item 2 is latent. Each is discoverable from the data
 as well as from here. S1 items 1 and 3 of the earlier list closed on 2026-10-06 and now sit in the Closed table.
 
 ### 1. S10 rough sleeping — suppression markers unverified
@@ -23,7 +23,7 @@ snapshot count, so the table cannot settle it either way. It settles the way S1
 did: extract from source and compare. S10 also fetches a pre-processed CSV with
 no committed extraction code, so the extraction likely has to be written first.
 
-### 2. Three latent database defects, none affecting the map
+### 2. A latent database defect, not affecting the map (two others closed 2026-10-07)
 
 Found in the 2026-09-30 reference-CSV reconciliation; assessed the same day.
 Nothing reads any of them, so none is urgent. See
@@ -32,20 +32,28 @@ Nothing reads any of them, so none is urgent. See
 - `la_housing_register` keeps one arbitrary predecessor row for eleven
   reorganised authorities, 2015 to 2023. The map reads the latest year only,
   so it matters only if someone builds a waiting-list trend.
-- `ro4_housing_expenditure.hra_admin_prevention_relief_net_exp_000` holds TA
-  administration net spend. Unread; ignore unless something starts using it.
-- `total_housing_gross_exp_000` and `_net` were not refreshed with the rest of
-  the third release: eight authorities are NULL and Islington and Leicester
-  differ. Unread by the map.
+- **Closed 2026-10-07:** `ro4_housing_expenditure.hra_admin_prevention_relief_net_exp_000`
+  held TA administration net spend. 2024-25 edition 2 (the third release) carries
+  the correct line and the live table was refreshed from it: 250 authorities
+  changed.
+- **Closed 2026-10-07:** the `total_housing_gross_exp_000` / `_net` mismatch (eight
+  authorities with a homelessness total but a NULL housing total; Islington and
+  Leicester differing). The eight are now NULL throughout, because the third-release
+  file marks every spending cell for them `[x]` (publisher: data missing), and
+  Islington's and Leicester City's homelessness figures now equal the file. The
+  `total_housing` columns themselves did not change in edition 2 (0 cells). See
+  `2026-10-07-ro4-edition-history.md`.
 
 ### 3. Left open by the S1 edition work
 
 None of these was fixed by it.
 
 - **n8n S1 node 2 `|| 0` defect and the stale W1 period labels** remain.
-- **Key change before the next revision.** The RO4 table key
-  (`lad24cd, financial_year`) needs edition treatment before the source is next revised,
-  or the revision can only overwrite.
+- **RO4 releases are not detected automatically.** A new release, such as the
+  second 2025-26 release expected later, is spotted by hand and loaded as a new
+  edition with `scripts/ro4_editions.py load` (procedure in
+  [../QUARTERLY_REFRESH.md](../QUARTERLY_REFRESH.md)). The first and second
+  releases of 2024-25 are not held and cannot be added before edition 1.
 - **`scripts/s1b_support_needs_build.py` still prefers the release-page file.** A later S1b edition must be loaded with `scripts/s1b_editions.py load`; the build script would write the linked file over it.
 - **The quarterly revision re-check is not automated.** Re-checking each loaded quarter for revision, and logging `revision_detected` in `source_check_log`, still has to be done by hand.
 - **No insert-time trigger enforces `supersedes` = chain tip.** Only `load` checks it. A fork inserted another way would make `latest_edition` raise permanently.
@@ -58,6 +66,7 @@ None of these was fixed by it.
 
 | Record | What it settled |
 | --- | --- |
+| [2026-10-07-ro4-edition-history.md](2026-10-07-ro4-edition-history.md) | Former open item "RO4 key needs edition treatment" and two of the three latent database defects. RO4 revisions are stored as editions (`ro4_housing_expenditure_editions`, append-only, 888 rows); the live table is the latest-edition layer. 2024-25 edition 1 is what the live table held, edition 2 the third release of 11 Jun 2026, now in live: the `hra_admin_prevention_relief_net_exp_000` column is corrected on 250 authorities and eight authorities (Birmingham, Slough, Warwick, Ashfield, North West Leicestershire, Guildford, Amber Valley, North Warwickshire) are NULL with `data_missing` true because the file marks them `[x]`. **The earlier wording that the third release populates those eight was wrong** (their figures remain in edition 1); older records are left as written. The map and W1 read 2025-26 only and are unchanged. Earlier 2024-25 releases are not held. |
 | [2026-10-07-editions-quarterly-refresh.md](2026-10-07-editions-quarterly-refresh.md) | Former open item "`refresh-latest` is specific to the 2026-10-06 reload" (S1 and S1b). `refresh-latest` now updates any quarter whose live rows differ from its latest edition; `sync-new` records a new quarter as edition 1; `status` says what needs action; drift (live differs from the latest edition and matches no stored edition) halts unless `--accept-drift`; the snapshot tables no longer back any gate. Procedure: [../QUARTERLY_REFRESH.md](../QUARTERLY_REFRESH.md). |
 | [2026-10-06-s1b-edition-history.md](2026-10-06-s1b-edition-history.md) | S1b revisions are stored as editions (`la_homelessness_support_needs_editions`, append-only, 174,640 rows); the live table is the latest-edition layer and now holds the revised files for 2023Q2 to 2024Q4 and 2025Q2, label included. Closes the open item that S1b was stale. **The earlier statement that `s1b_support_needs_verify.py` "fails 6 of 7 gates" was wrong:** six of seven passed, and gate 6 failed because the table held a revision the release-page resolver does not link. Gates 6 and 7 repaired; all 7 pass. |
 | [2026-10-06 S1 back-series revision (former open item 1)](2026-10-06-s1-edition-history-design.md) | Closed 2026-10-06 with the edition work and [s1-edition-diffs-2026-10-06.md](s1-edition-diffs-2026-10-06.md). **The premise recorded in the 2026-08-16 record was wrong, and that record is left as written.** The "200 to 230 authorities differ" figure was measured against the older release-page files. Edition 1's A1 figures already matched the registry 'revised' files numerically: the only A1 differences are zero to NULL for authorities that did not submit (36 authority-quarters, 144 cells: 3, 8, 4, 7, 5, 7 and 2 authorities in 2023Q2 to 2024Q4, each across all four A1 measures); no A1 figure is a numeric revision. The 200 to 230 divergence was against the older release-page files. The genuine value revisions in edition 2 are the A3 `support_needs_total` (about 175 to 190 authorities per quarter); `households_in_ta` also changes zero to NULL (95 cells). The seven quarters reproduce from source (`reproduces_from_source` true, 0 cells differ). The 2025Q2 revision (MHCLG, 30 April 2026) was applied in place on 2026-10-05 (`pipeline_run_log` 135), an acknowledged departure from the additive rule; it is now edition 2 of 2025Q2 and the live layer matches it. |
