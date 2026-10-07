@@ -870,7 +870,7 @@ ALLOWED_VERIFY = {
 }
 # Module-level assignments allowed to carry a retired literal:
 ALLOWED_MODULE = {
-    # still imported by s1b_editions until it is generalised (Task 2)
+    # defined for the historical dryrun-all reports and gates 6-8 (both tables)
     "STALE_PERIODS",
     # the scanner's own literal list and this allow-list (this file only)
     "RETIRED",

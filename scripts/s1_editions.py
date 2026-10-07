@@ -367,8 +367,8 @@ def cmd_backfill(_args):
 MANIFEST = Path(__file__).resolve().parent / "s1_editions_manifest.json"
 RAW_DIR = Path(__file__).resolve().parent.parent / "data" / "raw" / "s1b_a3"
 # The seven quarters restated in the 2026-10 reload. Historical only: the
-# one-off dryrun-all report, gates 6-8 of the verify script and (until it is
-# generalised) s1b_editions use it. The refresh path derives what to update
+# one-off dryrun-all reports (here and in s1b_editions) and gates 6-8 of the
+# verify scripts use it. The refresh path of both tables derives what to update
 # from the data and never reads it.
 STALE_PERIODS = ("2023Q2", "2023Q3", "2023Q4", "2024Q1", "2024Q2", "2024Q3",
                  "2024Q4")
