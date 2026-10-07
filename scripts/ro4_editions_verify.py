@@ -1213,6 +1213,72 @@ def gate_21_stored_label_provenance(cur):
            f"genuine manifest problems={clean[:2]}; doctored flagged={flagged}")
 
 
+def _wrong_ordinal(label):
+    word = label.split()[0]
+    return label.replace(word, "third" if word != "third" else "second", 1)
+
+
+def gate_22_first_load_cover_sheet(cur):
+    name = ("seeded: a file whose cover sheet disagrees with its label is "
+            "refused by the parser's dry-run and by sync-new (file-backed "
+            "edition 1), and a genuine one passes both")
+    import contextlib
+    import io
+
+    import s2_ro4_load as s2
+    ys = _years(cur)
+    held = [e for e in m.load_manifest()
+            if (m.REF_DIR / e["file"]).exists() and e[PERIOD] == ys[-1]]
+    if not held or not table_exists(cur):
+        return report(22, name, False, f"no held manifest file for {ys[-1:]}")
+    e = held[0]
+    fy = e[PERIOD]
+
+    def s2_dry_run(label):
+        saved = s2.FILES.get(fy), sys.argv
+        s2.FILES[fy] = (e["file"], e["sheet"],
+                        f"MHCLG Revenue Outturn RO4 {fy}, {label}")
+        sys.argv = ["s2_ro4_load.py", "dry-run", fy]
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                r = _halts(s2.main)
+        finally:
+            s2.FILES[fy], sys.argv = saved
+        return r, buf.getvalue()
+    wrong, _ = s2_dry_run(_wrong_ordinal(e["release_label_actual"]))
+    ok_run, out = s2_dry_run(e["release_label_actual"])
+
+    def sync(entry):
+        saved = m.load_manifest
+        m.load_manifest = lambda: [entry]
+        try:
+            def body(cur):
+                _fake_live_year(cur)
+                halted = _halts(lambda: m.sync_new(cur))
+                if halted[0]:
+                    return halted, None
+                cur.execute(f"""SELECT MIN(source_file), MIN(source_sha256)
+                                FROM public.{TABLE} WHERE {PERIOD} = %s
+                                AND edition = 1""", (FY,))
+                return halted, cur.fetchone()
+            return _in_savepoint(cur, body)
+        finally:
+            m.load_manifest = saved
+    twin = dict(e, **{PERIOD: FY})
+    bad_sync, _ = sync(dict(twin, release_label_actual=_wrong_ordinal(
+        e["release_label_actual"])))
+    good_sync, backed = sync(twin)
+    ok = (wrong[0] and "cover sheet" in wrong[1] and not ok_run[0]
+          and "dry run: nothing written" in out
+          and bad_sync[0] and "cover sheet" in bad_sync[1]
+          and not good_sync[0] and backed == (e["file"], e["sha256"]))
+    report(22, name, ok, f"parser dry-run wrong label: {wrong[1][:70]!r}; "
+           f"genuine label ran={not ok_run[0]}; sync-new wrong label: "
+           f"{bad_sync[1][:60]!r}; genuine -> file-backed edition 1 "
+           f"{backed is not None and backed[0]}")
+
+
 # Retired literals: a typed authority count and fixed year lists.
 RETIRED_R = RETIRED + ("2023-24", "2024-25", "2025-26", "2026-27")
 ALLOWED_R = {
@@ -1300,6 +1366,7 @@ def main():
             gate_20_front_pages(cur)
             gate_20s_front_page_seeded(cur)
             gate_21_stored_label_provenance(cur)
+            gate_22_first_load_cover_sheet(cur)
     finally:
         conn.rollback()
         conn.close()

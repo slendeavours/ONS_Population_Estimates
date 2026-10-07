@@ -270,8 +270,9 @@ the GOV.UK collection page.
    The dry run prints the difference from the previous edition: authorities
    changed, cells changed per measure, values that become NULL or appear,
    `data_missing` flips both ways, name changes and national sums. **Read it.**
-   A published revision can blank an authority that had figures (the 2024-25
-   third release did, for eight authorities); decide before `--commit`, which
+   A published release can mark an authority as not reported where an earlier
+   one had figures (for 2024-25 the second release did, for eight authorities,
+   and the third release supplied them again); decide before `--commit`, which
    inserts one edition that cannot be undone. The live table is **not**
    changed yet. A file already recorded reports `already loaded`; `--supersedes
    N` must equal the latest edition's number.

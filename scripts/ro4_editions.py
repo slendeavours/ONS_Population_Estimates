@@ -522,23 +522,14 @@ def reparse_report(cur) -> list:
 
 # ------------------------------------------------------- cover-sheet check
 
-FRONT_PAGE = re.compile(r"(\w+) release\W+which was published on "
-                        r"(\d{1,2} [A-Za-z]+ \d{4})", re.I)
-
-
 def front_page_release(path: Path) -> set:
     """{(ordinal word, date)} of the release sentences on the file's own
     Front_Page sheet, e.g. ('third', date(2026, 6, 11)). Read straight from the
-    workbook, not from the manifest or the database."""
-    import pandas as pd
+    workbook, not from the manifest or the database; the reader is the parser
+    module's, shared with its first-load path."""
+    import s2_ro4_load
     warnings.filterwarnings("ignore")
-    fp = pd.read_excel(path, sheet_name="Front_Page", engine="odf", header=None)
-    out = set()
-    for v in fp.stack().astype(str):
-        for hit in FRONT_PAGE.finditer(v):
-            out.add((hit.group(1).lower(),
-                     datetime.strptime(hit.group(2), "%d %B %Y").date()))
-    return out
+    return s2_ro4_load.front_page_release(path)
 
 
 def check_front_page(path: Path, entry: dict) -> list:
@@ -623,6 +614,10 @@ def record_edition1(cur, fy, want, plan_only=False) -> tuple:
     if path is not None and path.exists():
         if sha256_file(path) != entry["sha256"]:
             halt(f"{entry['file']}: sha256 does not match the manifest")
+        problems = check_front_page(path, entry)
+        if problems:
+            halt("cover sheet does not match the manifest, refusing to record "
+                 "the file as an edition: " + "; ".join(problems))
         cmp = compare_parsed(parse_file(cur, fy, entry),
                              {r["lad24cd"]: r for r in recs})
     if cmp is not None and cmp["equal"]:

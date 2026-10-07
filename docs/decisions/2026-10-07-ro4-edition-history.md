@@ -35,7 +35,7 @@ Edition 2 was loaded from `RO4_LA_Data_2024-25_data_by_LA.ods` under the label '
 sheet says **second release, published 4 December 2025**. The table is append-only, so the stored label
 stays wrong; the manifest now records the stored and the actual label for every entry.
 
-Consequence: for a few hours on 2026-10-07 the live 2024-25 rows held second-release values. Eight
+Consequence: for under an hour on 2026-10-07 (edition 2 was loaded at 09:38 UTC, edition 3 at 10:02 UTC) the live 2024-25 rows held second-release values. Eight
 authorities (Birmingham, Slough, Warwick, Ashfield, North West Leicestershire, Guildford, Amber Valley,
 North Warwickshire), which the second release marks `[x]` (publisher: data missing), were NULL with
 `data_missing` true, and the national 2024-25 sums were bed and breakfast gross 664,821.57 and nightly paid
@@ -60,8 +60,8 @@ edition 1: 258 of 296 authorities change, 279 cells, all in two columns plus one
 `hra_admin_prevention_relief_net_exp_000` column changes on 258 authorities (250 value to value, the known
 defect in [2026-09-30-reference-csvs-out-of-step.md](2026-09-30-reference-csvs-out-of-step.md) where the
 column held temporary-accommodation administration net spend under the wrong name, and 8 NULL to value for
-the eight authorities blank in edition 1). 21 `total_housing_*` cells change (11 gross, 10 net): the eight
-authorities NULL to value, and Leicester City, Enfield (a 0.01 rounding difference) and Islington value to
+the eight authorities whose hra cell is NULL in edition 1; their other measures have figures there). 21
+`total_housing_*` cells change (11 gross, 10 net): the same eight authorities, NULL in edition 1, to value, and Leicester City, Enfield (a 0.01 rounding difference) and Islington value to
 value; this is the 'incomplete refresh' recorded on 2026-09-30. One name changes (`Newark & Sherwood `, a
 trailing space). Nothing else differs; `data_missing` flips in neither direction and the national bed and
 breakfast and nightly paid sums equal edition 1. The `source` label in live is corrected to the third release.
