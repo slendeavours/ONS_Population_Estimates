@@ -419,14 +419,16 @@ def gate_4s_seeded(cur):
         return report("4s", name, False, f"{TABLE} absent")
     cur.execute(f"SELECT MIN({PERIOD}) FROM public.{LIVE}")
     fy = cur.fetchone()[0]
+    t0 = tip(cur, fy)
+    nxt = t0 + 1
 
     def short(cur):
         lad = _first_lad(cur)
         cols = ", ".join(m.DATA_COLS)
         cur.execute(f"""INSERT INTO public.{TABLE} ({cols}, edition, supersedes,
-                        source_sha256) SELECT {cols}, 2, 1, 'seed-short'
-                        FROM public.{TABLE} WHERE {PERIOD} = %s AND edition = 1
-                        AND lad24cd <> %s""", (fy, lad))
+                        source_sha256) SELECT {cols}, %s, %s, 'seed-short'
+                        FROM public.{TABLE} WHERE {PERIOD} = %s AND edition = %s
+                        AND lad24cd <> %s""", (nxt, t0, fy, t0, lad))
         return m.check_coverage(cur)[0]
     sh = _in_savepoint(cur, short)
 
@@ -434,7 +436,7 @@ def gate_4s_seeded(cur):
         m.insert_edition(cur, [_rec(_first_lad(cur), 1)], FY, **_kw("t", None, "o"))
         return m.check_coverage(cur)[0]
     orph = _in_savepoint(cur, orphan)
-    ok = (any(f"{fy} ed2" in x for x in sh)
+    ok = (any(f"{fy} ed{nxt}" in x for x in sh)
           and any(FY in x for x in orph))
     report("4s", name, ok, f"short={sh[:1]}; orphan={orph[:1]}")
 
@@ -473,9 +475,9 @@ def gate_5s_seeded(cur):
         cur.execute(f"""INSERT INTO public.{TABLE} ({cols}, {col}, edition,
                         supersedes, source_sha256)
                         SELECT {cols}, CASE WHEN lad24cd = %s THEN {expr}
-                                            ELSE {col} END, 2, 1, 'seed'
-                        FROM public.{TABLE} WHERE {PERIOD} = %s AND edition = 1""",
-                    (lad, fy))
+                                            ELSE {col} END, %s, %s, 'seed'
+                        FROM public.{TABLE} WHERE {PERIOD} = %s AND edition = %s""",
+                    (lad, tip(cur, fy) + 1, tip(cur, fy), fy, tip(cur, fy)))
         return m.check_latest_equals_live(cur, [fy])
     try:
         null_as_zero = _in_savepoint(cur, lambda c: planted(
