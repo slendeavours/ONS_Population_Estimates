@@ -1,4 +1,5 @@
-"""Tests for editions_core (write side: schema, insert, chain tip).
+"""Tests for editions_core (write side: schema, insert, chain tip; read side
+and refresh: status, sync-new, refresh-latest, the hash guard).
 
 Every database test runs on a connection from _db.get_conn() inside a
 transaction that is always rolled back (rolled_back below). Nothing here
@@ -45,7 +46,8 @@ def rolled_back(conn):
             raise RuntimeError("zz_core_live or zz_core_editions already "
                                "exists as a real table; refusing to run")
         cur.execute("CREATE TABLE public.zz_core_live (lad24cd varchar(9), "
-                    "period varchar(6), value integer)")
+                    "period varchar(6), value integer, "
+                    "loaded_at timestamptz NOT NULL DEFAULT now())")
         yield cur
     finally:
         cur.close()
@@ -66,6 +68,19 @@ def ins(cur, sha, supersedes, period="2025Q1", rows=ROWS):
         cur, SPEC, rows, period, release_label="test",
         published_date=date(2026, 1, 1), source_file="f.ods",
         source_sha256=sha, supersedes=supersedes)
+
+
+def live(cur, rows, period="2025Q1"):
+    """Rows straight into the throwaway live table (as a loader would)."""
+    for r in rows:
+        cur.execute("INSERT INTO public.zz_core_live (lad24cd, period, value) "
+                    "VALUES (%s, %s, %s)", (r["lad24cd"], period, r["value"]))
+
+
+def live_values(cur):
+    cur.execute("SELECT period, lad24cd, value FROM public.zz_core_live "
+                "ORDER BY 1, 2")
+    return cur.fetchall()
 
 
 class EditionsCoreDB(unittest.TestCase):
@@ -175,6 +190,174 @@ class EditionsCoreDB(unittest.TestCase):
                 core.latest_edition(cur, SPEC, "2025Q1")
             self.assertIn("fork", str(cm.exception))
 
+    # ------------------------------------------------ read side and refresh
+
+    def two_periods_synced(self, cur):
+        """Live 2025Q1 and 2025Q2 (ROWS each), both given edition 1."""
+        core.create_schema(cur, SPEC)
+        live(cur, ROWS, "2025Q1")
+        live(cur, ROWS, "2025Q2")
+        self.assertEqual(core.sync_new(cur, SPEC, expected_authorities_n=2),
+                         ["2025Q1", "2025Q2"])
+
+    def test_status_reports_new_live_period(self):
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, SPEC)
+            live(cur, ROWS)
+            st = core.status(cur, SPEC)
+            self.assertEqual(st["new_periods"], ["2025Q1"])
+            self.assertFalse(st["ok"])
+            for k in ("pending_refresh", "drift", "bad_counts", "forked"):
+                self.assertFalse(st[k], k)
+            ins(cur, "a", None)  # an edition equal to the live rows
+            st = core.status(cur, SPEC)
+            self.assertEqual(st["new_periods"], [])
+            self.assertTrue(st["ok"], st)
+
+    def test_sync_new_records_edition_1_idempotently(self):
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, SPEC)
+            live(cur, ROWS, "2025Q1")
+            live(cur, ROWS, "2025Q2")
+            # nothing has editions, so the authority count must be given
+            with self.assertRaises(SystemExit) as cm:
+                core.sync_new(cur, SPEC)
+            self.assertIn("expected-authorities", str(cm.exception))
+            with self.assertRaises(SystemExit):  # wrong count
+                core.sync_new(cur, SPEC, expected_authorities_n=3)
+            self.assertEqual(core.sync_new(cur, SPEC, expected_authorities_n=2),
+                             ["2025Q1", "2025Q2"])
+            cur.execute("""SELECT period, lad24cd, edition, value, supersedes,
+                                  release_label
+                           FROM public.zz_core_editions ORDER BY 1, 2""")
+            label = core.AS_LOADED_LABEL
+            self.assertEqual(cur.fetchall(), [
+                ("2025Q1", "E06000001", 1, 10, None, label),
+                ("2025Q1", "E06000002", 1, None, None, label),  # NULL kept
+                ("2025Q2", "E06000001", 1, 10, None, label),
+                ("2025Q2", "E06000002", 1, None, None, label)])
+            self.assertEqual(core.sync_new(cur, SPEC), [])
+            self.assertTrue(core.status(cur, SPEC)["ok"])
+            # a later period is checked against the derived count (2)
+            live(cur, ROWS[:1], "2025Q3")
+            with self.assertRaises(SystemExit) as cm:
+                core.sync_new(cur, SPEC)
+            self.assertIn("2025Q3", str(cm.exception))
+            cur.execute("SELECT COUNT(*) FROM public.zz_core_editions "
+                        "WHERE period = '2025Q3'")
+            self.assertEqual(cur.fetchone()[0], 0)
+
+    def test_refresh_copies_latest_into_live_and_nothing_else(self):
+        with rolled_back(self.conn) as cur:
+            self.two_periods_synced(cur)
+            cur.execute("SELECT period, lad24cd, loaded_at "
+                        "FROM public.zz_core_live ORDER BY 1, 2")
+            loaded_before = cur.fetchall()
+            q2_before = core.period_hashes(cur, SPEC, "live")["2025Q2"]
+            # edition 2 of 2025Q1: 10 -> 11, and NULL -> 0 (a real change)
+            ins(cur, "b", 1, rows=[{"lad24cd": "E06000001", "value": 11},
+                                   {"lad24cd": "E06000002", "value": 0}])
+            st = core.status(cur, SPEC)
+            self.assertEqual(st["pending_refresh"], ["2025Q1"])
+            self.assertFalse(st["ok"])
+            ed_before = core.period_hashes(cur, SPEC, "editions")
+            res = core.refresh_latest(cur, SPEC)
+            self.assertEqual(res["updated"], {"2025Q1": 2})
+            self.assertEqual(res["rows"], 2)
+            self.assertEqual(res["drift_accepted"], [])
+            self.assertEqual(live_values(cur), [
+                ("2025Q1", "E06000001", 11), ("2025Q1", "E06000002", 0),
+                ("2025Q2", "E06000001", 10), ("2025Q2", "E06000002", None)])
+            self.assertEqual(core.period_hashes(cur, SPEC, "live")["2025Q2"],
+                             q2_before)
+            self.assertEqual(core.period_hashes(cur, SPEC, "editions"),
+                             ed_before)
+            cur.execute("SELECT period, lad24cd, loaded_at "
+                        "FROM public.zz_core_live ORDER BY 1, 2")
+            self.assertEqual(cur.fetchall(), loaded_before)
+            self.assertTrue(core.status(cur, SPEC)["ok"])
+            # nothing left to do: a second refresh writes nothing
+            self.assertEqual(core.refresh_latest(cur, SPEC)["rows"], 0)
+
+    def test_refresh_halts_on_drift(self):
+        with rolled_back(self.conn) as cur:
+            self.two_periods_synced(cur)
+            # NULL -> 0 directly in live: not equal to any edition
+            cur.execute("UPDATE public.zz_core_live SET value = 0 "
+                        "WHERE period = '2025Q1' AND lad24cd = 'E06000002'")
+            st = core.status(cur, SPEC)
+            self.assertEqual(st["drift"], ["2025Q1"])
+            self.assertEqual(st["pending_refresh"], [])
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, SPEC)
+            self.assertIn("2025Q1", str(cm.exception))
+            self.assertIn("matches no stored edition", str(cm.exception))
+            with self.assertRaises(SystemExit) as cm:  # not drifted
+                core.refresh_latest(cur, SPEC, accept_drift=("2025Q2",))
+            self.assertIn("accept-drift", str(cm.exception))
+            res = core.refresh_latest(cur, SPEC, accept_drift=("2025Q1",))
+            self.assertEqual(res["drift_accepted"], ["2025Q1"])
+            self.assertEqual(res["updated"], {"2025Q1": 1})
+            self.assertEqual(live_values(cur)[1], ("2025Q1", "E06000002", None))
+            self.assertTrue(core.status(cur, SPEC)["ok"])
+
+    def test_refresh_guard_catches_other_period_change(self):
+        with rolled_back(self.conn) as cur:
+            self.two_periods_synced(cur)
+            ins(cur, "b", 1, rows=[{"lad24cd": "E06000001", "value": 11},
+                                   {"lad24cd": "E06000002", "value": None}])
+            before = live_values(cur)
+            seen = []
+
+            def hook(c, plan):
+                seen.append(sorted(plan))
+                c.execute("UPDATE public.zz_core_live SET value = 7 "
+                          "WHERE period = '2025Q2' AND lad24cd = 'E06000001'")
+
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, SPEC, _after_update_hook=hook)
+            self.assertEqual(seen, [["2025Q1"]])
+            self.assertIn("guard: 2025Q2 changed", str(cm.exception))
+            # the refresh undid its own writes; the transaction is usable
+            self.assertEqual(live_values(cur), before)
+            self.assertEqual(core.status(cur, SPEC)["pending_refresh"],
+                             ["2025Q1"])
+
+    def test_refresh_refuses_one_sided_period(self):
+        """A key in only one of live and the edition cannot be repaired by
+        an UPDATE: halt before writing (RO4's rule), even with the period's
+        drift accepted."""
+        with rolled_back(self.conn) as cur:
+            self.two_periods_synced(cur)
+            cur.execute("DELETE FROM public.zz_core_live "
+                        "WHERE period = '2025Q1' AND lad24cd = 'E06000002'")
+            cur.execute("UPDATE public.zz_core_live SET value = 5 "
+                        "WHERE period = '2025Q1'")
+            before = live_values(cur)
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, SPEC, accept_drift=("2025Q1",))
+            self.assertIn("present in only one", str(cm.exception))
+            self.assertEqual(live_values(cur), before)
+
+    def test_status_flags_fork(self):
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, SPEC)
+            live(cur, ROWS)
+            ins(cur, "a", None)
+            cur.execute("""INSERT INTO public.zz_core_editions
+                           (lad24cd, period, edition, supersedes, source_sha256)
+                           VALUES ('E06000001', '2025Q1', 2, 1, 'b'),
+                                  ('E06000001', '2025Q1', 3, 1, 'c')""")
+            st = core.status(cur, SPEC)
+            self.assertEqual(list(st["forked"]), ["2025Q1"])
+            self.assertIn("fork", st["forked"]["2025Q1"])
+            self.assertFalse(st["ok"])
+            for f in (lambda: core.refresh_latest(cur, SPEC),
+                      lambda: core.sync_new(cur, SPEC)):
+                with self.assertRaises(SystemExit) as cm:
+                    f()
+                self.assertIn("fork", str(cm.exception))
+
     @unittest.skip("needs the S1, S1b and RO4 SPEC objects; Tasks 5 to 7 "
                    "declare them and unskip this test")
     def test_create_schema_matches_existing_tables(self):
@@ -210,12 +393,52 @@ class ChainValidation(unittest.TestCase):
             self.tip([])
 
 
+class GuardRule(unittest.TestCase):
+    """guard_problems without a database (pure function)."""
+
+    def test_guard(self):
+        full = {"A": "1", "B": "2"}
+        kept = {"A": "k1", "B": "k2"}
+        self.assertEqual(core.guard_problems(full, {"A": "x", "B": "2"}, kept,
+                                             kept, {"A"}), [])
+        self.assertIn("B changed", core.guard_problems(
+            full, {"A": "1", "B": "y"}, kept, kept, {"A"})[0])
+        self.assertIn("outside the refresh columns", core.guard_problems(
+            full, full, kept, {"A": "z", "B": "k2"}, {"A"})[0])
+        self.assertIn("C changed", core.guard_problems(
+            full, dict(full, C="3"), kept, kept, set())[0])
+
+
 class SpecValidation(unittest.TestCase):
     def test_bad_identifier_refused(self):
         with self.assertRaises(ValueError):
             core.EditionSpec(name="x", live_table="x; drop", editions_table="y",
                              key_cols=("lad24cd",), period_col="period",
                              value_cols=(), refresh_cols=())
+
+    def test_inconsistent_columns_refused(self):
+        base = dict(name="x", live_table="x", editions_table="y",
+                    key_cols=("lad24cd",), period_col="period",
+                    value_cols=(("v", "integer"),), refresh_cols=("v",))
+        for bad in (dict(key_types=(("v", "integer"),)),  # not a key column
+                    dict(refresh_cols=("lad24cd",)),       # a key column
+                    dict(refresh_cols=("nowhere",)),       # not in editions
+                    dict(refresh_from=(("w", "loaded_at"),)),  # w not refreshed
+                    dict(refresh_cols=("v", "w"),
+                         refresh_from=(("w", "nowhere"),))):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                core.EditionSpec(**{**base, **bad})
+        s = core.EditionSpec(**{**base, "refresh_cols": ("v", "source_file",
+                                                         "extracted_at"),
+                                "refresh_from": (("extracted_at", "loaded_at"),)})
+        self.assertEqual(s.compare_cols, ("v",))
+        self.assertEqual(s.update_cols, ("v", "source_file"))
+
+    def test_rows_sha256_null_is_not_zero(self):
+        a = core.rows_sha256(SPEC, [{"lad24cd": "E1", "value": None}])
+        b = core.rows_sha256(SPEC, [{"lad24cd": "E1", "value": 0}])
+        self.assertNotEqual(a, b)
+        self.assertEqual(a, core.rows_sha256(SPEC, [{"lad24cd": "E1"}]))
 
 
 if __name__ == "__main__":
