@@ -6,8 +6,12 @@ helpers (the shared s1_editions.latest_edition, called with table= and
 period_col='financial_year'); 4-5 cover the backfill (coverage, edition 1 equals
 the live table row for row, NULL not 0); 6-7 cover provenance (manifest, file
 hashes) and an independent re-parse of the local ods files; 8 is today's status;
-9 a seeded newer edition; 10 the retired-literal scan. Gates ending in `s` are
-seeded: they prove the check itself flags a planted fault.
+9 a seeded newer edition; 10 the retired-literal scan; 11-19 the load,
+refresh-latest and sync-new paths, all seeded in rolled-back savepoints (refresh
+updates exactly the revised year, tamper halts, new year, drift, today, short
+year, one-sided rows, fork, bootstrap count, load gates, load guards). Gates
+ending in `s` or numbered 11 and above are seeded: they prove the check itself
+flags a planted fault.
 
 Usage:
     python scripts/ro4_editions_verify.py
@@ -19,6 +23,7 @@ the live table.
 import inspect
 import sys
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import psycopg2
@@ -73,6 +78,7 @@ def gate_1_table_shape(cur):
             "source_sha256", "supersedes", "loaded_at", *m.DATA_COLS}
     typed = (all(cols.get(c) == ("numeric", None, 12, 2) for c in m.MEASURES)
              and cols.get(PERIOD, (None, None))[:2] == ("character varying", 7)
+             and cols.get("la_name", (None, None))[:2] == ("character varying", 100)
              and cols.get("data_missing", ("",))[0] == "boolean")
     cur.execute("""SELECT contype, pg_get_constraintdef(oid) FROM pg_constraint
                    WHERE conrelid = %s::regclass""", (f"public.{TABLE}",))
@@ -596,6 +602,539 @@ def gate_9_seeded_newer_edition(cur):
            f"{fy in forked['chain_errors']}; live unchanged={live_same}")
 
 
+# ------------------------------------------------ load, refresh, sync-new
+#
+# Seeded gates: each plants a fault or a newer edition inside a savepoint that
+# is always rolled back, and proves the code does what it should. They revise
+# the latest live financial year; the earliest is the one that must not move.
+# Nothing here refreshes or loads a real second edition.
+
+def _years(cur):
+    cur.execute(f"SELECT DISTINCT {PERIOD} FROM public.{LIVE} ORDER BY 1")
+    return [r[0] for r in cur.fetchall()]
+
+
+def _hashes(cur):
+    return (period_hashes(cur, LIVE, m.HASH_KEY, period_col=PERIOD),
+            period_hashes(cur, LIVE, m.HASH_KEY, exclude=m.REFRESH_COLS,
+                          period_col=PERIOD))
+
+
+def _halts(fn):
+    """(True, message) if fn raised SystemExit (a halt)."""
+    try:
+        fn()
+    except SystemExit as e:
+        return True, str(e)
+    return False, "no halt"
+
+
+def _live_row(cur, fy, lad):
+    cols = ", ".join(m.REFRESH_COLS)
+    cur.execute(f"SELECT {cols} FROM public.{LIVE} WHERE {PERIOD} = %s "
+                "AND lad24cd = %s", (fy, lad))
+    return dict(zip(m.REFRESH_COLS, cur.fetchone()))
+
+
+def _pick(cur, fy):
+    """Authorities of the year's latest edition to plant changes on: three
+    that reported a non-zero hostels net figure, one that did not report."""
+    cur.execute(f"""SELECT lad24cd, data_missing, hostels_net_exp_000
+                    FROM public.{TABLE} WHERE {PERIOD} = %s AND edition = %s
+                    ORDER BY lad24cd""", (fy, tip(cur, fy)))
+    rows = cur.fetchall()
+    rep = [r[0] for r in rows if not r[1] and r[2] not in (None, 0)]
+    miss = [r[0] for r in rows if r[1]]
+    return rep[:3], miss[:1]
+
+
+def _seed_edition_two(cur, fy):
+    """Fake edition 2 of the year changing four authorities: NULL -> value with
+    data_missing true -> false (and a new source text); value -> NULL with
+    data_missing false -> true; value -> value with a new la_name; value -> a
+    real 0. Returns (down, bump, zero, gone)."""
+    rep, miss = _pick(cur, fy)
+    if len(rep) < 3 or not miss:
+        raise LookupError(f"{fy}: need 3 reported and 1 missing authority to "
+                          f"seed against, have {len(rep)} and {len(miss)}")
+    down, bump, zero = rep
+    gone, = miss
+
+    def mutate(rows):
+        r = rows[gone]
+        r["total_homelessness_gross_exp_000"] = 100.5
+        r["hostels_gross_exp_000"] = 7
+        r["data_missing"] = False
+        r["source"] = "gate-fake source"
+        r = rows[down]
+        r["total_homelessness_gross_exp_000"] = None
+        r["data_missing"] = True
+        r = rows[bump]
+        r["bb_gross_exp_000"] = (r["bb_gross_exp_000"] or 0) + 1
+        r["la_name"] = "Gate fake name"
+        rows[zero]["hostels_net_exp_000"] = 0
+    _fake_edition(cur, fy, mutate)
+    return down, bump, zero, gone
+
+
+def gate_11_refresh_updates_only_the_revised_year(cur):
+    name = ("seeded: edition 2 of one year (NULL<->value, data_missing flipped "
+            "both ways, a real zero, name, source) -> refresh updates exactly "
+            "that year")
+    ys = _years(cur)
+    if len(ys) < 2 or not table_exists(cur):
+        return report(11, name, False, f"need two live years, have {ys}")
+    fy, other = ys[-1], ys[0]
+
+    def body(cur):
+        down, bump, zero, gone = _seed_edition_two(cur, fy)
+        before = m.status(cur)
+        full_b, kept_b = _hashes(cur)
+        res = m.refresh_latest(cur)
+        full_a, kept_a = _hashes(cur)
+        after = m.status(cur)
+        g, d, b, z = (_live_row(cur, fy, x) for x in (gone, down, bump, zero))
+        return (before, res, after, full_b, kept_b, full_a, kept_a, g, d, b, z,
+                m.refresh_counts(cur))
+    try:
+        (before, res, after, full_b, kept_b, full_a, kept_a, g, d, b, z,
+         plan) = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit, LookupError) as e:
+        return report(11, name, False, str(e).splitlines()[0])
+    others = [p for p in full_b if p != fy]
+    ok = (before["pending_refresh"] == [fy] and not before["ok"]
+          and res["updated"] == {fy: 4} and res["rows"] == 4
+          and all(full_b[p] == full_a[p] and kept_b[p] == kept_a[p]
+                  for p in others) and other in others
+          and kept_b[fy] == kept_a[fy] and full_b[fy] != full_a[fy]
+          and g["data_missing"] is False
+          and g["total_homelessness_gross_exp_000"] == 100.5
+          and g["source"] == "gate-fake source"
+          and d["data_missing"] is True
+          and d["total_homelessness_gross_exp_000"] is None
+          and b["la_name"] == "Gate fake name"
+          and z["hostels_net_exp_000"] is not None
+          and z["hostels_net_exp_000"] == 0
+          and after["ok"] and plan == {})
+    report(11, name, ok, f"pending={before['pending_refresh']} updated="
+           f"{res['updated']} other year unchanged="
+           f"{all(full_b[p] == full_a[p] for p in others)} loaded_at and "
+           f"non-refresh columns of {fy} unchanged={kept_b[fy] == kept_a[fy]}; "
+           f"NULL->value {g['total_homelessness_gross_exp_000']} flag "
+           f"{g['data_missing']}; value->NULL "
+           f"{d['total_homelessness_gross_exp_000']} flag {d['data_missing']}; "
+           f"real zero kept {z['hostels_net_exp_000']}; status after ok="
+           f"{after['ok']}")
+
+
+def gate_11b_tamper_rolls_back(cur):
+    name = "seeded: tampering outside the refresh inside the transaction halts"
+    ys = _years(cur)
+    if len(ys) < 2 or not table_exists(cur):
+        return report("11b", name, False, f"need two live years, have {ys}")
+    fy, other = ys[-1], ys[0]
+    lad = _first_lad(cur)
+    cases = {
+        "another year's measure":
+            f"UPDATE public.{LIVE} SET hostels_gross_exp_000 = "
+            f"COALESCE(hostels_gross_exp_000, 0) + 1 WHERE {PERIOD} = '{other}' "
+            f"AND lad24cd = '{lad}'",
+        "another year's loaded_at":
+            f"UPDATE public.{LIVE} SET loaded_at = loaded_at + interval "
+            f"'1 day' WHERE {PERIOD} = '{other}' AND lad24cd = '{lad}'",
+        "another year's la_name":
+            f"UPDATE public.{LIVE} SET la_name = 'x' WHERE {PERIOD} = "
+            f"'{other}' AND lad24cd = '{lad}'",
+        "another year's row count":
+            f"DELETE FROM public.{LIVE} WHERE {PERIOD} = '{other}' "
+            f"AND lad24cd = '{lad}'",
+        "loaded_at of the refreshed year":
+            f"UPDATE public.{LIVE} SET loaded_at = loaded_at + interval "
+            f"'1 day' WHERE {PERIOD} = '{fy}' AND lad24cd = '{lad}'",
+        "financial_year key of the refreshed year":
+            f"UPDATE public.{LIVE} SET {PERIOD} = '{FY}' WHERE "
+            f"{PERIOD} = '{fy}' AND lad24cd = '{lad}'",
+    }
+    fails = []
+    for what, sql in cases.items():
+        def body(cur, sql=sql):
+            _seed_edition_two(cur, fy)
+            return _halts(lambda: m.refresh_latest(
+                cur, _after_update_hook=lambda c: c.execute(sql)))
+        try:
+            halted, msg = _in_savepoint(cur, body)
+        except (psycopg2.Error, LookupError) as e:
+            return report("11b", name, False, str(e).splitlines()[0])
+        if not (halted and "guard:" in msg):
+            fails.append(f"{what}: {msg[:80]}")
+    report("11b", name, not fails, "; ".join(fails) if fails else
+           f"{len(cases)} tamper kinds caught by the guard")
+
+
+def gate_11c_noop_changes_nothing(cur):
+    name = "refresh with nothing to do writes nothing (today's database)"
+    if not table_exists(cur):
+        return report("11c", name, False, f"{TABLE} absent")
+
+    def body(cur):
+        full_b, kept_b = _hashes(cur)
+        res = m.refresh_latest(cur)
+        full_a, kept_a = _hashes(cur)
+        return res, full_b == full_a and kept_b == kept_a, m.refresh_counts(cur)
+    try:
+        res, same, counts = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report("11c", name, False, str(e).splitlines()[0])
+    report("11c", name, res["rows"] == 0 and same and counts == {},
+           f"rows={res['rows']} hashes identical={same} plan={counts}")
+
+
+def _fake_live_year(cur, drop=False):
+    """Copy the latest live year into a brand-new financial year FY (drop: one
+    authority fewer)."""
+    cols = [c for c in m.DATA_COLS if c != PERIOD]
+    cur.execute(f"""INSERT INTO public.{LIVE} ({', '.join(cols)}, {PERIOD},
+                        loaded_at)
+        SELECT {', '.join(cols)}, %s, loaded_at FROM public.{LIVE}
+        WHERE {PERIOD} = (SELECT MAX({PERIOD}) FROM public.{LIVE}
+                          WHERE {PERIOD} <> %s)""", (FY, FY))
+    if drop:
+        cur.execute(f"DELETE FROM public.{LIVE} WHERE {PERIOD} = %s "
+                    "AND lad24cd = %s", (FY, _first_lad(cur)))
+
+
+def gate_12_new_year(cur):
+    name = ("seeded: a new live financial year -> status not ok, refresh "
+            "halts; sync-new gives edition 1 'as loaded', idempotent")
+    if not table_exists(cur):
+        return report(12, name, False, f"{TABLE} absent")
+
+    def body(cur):
+        _fake_live_year(cur)
+        s1 = m.status(cur)
+        halted = _halts(lambda: m.refresh_latest(cur))
+        done = m.sync_new(cur)
+        cur.execute(f"""SELECT COUNT(*), MIN(release_label), MIN(source_sha256),
+                               MIN(source_file), MIN(supersedes::text)
+                        FROM public.{TABLE} WHERE {PERIOD} = %s AND edition = 1""",
+                    (FY,))
+        rows, label, sha, src, sup = cur.fetchone()
+        recs, _, _ = m.live_recs(cur, FY)
+        again = m.sync_new(cur)
+        cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} WHERE {PERIOD} = %s",
+                    (FY,))
+        return (s1, halted, done, rows, label, sha, m.rows_sha256(recs), src,
+                sup, again, cur.fetchone()[0], m.status(cur),
+                m.check_provenance(cur)[0])
+    try:
+        (s1, halted, done, rows, label, sha, want, src, sup, again, total, s2,
+         prov) = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(12, name, False, str(e).splitlines()[0])
+    cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} WHERE {PERIOD} =
+                    (SELECT MAX({PERIOD}) FROM public.{LIVE})""")
+    n_rows = cur.fetchone()[0]
+    ok = (s1["new_periods"] == [FY] and not s1["ok"] and halted[0]
+          and "sync-new" in halted[1] and done == [FY] and rows == n_rows
+          and label.startswith("as loaded") and sha == want and src is None
+          and sup is None and again == [] and total == n_rows and s2["ok"]
+          and not prov)
+    report(12, name, ok, f"new={s1['new_periods']} refresh halted={halted[0]} "
+           f"synced={done} edition rows={rows} label={label[:30]!r} sha is the "
+           f"canonical hash={sha == want} second sync={again} status after "
+           f"ok={s2['ok']} provenance problems={prov}")
+
+
+def gate_13_drift(cur):
+    name = ("seeded: live changed directly -> status reports drift; refresh "
+            "halts unless accepted")
+    ys = _years(cur)
+    if not ys or not table_exists(cur):
+        return report(13, name, False, f"need live years, have {ys}")
+    lad = _first_lad(cur)
+    oks, notes = [], []
+    for fy in ys:
+        def body(cur, fy=fy):
+            cur.execute(f"""UPDATE public.{LIVE} SET hostels_gross_exp_000 =
+                            COALESCE(hostels_gross_exp_000, 0) + 1000,
+                            la_name = 'drifted' WHERE {PERIOD} = %s
+                            AND lad24cd = %s""", (fy, lad))
+            st = m.status(cur)
+            halted = _halts(lambda: m.refresh_latest(cur))
+            stray = _halts(lambda: m.refresh_latest(cur, accept_drift=(FY,)))
+            res = m.refresh_latest(cur, accept_drift=(fy,))
+            back = _live_row(cur, fy, lad)
+            cur.execute(f"""SELECT hostels_gross_exp_000, la_name FROM
+                            public.{TABLE} WHERE {PERIOD} = %s AND edition = %s
+                            AND lad24cd = %s""", (fy, tip(cur, fy), lad))
+            want = cur.fetchone()
+            return (st, halted, stray, res, m.status(cur),
+                    (back["hostels_gross_exp_000"], back["la_name"]) == want)
+        try:
+            st, halted, stray, res, st2, restored = _in_savepoint(cur, body)
+        except (psycopg2.Error, SystemExit) as e:
+            return report(13, name, False, str(e).splitlines()[0])
+        oks.append(st["drift_periods"] == [fy] and not st["ok"] and halted[0]
+                   and "--accept-drift" in halted[1] and stray[0]
+                   and fy in res["drift_accepted"]
+                   and list(res["updated"]) == [fy] and st2["ok"] and restored)
+        notes.append(f"{fy}: drift={st['drift_periods']} halted={halted[0]} "
+                     f"accepted->{list(res['updated'])} status after "
+                     f"ok={st2['ok']}")
+    report(13, name, all(oks), "; ".join(notes))
+
+
+def gate_14_today(cur):
+    name = ("today's database: status ok, nothing to refresh, chain valid for "
+            "every financial year")
+    if not table_exists(cur):
+        return report(14, name, False, f"{TABLE} absent")
+    try:
+        st = m.status(cur)
+        plan = m.refresh_counts(cur)
+    except (SystemExit, ValueError, LookupError) as e:
+        return report(14, name, False, str(e))
+    report(14, name, st["ok"] and plan == {},
+           f"financial years={st['periods']} status ok={st['ok']} plan={plan}")
+
+
+def gate_15_short_year(cur):
+    name = ("seeded: a short financial year is refused by sync-new, not "
+            "absorbed (count derived)")
+    if not table_exists(cur):
+        return report(15, name, False, f"{TABLE} absent")
+    auths = m.expected_authorities(cur)
+
+    def body(cur):
+        _fake_live_year(cur, drop=True)
+        st = m.status(cur)
+        return st, _halts(lambda: m.sync_new(cur))
+    try:
+        st, halted = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(15, name, False, str(e).splitlines()[0])
+    ok = (st["bad_counts"].get(FY) == (auths - 1, auths) and halted[0]
+          and f"{auths - 1} live rows" in halted[1])
+    report(15, name, ok, f"bad_counts={st['bad_counts']}, "
+           f"halt={halted[1][:70]!r}")
+
+
+def gate_15b_one_sided_rows(cur):
+    name = ("seeded: an authority in only one of live and the latest edition "
+            "halts the refresh (an UPDATE cannot repair it)")
+    ys = _years(cur)
+    if not ys or not table_exists(cur):
+        return report("15b", name, False, f"need live years, have {ys}")
+    fy = ys[-1]
+
+    def body(cur):
+        _seed_edition_two(cur, fy)
+        cur.execute(f"""DELETE FROM public.{LIVE} WHERE {PERIOD} = %s AND
+                        lad24cd = (SELECT MAX(lad24cd) FROM public.{LIVE}
+                                   WHERE {PERIOD} = %s)""", (fy, fy))
+        # a missing live row makes the year match no edition (drift); even once
+        # the drift is accepted an UPDATE cannot create the row, so it halts
+        return (_halts(lambda: m.refresh_latest(cur)),
+                _halts(lambda: m.refresh_latest(cur, accept_drift=(fy,))))
+    try:
+        plain, accepted = _in_savepoint(cur, body)
+    except (psycopg2.Error, LookupError) as e:
+        return report("15b", name, False, str(e).splitlines()[0])
+    report("15b", name, plain[0] and "--accept-drift" in plain[1]
+           and accepted[0] and "only one of them" in accepted[1],
+           f"halt={plain[1][:50]!r}; accepted: {accepted[1][:80]!r}")
+
+
+def gate_16_fork_halts_refresh(cur):
+    name = ("seeded: a forked supersedes chain shows in status as a chain "
+            "error and halts the refresh")
+    ys = _years(cur)
+    if not ys or not table_exists(cur):
+        return report(16, name, False, f"need live years, have {ys}")
+    fy = ys[-1]
+
+    def body(cur):
+        t0 = tip(cur, fy)
+        ed = _fake_edition(cur, fy)
+        cols = ", ".join(m.DATA_COLS)
+        cur.execute(f"""INSERT INTO public.{TABLE} ({cols}, edition, supersedes,
+                        source_sha256) SELECT {cols}, %s, %s, 'gate-fork'
+                        FROM public.{TABLE} WHERE {PERIOD} = %s
+                        AND edition = %s""", (ed + 1, t0, fy, t0))
+        return (m.status(cur), _halts(lambda: m.refresh_latest(cur)),
+                _raises(lambda: m.latest_edition(cur, fy), ValueError))
+    try:
+        st, halted, tipped = _in_savepoint(cur, body)
+    except psycopg2.Error as e:
+        return report(16, name, False, str(e).splitlines()[0])
+    report(16, name, fy in st["chain_errors"] and not st["ok"] and halted[0]
+           and "invalid edition chain" in halted[1] and tipped[0],
+           f"{str(st['chain_errors'])[:80]}; refresh halt={halted[1][:50]!r}")
+
+
+def gate_17_bootstrap_needs_explicit_count(cur):
+    name = ("seeded: --expected-authorities only when no count is derivable "
+            "(or equal to it)")
+    if not table_exists(cur):
+        return report(17, name, False, f"{TABLE} absent")
+    n = m.expected_authorities(cur)
+
+    def body(cur):
+        _fake_live_year(cur, drop=True)
+        # a count can be derived (the real years have editions): a different N
+        # halts, an equal one is accepted and the short year still halts
+        differs = _halts(lambda: m.sync_new(cur, n - 1))
+        equal = _halts(lambda: m.sync_new(cur, n))
+        # no year has editions: simulate the bootstrap
+        saved = m.latest_map, m.live_period_counts
+        m.latest_map = lambda cur, *a, **k: ({}, [FY], {})
+        m.live_period_counts = lambda cur, *a, **k: {FY: n - 1}
+        try:
+            no_arg = _halts(lambda: m.sync_new(cur))
+            short = _halts(lambda: m.sync_new(cur, n))
+            explicit = m.sync_new(cur, n - 1)
+        finally:
+            m.latest_map, m.live_period_counts = saved
+        return differs, no_arg, short, explicit, equal
+    try:
+        differs, no_arg, short, explicit, equal = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(17, name, False, str(e).splitlines()[0])
+    ok = (differs[0] and "differs from the count" in differs[1]
+          and no_arg[0] and "--expected-authorities" in no_arg[1]
+          and short[0] and f"{n - 1} live rows" in short[1]
+          and explicit == [FY]
+          and equal[0] and f"{n - 1} live rows" in equal[1])
+    report(17, name, ok, f"derivable, N differs: {differs[1][:50]}; bootstrap "
+           f"no N: {no_arg[1][:40]}; explicit {n - 1}: {explicit}")
+
+
+def _recorded_file(cur, fy):
+    """(entry, records, raw cells) of a manifest file of the year that is held
+    locally and already recorded as one of its editions, so loading its
+    records again as a new edition (inside a savepoint) is a faithful copy."""
+    for e in m.manifest_entries(fy):
+        cur.execute(f"""SELECT 1 FROM public.{TABLE} WHERE {PERIOD} = %s
+                        AND source_sha256 = %s LIMIT 1""", (fy, e["sha256"]))
+        if cur.fetchone() and (m.REF_DIR / e["file"]).exists():
+            return (e, m.recs_from_df(m.parse_file(cur, fy, e), fy),
+                    m.raw_cells(m.REF_DIR / e["file"], e["sheet"]))
+    return None
+
+
+def _load_variant(cur, fy, recs, raw, mutate=None, drop=None):
+    """Insert the (mutated) records as the year's next edition and run both
+    load gates on it; return (structural problems, raw re-read problems)."""
+    recs = [dict(r) for r in recs if r["lad24cd"] != drop]
+    if mutate:
+        mutate({r["lad24cd"]: r for r in recs})
+    t = tip(cur, fy)
+    ed = m.insert_edition(cur, recs, fy, release_label="gate-load",
+                          published_date=date(2099, 1, 1),
+                          source_file="gate-load.ods",
+                          source_sha256=f"gate-load-{fy}-{t}", supersedes=t)
+    return (m.check_loaded(cur, fy, ed),
+            m.check_raw_integrity(cur, fy, ed, raw)[0])
+
+
+def gate_18_load_gates_seeded(cur):
+    name = ("seeded: the load gates pass a faithful edition and flag a NULL "
+            "stored as 0, a real 0 stored as NULL, a flipped data_missing, a "
+            "short edition, an empty measure column and a changed name")
+    ys = _years(cur)
+    if not ys or not table_exists(cur):
+        return report(18, name, False, f"need live years, have {ys}")
+    got = next((g for g in (_recorded_file(cur, fy) for fy in reversed(ys))
+                if g), None)
+    if got is None:
+        return report(18, name, False, "no recorded local manifest file to "
+                      "re-load as a seeded edition")
+    entry, recs, raw = got
+    fy = entry[PERIOD]
+    by = {r["lad24cd"]: r for r in recs}
+    nulls = [(lad, c) for lad, r in by.items() for c in m.MEASURES
+             if r[c] is None]
+    zeros = [(lad, c) for lad, r in by.items() for c in m.MEASURES
+             if r[c] == 0]
+    miss = [lad for lad, r in by.items() if r["data_missing"]]
+    if not nulls or not zeros or not miss:
+        return report(18, name, False, f"file has {len(nulls)} NULL cells, "
+                      f"{len(zeros)} zeros, {len(miss)} missing authorities")
+    (nl, nc), (zl, zc) = nulls[0], zeros[0]
+    col = m.MEASURES[0]
+
+    def run(**kw):
+        return _in_savepoint(cur, lambda c: _load_variant(c, fy, recs, raw,
+                                                          **kw))
+    try:
+        clean = run()
+        null0 = run(mutate=lambda rows: rows[nl].__setitem__(nc, Decimal(0)))
+        zero_null = run(mutate=lambda rows: rows[zl].__setitem__(zc, None))
+        flip = run(mutate=lambda rows: rows[miss[0]].__setitem__(
+            "data_missing", False))
+        short = run(drop=_first_lad(cur))
+        empty = run(mutate=lambda rows: [r.__setitem__(col, None)
+                                         for r in rows.values()])
+        renamed = run(mutate=lambda rows: rows[zl].__setitem__("la_name", "x"))
+    except (psycopg2.Error, SystemExit) as e:
+        return report(18, name, False, str(e).splitlines()[0])
+    ok = (clean == ([], [])
+          and any("stored 0" in x for x in null0[1])
+          and any("stored None" in x for x in zero_null[1])
+          and any("data_missing" in x for x in flip[0] + flip[1])
+          and any("authorities/" in x for x in short[0])
+          and any("no value for any" in x for x in empty[0])
+          and any("la_name" in x for x in renamed[1]))
+    report(18, name, ok, f"faithful={clean == ([], [])}; NULL as 0: "
+           f"{null0[1][:1]}; 0 as NULL: {zero_null[1][:1]}; flip: "
+           f"{(flip[0] + flip[1])[:1]}; short: {short[0][:1]}; empty column: "
+           f"{empty[0][:1]}; name: {renamed[1][:1]}")
+
+
+def gate_19_load_cli_guards(cur):
+    name = ("load: a recorded file is 'already loaded'; a --supersedes that is "
+            "not the tip halts; --commit with --simulate is refused; the table "
+            "is untouched")
+    ys = _years(cur)
+    if not ys or not table_exists(cur):
+        return report(19, name, False, f"need live years, have {ys}")
+    import contextlib
+    import io
+    got = next((g for g in (_recorded_file(cur, fy) for fy in reversed(ys))
+                if g), None)
+    if got is None:
+        return report(19, name, False, "no recorded local manifest file")
+    entry = got[0]
+    cur.execute(f"SELECT COUNT(*) FROM public.{TABLE}")
+    n0 = cur.fetchone()[0]
+    args = ["load", "--financial-year", entry[PERIOD], "--manifest-label",
+            entry["release_label"], "--simulate"]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        m.main(args)
+    both = _halts(lambda: m.main(args + ["--commit"]))
+    # a held file that is not recorded yet reaches the tip check (read-only)
+    todo = None
+    for e in m.load_manifest():
+        cur.execute(f"""SELECT 1 FROM public.{TABLE} WHERE {PERIOD} = %s
+                        AND source_sha256 = %s LIMIT 1""", (e[PERIOD],
+                                                            e["sha256"]))
+        if not cur.fetchone() and (m.REF_DIR / e["file"]).exists():
+            todo = e
+            break
+    sup = (_halts(lambda: m.main(["load", "--financial-year", todo[PERIOD],
+                                  "--manifest-label", todo["release_label"],
+                                  "--supersedes", "7", "--simulate"]))
+           if todo else (True, "chain tip (no unrecorded local file to try)"))
+    cur.execute(f"SELECT COUNT(*) FROM public.{TABLE}")
+    n1 = cur.fetchone()[0]
+    ok = ("already loaded" in buf.getvalue() and both[0] and sup[0]
+          and "chain tip" in sup[1] and n0 == n1)
+    report(19, name, ok, f"said={buf.getvalue().strip()[:50]!r}; --commit with "
+           f"--simulate refused={both[0]}; supersedes: {sup[1][:60]!r}; table "
+           f"rows {n0}->{n1}")
+
+
 # Retired literals: a typed authority count and fixed year lists.
 RETIRED_R = RETIRED + ("2023-24", "2024-25", "2025-26", "2026-27")
 ALLOWED_R = {
@@ -605,7 +1144,12 @@ ALLOWED_R = {
 ALLOWED_MODULE_R = {"RETIRED_R", "ALLOWED_R", "ALLOWED_MODULE_R", "FY",
                     "RETIRED"}
 REFRESH_PATH_R = ("status", "sync_new", "check_coverage", "backfill",
-                  "check_latest_equals_live", "expected_authorities")
+                  "check_latest_equals_live", "expected_authorities",
+                  "refresh_latest", "refresh_counts", "_plan", "_unrepairable",
+                  "_one_sided", "record_edition1", "check_loaded",
+                  "check_raw_integrity", "run_load_gates", "diff_recs",
+                  "raw_cells", "cmd_load", "cmd_sync_new",
+                  "cmd_refresh_latest")
 
 
 def gate_10_no_typed_counts_or_years(cur):
@@ -661,6 +1205,18 @@ def main():
             gate_8_status_today(cur)
             gate_9_seeded_newer_edition(cur)
             gate_10_no_typed_counts_or_years(cur)
+            gate_11_refresh_updates_only_the_revised_year(cur)
+            gate_11b_tamper_rolls_back(cur)
+            gate_11c_noop_changes_nothing(cur)
+            gate_12_new_year(cur)
+            gate_13_drift(cur)
+            gate_14_today(cur)
+            gate_15_short_year(cur)
+            gate_15b_one_sided_rows(cur)
+            gate_16_fork_halts_refresh(cur)
+            gate_17_bootstrap_needs_explicit_count(cur)
+            gate_18_load_gates_seeded(cur)
+            gate_19_load_cli_guards(cur)
     finally:
         conn.rollback()
         conn.close()
