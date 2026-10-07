@@ -25,6 +25,7 @@ Usage:
 The UPDATE/DELETE gates run inside a savepoint that is always rolled back and
 the whole run ends in a rollback, so the table is left unchanged.
 """
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -37,7 +38,9 @@ from s1_editions import (TABLE, MEASURES, STALE_PERIODS,  # noqa: E402
                          NATIONAL_TA_COLS, REFRESH_COLS, TA_SIGNAL_COLS,
                          check_no_suppressed_zero, check_registry,
                          check_support_needs, check_w1_equivalence,
+                         A1_MEASURES, MANIFEST_FIELDS, check_a1_raw, classify_a1_cell,
                          expected_authorities, insert_edition, latest_edition,
+                         load_new, prepare_new_quarter,
                          LIVE_LABEL, live_text_sha256, modal_count,
                          period_hashes,
                          refresh_counts, refresh_latest, reproduction_update,
@@ -1042,6 +1045,803 @@ def gate_18_bootstrap_needs_explicit_count(cur):
            f"no N: {no_arg[1][:40]}; explicit {n - 1}: {explicit}")
 
 
+# ---------------------------------------------------------------------------
+# load-new (a brand-new quarter): seeded gates, all inside rolled-back
+# savepoints on a fake 2099Q1, or on temp files / the raw files held locally
+# ---------------------------------------------------------------------------
+
+NEW = "2099Q1"
+NEW_KW = dict(release_label="gate-new", published_date=date(2099, 1, 1),
+              source_url="https://example.invalid/gate-new.ods",
+              source_file="gate-new.ods", source_sha256="gate-new-2099Q1")
+
+
+def _new_recs(cur):
+    """One synthetic record per authority of the newest real quarter, with
+    the raw-cell maps an independent re-read would give: authority 0 has a
+    published 0 in TA1, authority 1 a suppressed ('..') TA1 and A3 cell."""
+    cur.execute(f"""SELECT lad24cd FROM public.{LIVE} WHERE period =
+                    (SELECT MAX(period) FROM public.{LIVE}) ORDER BY 1""")
+    recs = []
+    for i, (lad,) in enumerate(cur.fetchall()):
+        recs.append({"lad24cd": lad, "total_assessments": 100 + i,
+                     "owed_duty": 80 + i, "prevention_duty": 40,
+                     "relief_duty": 40, "households_in_ta": 10 + i,
+                     "support_needs_total": 30 + i})
+    recs[0]["households_in_ta"] = 0
+    recs[1]["households_in_ta"] = None
+    recs[1]["support_needs_total"] = None
+    recs[2]["total_assessments"] = None  # a suppressed A1 cell
+    recs[3]["owed_duty"] = 0             # a published A1 zero
+    return recs
+
+
+def _raw_maps(recs):
+    ta1 = {r["lad24cd"]: ("0" if r["households_in_ta"] == 0 else
+                          ".." if r["households_in_ta"] is None
+                          else str(r["households_in_ta"]),
+                          r["households_in_ta"]) for r in recs}
+    a3 = {r["lad24cd"]: r["support_needs_total"] for r in recs}
+    return ta1, a3
+
+
+def _raw_a1(recs):
+    """The A1 cell text an independent re-read would give for recs."""
+    return {r["lad24cd"]: {m: ".." if r.get(m) is None else str(r[m])
+                           for m in A1_MEASURES} for r in recs}
+
+
+def _new(cur, recs, **over):
+    ta1, a3 = _raw_maps(recs)
+    kw = dict(NEW_KW, ta1_cells=ta1, a3_totals=a3, a1_cells=_raw_a1(recs),
+              quarter_label="Jan-Mar 2099")
+    kw.update(over)
+    return load_new(cur, NEW, recs, **kw)
+
+
+def _counts(cur, period=NEW):
+    out = []
+    for t in (LIVE, TABLE, "homelessness_quarter_urls"):
+        cur.execute(f"SELECT COUNT(*) FROM public.{t} WHERE period = %s",
+                    (period,))
+        out.append(cur.fetchone()[0])
+    return tuple(out)
+
+
+def gate_21_load_new_success(cur):
+    name = ("seeded: load-new records edition 1, the live rows and the quarter "
+            "row; NULL stays NULL and a real 0 stays 0")
+
+    def body(cur):
+        recs = _new_recs(cur)
+        res = _new(cur, recs)
+        n = len(recs)
+        cur.execute(f"""SELECT lad24cd, households_in_ta, support_needs_total,
+                        source_file, extracted_at IS NOT NULL,
+                        total_assessments, owed_duty
+                        FROM public.{LIVE} WHERE period = %s""", (NEW,))
+        live = {r[0]: r[1:] for r in cur.fetchall()}
+        cur.execute(f"""SELECT lad24cd, households_in_ta, release_label,
+                        supersedes, source_sha256 FROM public.{TABLE}
+                        WHERE period = %s AND edition = 1""", (NEW,))
+        ed = {r[0]: r[1:] for r in cur.fetchall()}
+        cur.execute("""SELECT loaded, loaded_at IS NOT NULL, file_format,
+                       quarter_label, file_url FROM
+                       public.homelessness_quarter_urls WHERE period = %s""",
+                    (NEW,))
+        urls = cur.fetchone()
+        cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} WHERE period = %s
+                        AND (mental_health_suspect IS NOT NULL
+                          OR learning_disability_suspect IS NOT NULL
+                          OR drug_dependency_suspect IS NOT NULL
+                          OR alcohol_dependency_suspect IS NOT NULL
+                          OR rough_sleeping_history_suspect IS NOT NULL)""",
+                    (NEW,))
+        return res, n, recs, live, ed, urls, cur.fetchone()[0], _counts(cur), \
+            status(cur)
+    try:
+        res, n, recs, live, ed, urls, susp, counts, st = \
+            _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(21, name, False, str(e).splitlines()[0])
+    zero, supp = recs[0]["lad24cd"], recs[1]["lad24cd"]
+    ok = (res["edition"] == 1 and res["rows"] == n and counts == (n, n, 1)
+          and live[zero][0] == 0 and live[supp][0] is None
+          and live[supp][1] is None
+          and live[recs[2]["lad24cd"]][4] is None
+          and live[recs[3]["lad24cd"]][5] == 0
+          and ed[zero][0] == 0 and ed[supp][0] is None
+          and all(v[2] == "gate-new.ods" and v[3] for v in live.values())
+          and all(v[1] == "gate-new" and v[2] is None for v in ed.values())
+          and urls == (True, True, "ods", "Jan-Mar 2099",
+                       NEW_KW["source_url"])
+          and susp == 0 and st["ok"] and res["quarter_row"] == "inserted")
+    report(21, name, ok, f"summary={res}; rows live/edition/quarter={counts}; "
+           f"zero stored {live[zero][0]}, suppressed stored {live[supp][0]}; "
+           f"quarter row {urls}; status ok={st['ok']}")
+
+
+def gate_22_load_new_refuses_existing(cur):
+    name = ("seeded: load-new refuses a period that already has live rows, "
+            "or editions, and writes nothing")
+    cur.execute(f"SELECT MAX(period) FROM public.{LIVE}")
+    real = cur.fetchone()[0]
+    before = _counts(cur, real)
+
+    def real_period(cur):
+        recs = _new_recs(cur)
+        ta1, a3 = _raw_maps(recs)
+        h = _halts(lambda: load_new(cur, real, recs, **dict(
+            NEW_KW, ta1_cells=ta1, a3_totals=a3, quarter_label="x")))
+        return h, _counts(cur, real)
+
+    def editions_only(cur):
+        insert_edition(cur, _new_recs(cur), NEW, **dict(
+            NEW_KW, supersedes=None))
+        return _halts(lambda: _new(cur, _new_recs(cur))), _counts(cur)
+
+    def live_only(cur):
+        _fake_live_period(cur)
+        return _halts(lambda: _new(cur, _new_recs(cur))), _counts(cur)
+    try:
+        (h1, c1) = _in_savepoint(cur, real_period)
+        (h2, c2) = _in_savepoint(cur, editions_only)
+        (h3, c3) = _in_savepoint(cur, live_only)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(22, name, False, str(e).splitlines()[0])
+    n = expected_authorities(cur)
+    ok = (h1[0] and "period already exists" in h1[1] and c1 == before
+          and h2[0] and "period already exists" in h2[1] and c2 == (0, n, 0)
+          and h3[0] and "period already exists" in h3[1] and c3 == (n, 0, 0)
+          and all("`load`" in h[1] and "`status`" in h[1]
+                  for h in (h1, h2, h3)))
+    report(22, name, ok, f"real {real}: {h1[1][:60]}...; editions-only: "
+           f"{h2[1][:40]}...; live-only: {h3[1][:40]}...")
+
+
+def gate_23_load_new_refuses_short_and_unresolved(cur):
+    name = ("seeded: load-new refuses a short quarter, a different given "
+            "count, a code that does not resolve, and a bad value; nothing "
+            "is written")
+    n = expected_authorities(cur)
+
+    def case(mutate, **over):
+        def body(cur):
+            recs = _new_recs(cur)
+            recs = mutate(recs) or recs
+            h = _halts(lambda: _new(cur, recs, **over))
+            return h, _counts(cur)
+        return _in_savepoint(cur, body)
+
+    def bad_code(recs):
+        recs[2]["lad24cd"] = "E09999999"
+
+    def neg(recs):
+        recs[2]["owed_duty"] = -4
+
+    def text(recs):
+        recs[2]["owed_duty"] = "12"
+
+    def dup(recs):
+        recs[3]["lad24cd"] = recs[2]["lad24cd"]
+    try:
+        short = case(lambda r: r[:-1])
+        given = case(lambda r: None, expected_authorities=n - 1)
+        code = case(bad_code)
+        negative = case(neg)
+        textual = case(text)
+        dupes = case(dup)
+        nourl = case(lambda r: None, source_url=None)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(23, name, False, str(e).splitlines()[0])
+    zero = (0, 0, 0)
+    ok = (short[0][0] and f"{n - 1} authorities supplied, expected {n}"
+          in short[0][1]
+          and given[0][0] and "differs from the count" in given[0][1]
+          and code[0][0] and "E09999999" in code[0][1]
+          and "do not resolve" in code[0][1]
+          and negative[0][0] and "non-negative integer" in negative[0][1]
+          and textual[0][0] and "non-negative integer" in textual[0][1]
+          and dupes[0][0] and "duplicate" in dupes[0][1]
+          and nourl[0][0] and "source_url" in nourl[0][1]
+          and all(c[1] == zero for c in (short, given, code, negative,
+                                        textual, dupes, nourl)))
+    report(23, name, ok, f"short: {short[0][1][:60]}; code: "
+           f"{code[0][1][:60]}; rows written in each refusal: "
+           f"{sorted({c[1] for c in (short, given, code, negative, textual, dupes, nourl)})}")
+
+
+def gate_24_load_new_suppressed_zero_refused(cur):
+    name = ("seeded: a suppressed cell stored as 0 (TA1, A3 or A1), or a "
+            "published value stored as NULL/other, fails load-new's raw "
+            "re-read gates")
+
+    def zero_for_suppressed(cur):
+        recs = _new_recs(cur)
+        ta1, a3 = _raw_maps(recs)  # raw cell of authority 1 is '..'
+        recs[1]["households_in_ta"] = 0
+        return _halts(lambda: _new(cur, recs, ta1_cells=ta1, a3_totals=a3))
+
+    def null_for_value(cur):
+        recs = _new_recs(cur)
+        ta1, a3 = _raw_maps(recs)
+        recs[5]["households_in_ta"] = None  # raw cell holds a number
+        return _halts(lambda: _new(cur, recs, ta1_cells=ta1, a3_totals=a3))
+
+    def wrong_a3(cur):
+        recs = _new_recs(cur)
+        ta1, a3 = _raw_maps(recs)
+        a3[recs[4]["lad24cd"]] += 1
+        return _halts(lambda: _new(cur, recs, ta1_cells=ta1, a3_totals=a3))
+    def a1_zero_for_suppressed(cur):
+        recs = _new_recs(cur)
+        a1 = _raw_a1(recs)  # authority 2's total_assessments cell is '..'
+        recs[2]["total_assessments"] = 0
+        return _halts(lambda: _new(cur, recs, a1_cells=a1))
+
+    def a1_null_for_value(cur):
+        recs = _new_recs(cur)
+        a1 = _raw_a1(recs)
+        recs[5]["relief_duty"] = None  # the cell holds a number
+        return _halts(lambda: _new(cur, recs, a1_cells=a1))
+
+    def a1_wrong_value(cur):
+        recs = _new_recs(cur)
+        a1 = _raw_a1(recs)
+        recs[6]["prevention_duty"] += 1
+        return _halts(lambda: _new(cur, recs, a1_cells=a1))
+    def ta1_unknown_format(cur):
+        recs = _new_recs(cur)
+        ta1, a3 = _raw_maps(recs)
+        ta1[recs[7]["lad24cd"]] = ("123[r]", 123)  # published, odd format
+        return _halts(lambda: _new(cur, recs, ta1_cells=ta1, a3_totals=a3))
+    try:
+        u = _in_savepoint(cur, ta1_unknown_format)
+        z = _in_savepoint(cur, zero_for_suppressed)
+        v = _in_savepoint(cur, null_for_value)
+        a = _in_savepoint(cur, wrong_a3)
+        z1 = _in_savepoint(cur, a1_zero_for_suppressed)
+        v1 = _in_savepoint(cur, a1_null_for_value)
+        w1 = _in_savepoint(cur, a1_wrong_value)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(24, name, False, str(e).splitlines()[0])
+    ok = (u[0] and "unrecognised TA1 cell '123[r]'" in u[1]
+          and z[0] and "stored 0, TA1 cell '..'" in z[1]
+          and v[0] and "stored None, re-extracted" in v[1]
+          and a[0] and "equal" in a[1]
+          and z1[0] and "total_assessments: stored 0, A1 cell '..' "
+          "(suppressed)" in z1[1]
+          and v1[0] and "relief_duty: stored None, A1 cell" in v1[1]
+          and w1[0] and "prevention_duty: stored" in w1[1])
+    report(24, name, ok, f"zero for suppressed: {z[1][:90]}; "
+           f"null for a value: {v[1][:70]}; wrong A3 total: {a[1][:60]}; "
+           f"A1 suppressed stored as 0: {z1[1][-90:]}")
+
+
+def gate_25_load_new_quarter_row_untouched(cur):
+    name = ("seeded: an existing homelessness_quarter_urls row is only marked "
+            "loaded; every other field is left as it was")
+    cols = ("period, quarter_label, file_url, file_format, notes, "
+            "reproduces_from_source, reproduction_checked_at, "
+            "reproduction_diff_cells, reproduction_note")
+
+    def body(cur):
+        cur.execute("""INSERT INTO public.homelessness_quarter_urls
+            (period, quarter_label, file_url, file_format, loaded, loaded_at,
+             notes, reproduces_from_source, reproduction_checked_at,
+             reproduction_diff_cells, reproduction_note)
+            VALUES (%s, 'old label', 'https://example.invalid/old.xlsx',
+                    'xlsx', false, NULL, 'keep this note', true,
+                    '2001-01-01 00:00+00', 7, 'keep this too')""", (NEW,))
+        cur.execute(f"SELECT {cols} FROM public.homelessness_quarter_urls "
+                    "WHERE period = %s", (NEW,))
+        before = cur.fetchone()
+        res = _new(cur, _new_recs(cur))
+        cur.execute(f"SELECT {cols}, loaded, loaded_at IS NOT NULL FROM "
+                    "public.homelessness_quarter_urls WHERE period = %s",
+                    (NEW,))
+        after = cur.fetchone()
+        return before, after, res
+    try:
+        before, after, res = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(25, name, False, str(e).splitlines()[0])
+    ok = (after[:-2] == before and after[-2:] == (True, True)
+          and res["quarter_row"] == "marked loaded")
+    report(25, name, ok, f"fields unchanged={after[:-2] == before}; loaded, "
+           f"loaded_at set={after[-2:]}")
+
+
+def _mini_ods(path, sheets):
+    """A tiny .ods holding the given {sheet: [[cell, ...], ...]}."""
+    import zipfile
+    from xml.sax.saxutils import escape
+    ns = ('xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+          'xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+          'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"')
+    body = ""
+    for sheet, rows in sheets.items():
+        body += f'<table:table table:name="{sheet}">'
+        for r in rows:
+            cells = "".join('<table:table-cell office:value-type="string">'
+                            f"<text:p>{escape(c)}</text:p></table:table-cell>"
+                            for c in r)
+            body += f"<table:table-row>{cells}</table:table-row>"
+        body += "</table:table>"
+    xml = ('<?xml version="1.0"?><office:document-content '
+           f'{ns}><office:body><office:spreadsheet>{body}'
+           '</office:spreadsheet></office:body></office:document-content>')
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("content.xml", xml)
+
+
+def _mini_xlsx(path, sheets):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    for sheet, rows in sheets.items():
+        ws = wb.create_sheet(sheet)
+        for r in rows:
+            ws.append(list(r))
+    wb.save(path)
+
+
+def _cover(rng, released="13 August 2026"):
+    return {"Cover": [[f"Statutory homelessness: Detailed local "
+                       f"authority-level tables, {rng}, England"],
+                      ["Publication date"], [f"Released: {released}"],
+                      ["Statutory homelessness in England: April to June "
+                       "2026: 29 October 2026 (provisional)"]],
+            "Contents": [["Table of contents"]]}
+
+
+def _contents(rng, when):
+    return {"Contents": [["", "", "Official Statistics"],
+                         ["Statutory homelessness: \nDetailed local "
+                          "authority-level tables"],
+                         [rng], ["England"], [when]]}
+
+
+def _stored_newest_source(cur):
+    """(period, source path, expected cover date) of the newest live quarter,
+    taken from the file its latest edition records (never 'the last file
+    sorted'). The expected release date is the manifest entry's
+    published_date_actual when the file has one; otherwise (the manifest holds
+    no entry for 2025Q1 onwards) it is the cover's own date, accepted only if
+    it lies after the end of the quarter and not after the edition's
+    published_date, so a file filed under the wrong release still fails."""
+    from s1_editions import (cover_sheet_info, edition_source_path,
+                             load_manifest)
+    cur.execute(f"SELECT MAX(period) FROM public.{LIVE}")
+    period = cur.fetchone()[0]
+    tip = latest_edition(cur, period)
+    path, files = edition_source_path(cur, period, tip)
+    if path is None:
+        raise SystemExit(f"HALT: {period} edition {tip} records {files}, not "
+                         "held in the raw directory")
+    hit = [e for e in load_manifest() if e["file"] == path.name
+           and e.get("published_date_actual")]
+    got = cover_sheet_info(path)["released"]
+    if hit:
+        want = date.fromisoformat(hit[0]["published_date_actual"])
+        return period, path, want
+    year, q = int(period[:4]), int(period[5])
+    end_year, end_month = (year + 1, 3) if q == 4 else (year, 3 * q + 3)
+    from calendar import monthrange
+    end = date(end_year, end_month, monthrange(end_year, end_month)[1])
+    cur.execute(f"""SELECT MAX(published_date) FROM public.{TABLE}
+                    WHERE period = %s AND edition = %s""", (period, tip))
+    loaded = cur.fetchone()[0]
+    if not end < got <= loaded:
+        raise SystemExit(f"HALT: {path.name} cover date {got} is not after "
+                         f"the end of {period} ({end}) and on or before its "
+                         f"edition's published_date ({loaded})")
+    return period, path, got
+
+
+def gate_26_cover_sheet(cur):
+    import tempfile
+    name = ("cover sheet: the period and release date are read from the file "
+            "itself (both layouts, .ods and .xlsx); a mismatch is refused; "
+            "every real file gives its own period")
+    from s1_editions import (check_cover, cover_sheet_period, RAW_DIR,
+                             quarter_from_range)
+    out, fails = [], []
+
+    def expect(label, got, want):
+        if got != want:
+            fails.append(f"{label}: {got!r} != {want!r}")
+        out.append(label)
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        for i, (rng, want) in enumerate((
+                ("January to March 2026", "2025Q4"),
+                ("April to June 2026", "2026Q1"),
+                ("July to September 2026", "2026Q2"),
+                ("October to December 2026", "2026Q3"))):
+            p = td / f"c{i}.ods"
+            _mini_ods(p, _cover(rng))
+            expect(f"cover ods {rng}", cover_sheet_period(p),
+                   (want, "13 August 2026"))
+        px = td / "cx.xlsx"
+        _mini_xlsx(px, _cover("April to June 2026", "1 November 2026"))
+        expect("cover xlsx", cover_sheet_period(px),
+               ("2026Q1", "1 November 2026"))
+        pc = td / "co.ods"
+        _mini_ods(pc, _contents("October to December 2025",
+                                "Thursday, April 30, 2026"))
+        expect("contents ods", cover_sheet_period(pc),
+               ("2025Q3", "30 April 2026"))
+        pd_ = td / "cd.xlsx"
+        _mini_xlsx(pd_, _contents("January to March 2024",
+                                  "2024-08-08 00:00:00"))
+        expect("contents xlsx", cover_sheet_period(pd_),
+               ("2023Q4", "8 August 2024"))
+        pd2 = td / "cd2.ods"
+        _mini_ods(pd2, _contents("July-September 2023",
+                                 "Thursday, February 29, 2024"))
+        expect("contents ods dash", cover_sheet_period(pd2),
+               ("2023Q2", "29 February 2024"))
+        # refusals: not one quarter, unreadable, unknown layout, ambiguous
+        for label, sheets in (
+                ("not a quarter", _cover("March to May 2026")),
+                ("six months", _cover("April to September 2026")),
+                ("no front sheet", {"A1": [["x"]]}),
+                ("unknown date", _contents("April to June 2026", "soon")),
+                ("title missing", {"Cover": [["Something else"]],
+                                   "Contents": [["x"]]}),
+                ("two released rows", {"Cover": _cover("April to June 2026")
+                                       ["Cover"] + [["Released: 1 May 2026"]],
+                                       "Contents": [["x"]]})):
+            p = td / f"bad_{len(out)}.ods"
+            _mini_ods(p, sheets)
+            h = _halts(lambda: cover_sheet_period(p))
+            expect(f"refuses {label}", h[0], True)
+        junk = td / "junk.ods"
+        junk.write_bytes(b"not a zip")
+        expect("refuses unreadable", _halts(
+            lambda: cover_sheet_period(junk))[0], True)
+        # check_cover: agrees, then each kind of disagreement is a problem
+        good = {"file": "c0.ods",
+                "release_label_actual": "Q4 2025-26, released 13 August 2026",
+                "published_date_actual": "2026-08-13"}
+        p0 = td / "c0.ods"
+        expect("check_cover agrees", check_cover(p0, "2025Q4", good), [])
+        expect("check_cover wrong period", len(check_cover(
+            p0, "2025Q3", good)), 1)
+        expect("check_cover wrong date", len(check_cover(
+            p0, "2025Q4", dict(good, published_date_actual="2026-08-14"))), 1)
+        expect("check_cover label lacks the date", len(check_cover(
+            p0, "2025Q4", dict(good, release_label_actual="Q4 2025-26"))), 1)
+        expect("check_cover needs the actual fields", len(check_cover(
+            p0, "2025Q4", {"file": "c0.ods"})), 1)
+        expect("check_cover on an unreadable file", len(check_cover(
+            junk, "2025Q4", good)), 1)
+    expect("quarter mapping Q3", quarter_from_range(
+        "October", "December", 2026)[0], "2026Q3")
+    # the real files
+    real, bad_real = [], []
+    try:
+        newest, newest_path, newest_date = _stored_newest_source(cur)
+    except SystemExit as e:
+        return report(26, name, False, str(e))
+    q4 = None
+    for p in sorted(RAW_DIR.iterdir()):
+        if not re.match(r"\d{4}Q[1-4]_", p.name):
+            continue
+        want = p.name[:6]
+        got = cover_sheet_period(p)
+        real.append(p.name[:6])
+        if got[0] != want:
+            bad_real.append(f"{p.name}: {got[0]}")
+        if p == newest_path:
+            q4 = (p, got)
+    text = f"{newest_date.day} {newest_date.strftime('%B %Y')}"
+    expect("newest stored file's real cover", q4 and q4[1], (newest, text))
+    if q4:
+        e = {"file": q4[0].name, "published_date_actual": newest_date.isoformat(),
+             "release_label_actual": f"released {text}"}
+        expect("stored file passes check_cover", check_cover(
+            q4[0], newest, e), [])
+        other = f"{int(newest[:4]) - 1}Q{newest[5]}"
+        expect("stored file refused under another period", len(check_cover(
+            q4[0], other, e)), 1)
+        expect("stored file refused under another date", len(check_cover(
+            q4[0], newest, dict(e, published_date_actual=(
+                newest_date.replace(day=1) if newest_date.day != 1 else
+                newest_date.replace(day=2)).isoformat()))), 1)
+    ok = not fails and not bad_real and len(real) >= 1
+    report(26, name, ok, f"{fails[:3]} {bad_real[:3]}" if not ok else
+           f"{len(out)} synthetic/real cases; {len(real)} real files each "
+           f"give their own period: {sorted(set(real))}")
+
+
+def gate_27_load_new_real_file_end_to_end(cur):
+    name = ("seeded: the file recorded by the newest stored quarter's latest "
+            "edition, through the whole load-new path (cover check, "
+            "extraction, raw re-read gates) into a fake quarter, reproduces "
+            "that quarter's live rows")
+    from s1_editions import prepare_new_quarter, sha256_file
+    try:
+        period, path, rel = _stored_newest_source(cur)
+    except SystemExit as e:
+        return report(27, name, False, str(e))
+    text = f"{rel.day} {rel.strftime('%B %Y')}"
+    entry = {"period": period, "file": path.name,
+             "sha256": sha256_file(path), "url": "https://example.invalid/x",
+             "release_label": "gate",
+             "last_modified": f"{rel.isoformat()}T09:30:00Z",
+             "release_label_actual": f"released {text}",
+             "published_date_actual": rel.isoformat()}
+    other = f"{int(period[:4]) - 1}Q{period[5]}"
+    wrong_day = rel.replace(day=1 if rel.day != 1 else 2).isoformat()
+    n = expected_authorities(cur)
+    try:
+        recs, _, cover = prepare_new_quarter(entry, period, n)
+        refused = _halts(lambda: prepare_new_quarter(
+            dict(entry, period=other), other, n))
+        refused2 = _halts(lambda: prepare_new_quarter(
+            dict(entry, published_date_actual=wrong_day), period, n))
+
+        def body(cur):
+            res = load_new(cur, NEW, recs, **dict(
+                NEW_KW, source_file=path.name, source_sha256=entry["sha256"],
+                quarter_label=cover["range_label"]))
+            cols = ", ".join(("lad24cd",) + MEASURES[:6])
+            cur.execute(f"""SELECT COUNT(*) FROM (
+                (SELECT {cols} FROM public.{LIVE} WHERE period = %s
+                 EXCEPT SELECT {cols} FROM public.{LIVE}
+                 WHERE period = %s)
+                UNION ALL
+                (SELECT {cols} FROM public.{LIVE} WHERE period = %s
+                 EXCEPT SELECT {cols} FROM public.{LIVE}
+                 WHERE period = %s)) d""", (NEW, period, period, NEW))
+            return res, cur.fetchone()[0]
+        res, differ = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(27, name, False, str(e).splitlines()[0])
+    ok = (cover["period"] == period and len(recs) == n and differ == 0
+          and res["rows"] == n and refused[0] and refused2[0])
+    report(27, name, ok, f"{path.name}: cover {cover['period']} "
+           f"{cover['released']}; {len(recs)} rows; rows differing from "
+           f"stored {period}: {differ}; wrong period refused={refused[0]}; "
+           f"wrong date refused={refused2[0]}")
+
+
+def gate_28_load_new_cli_halts_on_existing(cur):
+    import contextlib
+    import io
+    import s1_editions as m
+    name = ("load-new CLI: an existing period's manifest entry halts 'period "
+            "already exists' in dry-run and --simulate, writing nothing; "
+            "--commit with --simulate is refused")
+    entry = m.load_manifest()[0]
+    period = entry["period"]
+    cur.execute("SELECT COUNT(*) FROM public.la_statutory_homelessness "
+                "WHERE period = %s", (period,))
+    live_before = cur.fetchone()[0]
+    before = _counts(cur, period)
+    res = {}
+    for label, argv in (
+            ("dry-run", ["--period", period, "--manifest-entry", "0"]),
+            ("simulate", ["--period", period, "--manifest-entry", "0",
+                          "--simulate"]),
+            ("by file", ["--period", period, "--manifest-file",
+                         entry["file"], "--simulate"])):
+        res[label] = _halts(lambda a=argv: m.main(["load-new"] + a))
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        both = _raises(lambda: m.main(
+            ["load-new", "--period", period, "--manifest-entry", "0",
+             "--commit", "--simulate"]), SystemExit)
+    neither = _halts(lambda: m.main(["load-new", "--period", period]))
+    after = _counts(cur, period)
+    cur.execute("SELECT COUNT(*) FROM public.la_statutory_homelessness "
+                "WHERE period = %s", (period,))
+    live_after = cur.fetchone()[0]
+    ok = (all(h[0] and "period already exists" in h[1] for h in res.values())
+          and both[0] and "not allowed with argument" in err.getvalue()
+          and neither[0] and "exactly one" in neither[1]
+          and after == before and live_after == live_before)
+    report(28, name, ok, f"{period}: " + "; ".join(
+        f"{k}: {v[1][:45]}" for k, v in res.items()))
+
+
+def gate_30_manifest_entry_fields(cur):
+    name = ("load-new: a manifest entry missing any required field halts "
+            "naming the field (no KeyError); a non-ISO date halts")
+    full = {"period": "2099Q1", "file": "2099Q1_gate.ods",
+            "url": "https://example.invalid/x.ods", "sha256": "0" * 64,
+            "release_label": "release page",
+            "last_modified": "2099-01-01T00:00:00Z",
+            "release_label_actual": "released 1 January 2099",
+            "published_date_actual": "2099-01-01"}
+    assert set(full) == set(MANIFEST_FIELDS)
+    bad = []
+    for k in MANIFEST_FIELDS:
+        entry = {f: v for f, v in full.items() if f != k}
+        try:
+            prepare_new_quarter(entry, "2099Q1", 1)
+            bad.append(f"{k}: no halt")
+        except SystemExit as e:
+            if k not in str(e) or "KeyError" in str(e):
+                bad.append(f"{k}: {str(e)[:80]}")
+        except Exception as e:  # a KeyError traceback is the failure
+            bad.append(f"{k}: {type(e).__name__}")
+    h = _halts(lambda: prepare_new_quarter(
+        dict(full, published_date_actual="1/1/2099"), "2099Q1", 1))
+    ok = not bad and h[0] and "ISO" in h[1]
+    report(30, name, ok, f"{bad[:3]}; bad date: {h[1][:70]}" if not ok else
+           f"{len(MANIFEST_FIELDS)} fields each named in the halt; "
+           f"bad date: {h[1][:60]}")
+
+
+def gate_31_a1_raw_reread(cur):
+    name = ("A1 raw re-read: every stored edition whose source file is held "
+            "equals its own classification of the published A1 cells; the "
+            "classifier and the check are exercised on seeded input")
+    cur.execute(f"SELECT DISTINCT period, edition FROM public.{TABLE} "
+                "ORDER BY 1, 2")
+    checked, skipped, bad, nulls, zeros = [], [], [], 0, 0
+    for period, ed in cur.fetchall():
+        probs, n, z = check_a1_raw(cur, period, ed)
+        if n == 0:
+            skipped.append(f"{period} ed{ed}")  # no file held (csv / as loaded)
+            continue
+        checked.append(f"{period} ed{ed}")
+        zeros += z
+        bad += probs
+    cases = [(".", "unrecognised", None), ("..", "suppressed", None),
+             ("", "suppressed", None), ("[x]", "suppressed", None),
+             ("0", "number", 0), ("1,234", "number", 1234),
+             ("12.0", "number", 12), ("abc", "unrecognised", None)]
+    cls = [(c, classify_a1_cell(c)) for c, _, _ in cases]
+    cls_ok = all(got == (k, v) for (_, got), (_, k, v) in zip(cls, cases))
+    # seeded check_a1_raw on a real stored edition: truthful passes, a
+    # suppressed cell stored as 0 and a wrong value are flagged
+    cur.execute(f"""SELECT lad24cd, total_assessments, owed_duty,
+                    prevention_duty, relief_duty FROM public.{TABLE}
+                    WHERE period = '2025Q4' AND edition = 1 ORDER BY 1""")
+    rows = cur.fetchall()
+    truth = {r[0]: dict(zip(A1_MEASURES, ["..", "..", "..", ".."]))
+             for r in rows}
+    for lad, *vals in rows:
+        for m, v in zip(A1_MEASURES, vals):
+            truth[lad][m] = ".." if v is None else str(v)
+    clean = check_a1_raw(cur, "2025Q4", 1, raw=truth)[0]
+    lad = rows[0][0]
+    flip = {k: dict(v) for k, v in truth.items()}
+    flip[lad]["total_assessments"] = ".."   # published suppressed, stored value
+    flip2 = {k: dict(v) for k, v in truth.items()}
+    flip2[lad]["owed_duty"] = "999999"      # published different number
+    flagged1 = check_a1_raw(cur, "2025Q4", 1, raw=flip)[0]
+    flagged2 = check_a1_raw(cur, "2025Q4", 1, raw=flip2)[0]
+    ok = (not bad and len(checked) >= 9 and cls_ok and not clean
+          and any("(suppressed)" in x for x in flagged1)
+          and any("owed_duty: stored" in x for x in flagged2))
+    report(31, name, ok, f"problems={bad[:2]} classifier ok={cls_ok} "
+           f"clean seeded={clean[:1]} flagged={len(flagged1)}/{len(flagged2)}"
+           if not ok else
+           f"{len(checked)} editions re-read from their files ({zeros} A1 "
+           f"zeros confirmed as published); {len(skipped)} without a file "
+           f"held skipped: {skipped}")
+
+
+def gate_32_ta1_raw_reread(cur):
+    name = ("TA1 raw re-read: its own classifier; an unknown-format value is "
+            "refused, '..' stored as 0 is refused, a real 0 and a real NULL "
+            "pass")
+    from s1_editions import classify_ta1_cell
+    cases = [("..", "suppressed", None), ("", "suppressed", None),
+             ("[x]", "suppressed", None), ("0", "number", 0),
+             ("1,234", "number", 1234), ("12.0", "number", 12),
+             ("123[r]", "unrecognised", None), ("n/k", "unrecognised", None)]
+    cls_ok = all(classify_ta1_cell(c) == (k, v) for c, k, v in cases)
+    cur.execute(f"""SELECT lad24cd, households_in_ta FROM public.{TABLE}
+                    WHERE period = '2025Q1' AND edition = 1 ORDER BY 1""")
+    rows = cur.fetchall()
+    stored = dict(rows)
+    zero = next((l for l, v in rows if v == 0), None)
+    null = next((l for l, v in rows if v is None), None)
+    if zero is None:
+        return report(32, name, False, "no stored zero in 2025Q1 to seed")
+
+    def raw_of(**over):
+        raw = {l: ("" if v is None else str(v), v) for l, v in rows}
+        raw.update(over)
+        return raw
+    clean = check_no_suppressed_zero(cur, "2025Q1", 1, raw=raw_of())[0]
+    odd = check_no_suppressed_zero(cur, "2025Q1", 1, raw=raw_of(
+        **{rows[0][0]: ("123[r]", 123)}))[0]
+    supp0 = check_no_suppressed_zero(cur, "2025Q1", 1, raw=raw_of(
+        **{zero: ("..", None)}))[0]
+    pub0 = check_no_suppressed_zero(cur, "2025Q1", 1, raw=raw_of(
+        **{zero: ("0", 0)}))[0]
+    real_null = (check_no_suppressed_zero(cur, "2025Q1", 1, raw=raw_of(
+        **{null: ("..", None)}))[0] if null else [])
+    ok = (cls_ok and not clean and not pub0 and not real_null
+          and any("unrecognised TA1 cell '123[r]'" in x for x in odd)
+          and any(f"{zero}: stored 0, TA1 cell '..'" in x for x in supp0))
+    report(32, name, ok, f"classifier ok={cls_ok}; clean={clean[:1]} "
+           f"odd={len(odd)} supp0={len(supp0)} real 0 flags={len(pub0)} "
+           f"real NULL flags={len(real_null)} (NULL case "
+           f"{'present' if null else 'absent'})")
+
+
+# Where the load-new path must not read a column by position, and what no
+# part of s1_editions.py may do to a missing value.
+LOAD_NEW_PATH = ("quarter_from_range", "_text_lines", "_parse_release_date",
+                 "cover_sheet_info", "cover_sheet_period", "check_cover",
+                 "_resolve_expected", "require_new_period", "load_new",
+                 "prepare_new_quarter", "cmd_load_new", "classify_a1_cell",
+                 "raw_a1_cells", "check_a1_raw")
+MEASURE_NAMES = "|".join(MEASURES)
+
+
+def scan_positional(text, funcs) -> list:
+    """[(function, line)] for every subscript by an integer literal (row[3],
+    cells[-1]) in the named top-level functions, except on a call result
+    (cur.fetchone()[0] is a database tuple, not a sheet column)."""
+    import ast
+    out = []
+    for node in ast.parse(text).body:
+        if not isinstance(node, ast.FunctionDef) or node.name not in funcs:
+            continue
+        for n in ast.walk(node):
+            if not isinstance(n, ast.Subscript) or isinstance(
+                    n.value, (ast.Call, ast.Subscript)):
+                continue
+            s = n.slice
+            if isinstance(s, ast.UnaryOp):
+                s = s.operand
+            if isinstance(s, ast.Constant) and isinstance(s.value, int) \
+                    and not isinstance(s.value, bool):
+                out.append((node.name, n.lineno))
+    return out
+
+
+def scan_coercions(text) -> list:
+    """[line] for a missing value coerced to zero: `x or 0`, SQL `|| 0`, or
+    COALESCE over one of the measure columns."""
+    import ast
+    import re
+    out = []
+    for n in ast.walk(ast.parse(text)):
+        if isinstance(n, ast.BoolOp) and isinstance(n.op, ast.Or) and any(
+                isinstance(v, ast.Constant) and v.value == 0
+                and not isinstance(v.value, bool) for v in n.values):
+            out.append(n.lineno)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and (
+                "|| 0" in n.value or re.search(
+                    r"COALESCE\(\s*(?:\w+\.)?(" + MEASURE_NAMES + r")\b",
+                    n.value)):
+            out.append(n.lineno)
+    return sorted(out)
+
+
+def gate_29_no_positional_reads_or_zero_coercion(cur):
+    name = ("s1_editions.py: no fixed-position column reads on the load-new "
+            "path and no value-to-zero coercions anywhere")
+    text = (Path(__file__).resolve().parent / "s1_editions.py").read_text(
+        encoding="utf-8")
+    missing = [f for f in LOAD_NEW_PATH if f not in _defined_functions(text)]
+    pos = scan_positional(text, LOAD_NEW_PATH)
+    zero = scan_coercions(text)
+    planted = ("def cover_sheet_info(row):\n    return row[3], row[-1]\n"
+               "def fine(cur, row):\n    return row[3], cur.fetchone()[0]\n"
+               "def load_new(r):\n    return r['k']\n"
+               "A = x or 0\nB = 'SELECT a || 0 FROM t'\n"
+               "C = \"SELECT COALESCE(households_in_ta, 0) FROM t\"\n"
+               "D = 'SELECT COALESCE(MAX(edition), 0) FROM t'\n")
+    got_pos = scan_positional(planted, LOAD_NEW_PATH)
+    got_zero = scan_coercions(planted)
+    seeded = (got_pos == [("cover_sheet_info", 2), ("cover_sheet_info", 2)]
+              and got_zero == [7, 8, 9])
+    report(29, name, not missing and not pos and not zero and seeded,
+           f"missing={missing} positional={pos[:3]} coercions={zero[:3]}; "
+           f"planted: positional={got_pos} coercions={got_zero}")
+
+
 def main():
     conn = get_conn()
     try:
@@ -1080,6 +1880,18 @@ def main():
             gate_18_bootstrap_needs_explicit_count(cur)
             gate_19_url_mismatch_not_a_failure(cur)
             gate_20_missing_row_halts(cur)
+            gate_21_load_new_success(cur)
+            gate_22_load_new_refuses_existing(cur)
+            gate_23_load_new_refuses_short_and_unresolved(cur)
+            gate_24_load_new_suppressed_zero_refused(cur)
+            gate_25_load_new_quarter_row_untouched(cur)
+            gate_26_cover_sheet(cur)
+            gate_27_load_new_real_file_end_to_end(cur)
+            gate_28_load_new_cli_halts_on_existing(cur)
+            gate_29_no_positional_reads_or_zero_coercion(cur)
+            gate_30_manifest_entry_fields(cur)
+            gate_31_a1_raw_reread(cur)
+            gate_32_ta1_raw_reread(cur)
     finally:
         conn.rollback()
         conn.close()

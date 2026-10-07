@@ -44,7 +44,7 @@ says `ACTION NEEDED`, read the line above it and go to the matching case:
 
 | Status line | Meaning | Go to |
 | --- | --- | --- |
-| `NEW, no editions recorded` | A quarter is in the live table but has no edition 1 (normal straight after a new quarter is loaded). | Step 2 |
+| `NEW, no editions recorded` | A quarter is in the live table but has no edition 1. Normal for S1b straight after a new quarter is loaded; for S1, `load-new` records edition 1 itself, so it means rows were put in some other way. | S1: Step 2a (S1b: Step 2b) |
 | `NEWER EDITION NOT YET IN LIVE` | A later edition exists but the live table still holds an earlier one (normal after loading a revision). | Step 3 |
 | `DRIFT` | The live rows differ from the latest edition and match no stored edition: somebody changed the live table directly. | Step 4 |
 | `CHAIN ERROR` | An edition's `supersedes` link is broken or forked. Do not load or refresh. Stop and ask for it to be investigated. | stop |
@@ -52,9 +52,81 @@ says `ACTION NEEDED`, read the line above it and go to the matching case:
 
 ## Step 2. A NEW quarter has been published
 
-1. **Load it into the live tables as before.** S1: the n8n S1 workflow. S1b:
-   `python scripts/s1b_support_needs_build.py --load --period 2026Q1` (use the
-   new quarter).
+Load S1 first, then S1b. The S1b load checks its support-need totals against
+the S1 figures, so S1 must already be in. Downloading a file needs Scott's
+permission.
+
+### 2a. S1 (statutory homelessness): `load-new`
+
+S1 no longer has an n8n loader. The two n8n steps that used to load it were
+retired on 2026-10-07: they stored suppressed figures as zero, read columns by
+position, and wrote straight over live rows (see
+[decisions/2026-10-07-s1-n8n-loaders-retired.md](decisions/2026-10-07-s1-n8n-loaders-retired.md)).
+Do not use the n8n S1 workflow; if either of those steps is run it stops with a
+`RETIRED` message. `load-new` reads each column by its header text, keeps a
+suppressed figure as blank (NULL) and a real zero as 0, and refuses a quarter
+that already exists.
+
+1. **Save the file** (the detailed local-authority tables on the GOV.UK
+   homelessness release page) into `data/raw/s1b_a3/`, named
+   `<period>_<original name>`, for example `2026Q1_Detailed_LA_202610.ods`.
+   The period is the financial-year quarter: April to June 2026 is `2026Q1`,
+   July to September `2026Q2`, October to December `2026Q3`, January to March
+   2027 `2026Q4`. Give each release its own file name; never save over an
+   earlier file.
+2. **Open the file's cover or contents sheet** (the first sheet) and note two
+   things: the release name (for example "Statutory homelessness: Detailed
+   local authority-level tables, April to June 2026, England") and the release
+   date ("Released: 29 October 2026"). `load-new` reads the same sheet itself
+   and refuses the file if the quarter or date does not agree with what you
+   enter next, so a file saved under the wrong quarter is caught.
+3. **Add one entry to `scripts/s1_editions_manifest.json`.** All eight fields
+   are needed; `load-new` stops and names any that is missing.
+
+   | Field | What to put |
+   | --- | --- |
+   | `period` | The quarter, `YYYYQn`, as in step 1. |
+   | `file` | The file name exactly as saved in `data/raw/s1b_a3/`. |
+   | `url` | The GOV.UK download link for the file. It is stored as the source. |
+   | `sha256` | The file's checksum, lower case. PowerShell: `Get-FileHash -Algorithm SHA256 data\raw\s1b_a3\<file>`; Git Bash: `sha256sum data/raw/s1b_a3/<file>`. |
+   | `release_label` | How the file was found, for example `release page`. |
+   | `last_modified` | The `Last-Modified` header of the download as `YYYY-MM-DDTHH:MM:SSZ` (`curl -sI <url>` shows it; convert to UTC). |
+   | `release_label_actual` | Free text that **contains the release date exactly as the cover prints it, `D Month YYYY`**, for example `April to June 2026 release, released 29 October 2026`. It becomes the edition's label. |
+   | `published_date_actual` | The same date as `yyyy-mm-dd`, for example `2026-10-29`. |
+
+   Select the entry with `--manifest-file <file name>`, or with
+   `--manifest-entry N` (N counts from 0).
+4. **Run `load-new`**: a dry run, then `--simulate`, then `--commit`.
+   ```
+   python scripts/s1_editions.py load-new --period 2026Q1 --manifest-file 2026Q1_Detailed_LA_202610.ods
+   python scripts/s1_editions.py load-new --period 2026Q1 --manifest-file 2026Q1_Detailed_LA_202610.ods --simulate
+   python scripts/s1_editions.py load-new --period 2026Q1 --manifest-file 2026Q1_Detailed_LA_202610.ods --commit
+   ```
+   The dry run and `--simulate` both run every database check inside a
+   transaction that is then rolled back, so they are safe to repeat. `--commit`
+   records edition 1 (from the file, with its checksum), writes the live rows
+   and marks the quarter as loaded in `homelessness_quarter_urls`, all in one
+   transaction (append-only, cannot be undone). It stops, writing nothing, if:
+   the quarter already exists (use Step 3 for a revision); the cover sheet
+   disagrees with the quarter or the manifest date; the authority count is
+   short (it is worked out from the earlier quarters; add
+   `--expected-authorities N` only if that cannot be worked out); an authority
+   code is not recognised; or a figure re-read straight from the file's cells
+   differs from what would be stored (a suppressed figure shown as zero, or a
+   published figure missing). Fix the cause and re-run; do not edit the check.
+
+   **What that re-read does and does not prove.** It covers all six stored measures and classifies each cell on its own (its own list of suppression markers; an unknown cell format stops the load), but the column for each A1 and TA1 measure is found by the same header-text reading as the loader, and the authority-code recode is shared; the support-needs column (A3) is read by the S1b reader, which has its own header mapping. So a header renamed by the publisher so that it matches the wrong column would still pass for A1 and TA1: read the dry run's figures against the published sheet.
+5. **Check:** `python scripts/s1_editions.py status` should say
+   `status: OK, nothing to do`.
+6. Re-run workflow 1 and re-export the map data as for any other change to S1.
+   Until you do, `python scripts/verify_national_ta.py` fails: it compares the
+   stored national figures with the newest live quarter.
+
+### 2b. S1b (support needs)
+
+1. **Load it into the live table.** S1b new quarters still use the build
+   script: `python scripts/s1b_support_needs_build.py --load --period 2026Q1`
+   (use the new quarter).
 
    **Always give `--period` for S1b. Without it the builder reloads all 11
    quarters from the release-page files, overwrites the revised quarters in the
@@ -69,25 +141,21 @@ says `ACTION NEEDED`, read the line above it and go to the matching case:
    the others, for example:
    `"2026Q1": ("april-to-june-2026", "2026-06"),`. Check the slug against the
    release page. This is a code change: commit it.
-   Downloading a file needs Scott's permission.
-2. **Record each new quarter as edition 1 ('as loaded').** For each table:
+2. **Record the new quarter as edition 1 ('as loaded').**
    ```
-   python scripts/s1_editions.py sync-new               # dry run
-   python scripts/s1_editions.py sync-new --simulate    # full checks, rolled back
-   python scripts/s1_editions.py sync-new --commit
-   python scripts/s1b_editions.py sync-new
-   python scripts/s1b_editions.py sync-new --simulate
+   python scripts/s1b_editions.py sync-new               # dry run
+   python scripts/s1b_editions.py sync-new --simulate    # full checks, rolled back
    python scripts/s1b_editions.py sync-new --commit
    ```
    The dry run only lists `periods with no editions`. It is safe to repeat: a
    second run finds nothing. `--simulate` and `--commit` refuse (`HALT`) a
-   quarter that is short: one authority missing, one cell missing, or (S1b) a
+   quarter that is short: one authority missing, one cell missing, or a
    different category set from the previous quarter. (The dry run does not
    check; run `--simulate` before `--commit`.) If the category set changed because the publisher
    changed the layout, confirm that against the release notes and add
-   `--accept-categories 2026Q1` (S1b only). `--expected-authorities N` is only
+   `--accept-categories 2026Q1`. `--expected-authorities N` is only
    needed the very first time a table has no editions at all; leave it out.
-3. **Check:** run both `status` commands again. Expect `OK`.
+3. **Check:** `python scripts/s1b_editions.py status`. Expect `OK`.
 
 ## Step 3. A published quarter has been REVISED
 
@@ -110,6 +178,12 @@ order.
    | `last_modified` | The `Last-Modified` header of the download, as `YYYY-MM-DDTHH:MM:SSZ`: `curl -sI <url>` shows it (convert to UTC). It becomes the edition's informational published date. |
 
    The loader refuses a file whose checksum does not match the manifest.
+
+   **`load` does not read the file's cover sheet the way `load-new` does.** Before
+   running it, open the file's cover or contents sheet yourself and check the
+   release name and release date against the manifest entry (and against the
+   quarter you are revising). A file saved under the wrong name would otherwise
+   be stored without question.
 3. **S1 first: load the revised file as a new edition** (rehearse first):
    ```
    python scripts/s1_editions.py load --period 2026Q1 --manifest-label registry
@@ -164,8 +238,8 @@ hand-run `UPDATE`). The refresh will not hide it: it halts on that quarter.
 
 1. **Find out who changed it and why.** Compare the live rows with the latest
    edition (S1: `python scripts/s1_editions.py diff` compares two stored
-   editions; for live against edition, a query on the two tables). Check the
-   n8n execution history and recent commits.
+   editions; for live against edition, a query on the two tables). Check
+   recent commits and the database's own logs.
 2. **Decide:**
    - *The live values are right* (a real revision): put the source file into
      the manifest and load it as an edition (Step 3, items 1 to 3), then
@@ -185,8 +259,8 @@ locks on the editions tables, so a second one waits or fails.
 | Order | Command | Typical run time |
 | --- | --- | --- |
 | 1 | `python scripts/verify_source_registry.py` | a few seconds |
-| 2 | `python scripts/verify_national_ta.py` | under a second |
-| 3 | `python scripts/s1_editions_verify.py` | about 1.5 minutes |
+| 2 | `python scripts/verify_national_ta.py` | under a second. **Expected to fail between a new quarter's load (or a refresh) and the workflow 1 re-run**; it passes again once workflow 1 has run |
+| 3 | `python scripts/s1_editions_verify.py` | about 2 minutes (2 min 6 s measured alone 2026-10-07, 45 checks) |
 | 4 | `python scripts/s1b_support_needs_verify.py` | about 3 minutes |
 | 5 | `python scripts/s1b_editions_verify.py` | about 4 minutes (3 min 59 s measured) |
 | 6 | `python scripts/ro4_editions_verify.py` | about 1 minute 18 seconds (44 checks incl. the cover-sheet gate, measured alone 2026-10-07) |
@@ -320,7 +394,9 @@ chain.
   release page and, if it changed, follow Step 3. Recording it as
   `revision_detected` in `source_check_log` is also by hand.
 - **Downloading files.** Each download needs Scott's permission.
-- **Editing the manifest** (Step 3, item 2).
-- **Loading a brand-new quarter** (Step 2, item 1) still uses the n8n S1
-  workflow and the S1b build script; only the recording of edition 1 is
-  automated.
+- **Editing the manifest** (Step 2a, item 3; Step 3, item 2).
+- **Spotting that a new quarter has been published.** Nothing detects it;
+  someone checks the release page.
+- **Loading a brand-new S1b quarter** (Step 2b, item 1) still uses the S1b
+  build script; only the recording of edition 1 is automated. A new S1 quarter
+  uses `load-new` (Step 2a); the n8n S1 workflow is no longer a loader.

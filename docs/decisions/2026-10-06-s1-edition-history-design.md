@@ -41,7 +41,8 @@ distinct file (by sha256) becomes its own edition, ordered by published date. Ea
 - extracts with the existing S1 parser, recoded for Barnsley and Sheffield through `la_code_lookup`
   before insert;
 - stores `..`/`-` as NULL: `s1_extract_ods.extract()` already returns None for markers, so this
-  load does not depend on the n8n S1 node 2 `|| 0` defect, which remains a separate item;
+  load does not depend on the n8n S1 node 2 `|| 0` defect, which remained a separate item (closed 2026-10-07: the n8n S1 loader steps are retired, see
+  [2026-10-07-s1-n8n-loaders-retired.md](2026-10-07-s1-n8n-loaders-retired.md));
 - must show 296 authorities and a clean reconciliation against S1b's independent A3 extraction;
 - produces a diff against the previous edition (rows and cells changed, by measure) kept with the
   decision record.
