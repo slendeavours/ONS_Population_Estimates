@@ -85,6 +85,16 @@ the database gates and rolls back), `--simulate`, then `--commit`.
 Independent raw-cell re-reads run inside the transaction and cover all six
 stored measures: households_in_ta (TA1 cells), support_needs_total (A3 cells)
 and total_assessments, owed_duty, prevention_duty, relief_duty (A1 cells).
+What the re-reads share with `extract` (s1_extract_ods.py), and what they do
+not. Shared: the column resolution by header text for A1 and TA1
+(resolve_columns / COLUMN_LABELS) and the publisher-code recode. Independent:
+the classification of each raw cell, which has its own marker table and halts
+or fails the gate on a cell of unknown format instead of storing NULL
+(classify_a1_cell for A1, classify_ta1_cell for TA1; A3 is read by the S1b
+reader, which also has its own header mapping and cell reader). Not covered:
+a renamed header that uniquely matches the wrong column would be resolved the
+same way by `extract` and by the A1 and TA1 re-reads, so those two would still
+pass; only A3 has an independent header mapping.
 
 Helpers imported by later steps: sha256_file, create_schema, insert_edition,
 latest_edition, diff_editions, diff_records, and the table-parameterised
@@ -605,9 +615,32 @@ def edition_source_path(cur, period, edition):
     return (path if path is not None and path.exists() else None), files
 
 
+# the TA1 re-read's own marker table (not shared with the extractor or A1)
+TA1_MARKERS = frozenset(("", "-", "..", ":", "*", "x", "[x]", "[c]", "[z]",
+                         "[low]", "n/a"))
+
+
+def classify_ta1_cell(cell) -> tuple:
+    """('suppressed', None) for a marker or blank, ('number', n) for a plain
+    numeric cell, else ('unrecognised', None): a value in any other format
+    (e.g. '123[r]') is reported, never turned into NULL. Independent of the
+    extractor's num."""
+    t = str(cell if cell is not None else "").strip().lower()
+    if t in TA1_MARKERS:
+        return "suppressed", None
+    try:
+        return "number", int(round(float(t.replace(",", ""))))
+    except ValueError:
+        return "unrecognised", None
+
+
 def check_no_suppressed_zero(cur, period, edition, raw=None) -> tuple:
-    """Gate 7 for one edition. raw (lad -> (cell, value)) defaults to a
-    re-extraction of the edition's source file. -> (problems, rows, zeros)."""
+    """Gate 7 for one edition (households_in_ta, TA1 cells). raw (lad ->
+    (cell, value); only the cell text is used) defaults to a re-read of the
+    edition's source file. Each stored value must equal classify_ta1_cell of
+    the published cell: a marker is NULL, a number is that number (so a
+    stored 0 needs a published 0), and a cell in an unknown format is a
+    problem. -> (problems, rows, zeros)."""
     tag = f"{period} ed{edition}"
     if raw is None:
         path, files = edition_source_path(cur, period, edition)
@@ -619,16 +652,19 @@ def check_no_suppressed_zero(cur, period, edition, raw=None) -> tuple:
     bad, n, zeros = [], 0, 0
     for lad, stored in cur.fetchall():
         n += 1
-        cell, val = raw.get(lad, (None, None))
+        if lad not in raw:
+            bad.append(f"{tag} {lad}: no TA1 row in the file")
+            continue
+        cell, _ = raw[lad]
+        kind, val = classify_ta1_cell(cell)
         if stored == 0:
             zeros += 1
-            try:
-                published_zero = float(str(cell).replace(",", "")) == 0
-            except ValueError:
-                published_zero = False
-            if not published_zero:
-                bad.append(f"{tag} {lad}: stored 0, TA1 cell {cell!r}")
-        if stored != val:
+        if kind == "unrecognised":
+            bad.append(f"{tag} {lad}: unrecognised TA1 cell {cell!r} "
+                       f"(stored {stored})")
+        elif stored == 0 and val != 0:
+            bad.append(f"{tag} {lad}: stored 0, TA1 cell {cell!r}")
+        elif stored != val:
             bad.append(f"{tag} {lad}: stored {stored}, re-extracted {val}")
     return bad, n, zeros
 
