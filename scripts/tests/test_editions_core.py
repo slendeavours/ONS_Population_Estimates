@@ -403,13 +403,15 @@ class EditionsCoreDB(unittest.TestCase):
         The real table is only read. Column order and primary-key column
         order are known to differ and are not compared."""
         import dataclasses
+        import ro4_editions
         import s1b_editions
-        specs = {"s1": None, "s1b": s1b_editions.SPEC, "ro4": None}
+        specs = {"s1": None, "s1b": s1b_editions.SPEC,
+                 "ro4": ro4_editions.SPEC}
         for name, spec in specs.items():
             with self.subTest(spec=name):
                 if spec is None:
-                    self.skipTest(f"{name}: no SPEC declared yet (Tasks 6 and "
-                                  "7 move S1 and RO4 onto the core)")
+                    self.skipTest(f"{name}: no SPEC declared yet (Task 7 "
+                                  "moves S1 onto the core)")
                 copy = dataclasses.replace(
                     spec, name=f"zz_core_{name}",
                     editions_table=f"zz_core_{name}_editions")
@@ -438,6 +440,47 @@ class EditionsCoreDB(unittest.TestCase):
                 self.assertTrue(real_cols)
                 self.assertEqual(new_cols, real_cols)
                 self.assertEqual(new_chk, real_chk)
+
+
+class RO4CoverSheet(unittest.TestCase):
+    """RO4's cover-sheet gate on the real stored files (read-only: the files
+    are only opened for reading, and their sha256 is checked unchanged)."""
+
+    def test_ro4_front_page_mismatch_refused(self):
+        """The stored second-release file (RO4_LA_Data_2024-25_data_by_LA.ods,
+        whose own Front_Page says 'second release, 4 December 2025') checked
+        against the manifest's third-release entry for 2024-25 must be
+        refused by check_front_page, and so by check_manifest_front_pages if
+        the manifest filed it there; its own entry must pass."""
+        import ro4_editions as m
+        from s1_editions import sha256_file
+        manifest = m.load_manifest()
+        second = next(e for e in manifest
+                      if e["file"] == "RO4_LA_Data_2024-25_data_by_LA.ods")
+        third = next(e for e in manifest
+                     if e["file"] == "RO4_LA_Data_2024-25_third_release.ods")
+        path = m.REF_DIR / second["file"]
+        if not path.exists():
+            self.skipTest(f"{path} not held locally")
+        self.assertTrue(second["release_label_actual"].startswith("second"))
+        self.assertTrue(third["release_label_actual"].startswith("third"))
+        sha_before = sha256_file(path)
+        self.assertEqual(sha_before, second["sha256"])
+        self.assertEqual(m.check_front_page(path, second), [])
+        # the second-release file filed under the third-release entry
+        misfiled = dict(third, file=second["file"])
+        problems = m.check_front_page(path, misfiled)
+        self.assertTrue(any("cover sheet says 'second release'" in p
+                            for p in problems), problems)
+        self.assertTrue(any("cover sheet says published 2025-12-04" in p
+                            for p in problems), problems)
+        saved = m.load_manifest
+        m.load_manifest = lambda: [misfiled]
+        try:
+            self.assertEqual(m.check_manifest_front_pages(), problems)
+        finally:
+            m.load_manifest = saved
+        self.assertEqual(sha256_file(path), sha_before)
 
 
 class ChainValidation(unittest.TestCase):
