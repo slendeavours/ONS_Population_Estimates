@@ -89,6 +89,22 @@ class Codes(unittest.TestCase):
             self.assertEqual(lc.check_codes(cur, [cur.fetchone()[0]]), [])
 
 
+class Unexplained(unittest.TestCase):
+    def test_in_known_and_mapped_elsewhere_is_resolved(self):
+        self.assertEqual(lc._unexplained(["A"], {"A": {"B"}}, {"A"}), [])
+
+    def test_resolvable_only_through_mapping(self):
+        self.assertEqual(lc._unexplained(["A"], {"A": {"B"}}, {"B"}), [])
+
+    def test_in_neither_is_unexplained(self):
+        self.assertEqual(lc._unexplained(["A"], {"A": {"B"}}, {"C"}),
+                         ["UNEXPLAINED A"])
+        self.assertEqual(lc._unexplained(["Z"], {}, set()), ["UNEXPLAINED Z"])
+
+    def test_two_targets_one_known_is_resolved(self):
+        self.assertEqual(lc._unexplained(["A"], {"A": {"B", "C"}}, {"C"}), [])
+
+
 class Coverage(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

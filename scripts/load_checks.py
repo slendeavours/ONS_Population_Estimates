@@ -56,12 +56,20 @@ def check_codes(cur, codes: Iterable[str]) -> list:
     mapped = {}
     for old, new in cur.fetchall():
         mapped.setdefault(old, set()).add(new)
-    resolved = {c: mapped.get(c, {c}) for c in codes}
-    every = sorted({n for s in resolved.values() for n in s})
+    every = sorted(set(codes) | {n for s in mapped.values() for n in s})
     cur.execute("SELECT lad24cd FROM public.la_boundaries "
                 "WHERE lad24cd = ANY(%s)", (every,))
     known = {r[0] for r in cur.fetchall()}
-    return [f"UNEXPLAINED {c}" for c in codes if not (resolved[c] & known)]
+    return _unexplained(codes, mapped, known)
+
+
+def _unexplained(codes, mapped: dict, known: set) -> list:
+    """Pure decision for check_codes. A code is resolved if it is itself in
+    known (la_boundaries) or any of its lookup targets (mapped[code]) is.
+    One-to-many splits are deferred to la_succession: a code mapped to two
+    targets passes when either is known."""
+    return [f"UNEXPLAINED {c}" for c in sorted(set(codes))
+            if not ((mapped.get(c, set()) | {c}) & known)]
 
 
 def check_identity(file_facts: dict, entry: dict, keys: tuple) -> list:
