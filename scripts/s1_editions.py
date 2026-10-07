@@ -7,8 +7,9 @@ Rows are immutable: a trigger raises on UPDATE, DELETE and TRUNCATE.
 
 Subcommands:
     python scripts/s1_editions.py ddl       # idempotent; safe to run repeatedly
-    python scripts/s1_editions.py backfill  # edition 1 of every stored quarter
-                                            # plus the 2025Q2 revision; idempotent
+    python scripts/s1_editions.py backfill [--commit | --simulate]
+        # edition 1 of every stored quarter plus the 2025Q2 revision;
+        # idempotent. DRY-RUN by default (rolled back); only --commit writes.
     python scripts/s1_editions.py diff --period P --new N --old M
     python scripts/s1_editions.py load --period P
         (--manifest-label registry | --manifest-entry N)
@@ -367,7 +368,9 @@ def backfill(cur) -> list:
     return out
 
 
-def cmd_backfill(_args):
+def cmd_backfill(args):
+    """Preview by default: the plan is run inside a transaction that is rolled
+    back. Only --commit persists; --simulate is the same rollback, labelled."""
     from _db import get_conn
     conn = get_conn()
     try:
@@ -376,17 +379,30 @@ def cmd_backfill(_args):
             results = backfill(cur)
             cur.execute(f"SELECT COUNT(*) FROM public.{TABLE}")
             total = cur.fetchone()[0]
-        conn.commit()
+        if args.commit:
+            conn.commit()
+        else:
+            conn.rollback()
     except BaseException:
         conn.rollback()
         raise
     finally:
         conn.close()
+    added = sum(r[3] for r in results)
     for period, ed, n, inserted in results:
-        print(f"  {period} edition {ed}: "
-              + ("inserted" if inserted else "already present"))
-    print(f"backfill: {sum(r[3] for r in results)} edition(s) added; "
-          f"{TABLE} now holds {total} rows")
+        verb = "inserted" if inserted else "already present"
+        if inserted and not args.commit:
+            verb = "would insert"
+        print(f"  {period} edition {ed}: {verb}")
+    if args.commit:
+        print(f"backfill: {added} edition(s) added; "
+              f"{TABLE} now holds {total} rows. COMMITTED")
+    elif args.simulate:
+        print(f"SIMULATION: {added} edition(s) added, ROLLED BACK "
+              "(nothing persisted)")
+    else:
+        print(f"DRY RUN: {added} edition(s) would be added; nothing "
+              "written (use --commit)")
 
 
 MANIFEST = Path(__file__).resolve().parent / "s1_editions_manifest.json"
@@ -1928,8 +1944,14 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("ddl", help="create the table and triggers if absent"
                    ).set_defaults(func=cmd_ddl)
-    sub.add_parser("backfill", help="record edition 1 of stored quarters and "
-                   "the 2025Q2 revision").set_defaults(func=cmd_backfill)
+    bf = sub.add_parser("backfill", help="record edition 1 of stored quarters "
+                        "and the 2025Q2 revision (dry run unless --commit)")
+    bmode = bf.add_mutually_exclusive_group()
+    bmode.add_argument("--commit", action="store_true",
+                       help="insert the editions (append-only, irreversible)")
+    bmode.add_argument("--simulate", action="store_true",
+                       help="run the plan and roll back")
+    bf.set_defaults(func=cmd_backfill)
     d = sub.add_parser("diff", help="diff two stored editions of a period")
     d.add_argument("--period", required=True)
     d.add_argument("--new", type=int, required=True)
