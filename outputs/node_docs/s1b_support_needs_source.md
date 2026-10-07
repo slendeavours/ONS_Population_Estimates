@@ -173,11 +173,27 @@ Load a new edition with `python scripts/s1b_editions.py load --period <period>`
 (file chosen from `scripts/s1_editions_manifest.json`; dry run by default,
 `--commit` writes, gated in one transaction), then refresh the live
 layer with `python scripts/s1b_editions.py refresh-latest --commit`.
-`refresh-latest` is specific to the 2026-10-06 reload (periods and snapshot
-tables are hardcoded) and must be generalised before the next S1b quarterly
-load. Snapshots `la_homelessness_support_needs_bak_20261006` (before the value
-refresh) and `_bak_20261006b` (before the label refresh) are kept; editions
-gates 9 and 10 depend on them, so drop them only deliberately.
+`refresh-latest` is general (from 2026-10-07): it updates any quarter whose
+live rows differ from its latest edition, and rolls back if any other quarter
+changes. A new quarter is recorded as edition 1 with `sync-new`, and `status`
+says what needs action. The step-by-step procedure for both S1 and S1b is in
+[QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md). The three October snapshot
+tables (`la_homelessness_support_needs_bak_20261006` and `_bak_20261006b`) are
+retained, but no code depends on them; they may be dropped when convenient.
+(Before 2026-10-07 this section said `refresh-latest` was specific to the
+2026-10-06 reload and that gates depended on the snapshots; that is no longer
+so.)
+
+## Quarterly procedure
+
+See [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md). In short: `python
+scripts/s1b_editions.py status` (expect OK); a new quarter is loaded with
+`s1b_support_needs_build.py --load` and then `sync-new --commit`; a revised
+quarter goes into `data/raw/s1b_a3/` and the manifest, then `load --commit`
+and `refresh-latest --commit`; drift is resolved by loading it as an edition or
+`--accept-drift PERIOD`. `scripts/s1b_editions_verify.py` takes about 14
+minutes (gate 7 re-reads the raw files); run the verify scripts one at a time.
+Detecting a publisher revision is still manual.
 
 ## Reconciliation
 

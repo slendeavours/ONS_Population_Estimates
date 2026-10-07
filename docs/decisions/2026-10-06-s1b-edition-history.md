@@ -57,3 +57,5 @@ refresh) are kept; editions gates 9 and 10 depend on them. `scripts/s1b_editions
   must be loaded with `s1b_editions.py load`; running the build script would write the linked file over it.
 - The RO4 table key still needs edition treatment.
 - No insert-time trigger enforces `supersedes` = chain tip (only `load` checks it).
+
+*Update 2026-10-07:* `refresh-latest` is now general, no gate depends on the snapshot tables, and they are retained for Scott to drop when comfortable; see [2026-10-07-editions-quarterly-refresh.md](2026-10-07-editions-quarterly-refresh.md). The text above is left as written.

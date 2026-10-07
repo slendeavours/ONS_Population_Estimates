@@ -100,6 +100,7 @@ CHANGELOG.md                                Dated record of pipeline changes
   DATA_DICTIONARY.md                        Column definitions
   USAGE_GUIDE.md                            Map usage
   METHODOLOGY.md                            Sources and calculations
+  QUARTERLY_REFRESH.md                      Quarterly procedure for the S1 and S1b homelessness tables (editions)
   s15_hpi_source.md                         Source 15 register entry
   s18_pipr_source.md                        Source 18 (ONS PIPR private rents) register entry
   s18_pipr_workbook_structure.md            PIPR workbook spec (n8n S18 build reference)
