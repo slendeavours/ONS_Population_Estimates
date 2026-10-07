@@ -72,7 +72,9 @@ updating the refresh columns cannot repair it.
 - **Detecting a publisher revision is manual.** Nothing watches the release pages for a revised file.
 - **RO4 table key** (`lad24cd, financial_year`) still needs edition treatment before the source is next
   revised.
-- **n8n S1 node 2 `|| 0` defect** (and the stale W1 period labels) remain.
+- **n8n S1 node 2 `|| 0` defect** (and the stale W1 period labels) remain. *Correction 2026-10-07 (later the
+  same day): the n8n S1 loader steps are retired and a new S1 quarter is loaded with `s1_editions.py load-new`; see
+  [2026-10-07-s1-n8n-loaders-retired.md](2026-10-07-s1-n8n-loaders-retired.md). The stale W1 period labels remain.*
 - `s1b_support_needs_build.py` still prefers the release-page file, and no trigger enforces
   `supersedes` = chain tip (see the index).
 - Metadata drift (for example a changed `source_url`) is not shown by `status`; the verify gates and the
