@@ -1094,9 +1094,10 @@ def gate_18_load_gates_seeded(cur):
 
 
 def gate_19_load_cli_guards(cur):
-    name = ("load: a recorded file is 'already loaded'; a --supersedes that is "
-            "not the tip halts; --commit with --simulate is refused; the table "
-            "is untouched")
+    name = ("load: a recorded file is 'already loaded'; --supersedes is checked "
+            "against the chain tip; --commit with --simulate is refused; a "
+            "label shared by two entries is refused as ambiguous; the table is "
+            "untouched")
     ys = _years(cur)
     if not ys or not table_exists(cur):
         return report(19, name, False, f"need live years, have {ys}")
@@ -1107,34 +1108,109 @@ def gate_19_load_cli_guards(cur):
     if got is None:
         return report(19, name, False, "no recorded local manifest file")
     entry = got[0]
+    fy = entry[PERIOD]
     cur.execute(f"SELECT COUNT(*) FROM public.{TABLE}")
     n0 = cur.fetchone()[0]
-    args = ["load", "--financial-year", entry[PERIOD], "--manifest-label",
-            entry["release_label"], "--simulate"]
+    args = ["load", "--financial-year", fy, "--manifest-file", entry["file"],
+            "--simulate"]
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         m.main(args)
     both = _halts(lambda: m.main(args + ["--commit"]))
-    # a held file that is not recorded yet reaches the tip check (read-only)
-    todo = None
-    for e in m.load_manifest():
-        cur.execute(f"""SELECT 1 FROM public.{TABLE} WHERE {PERIOD} = %s
-                        AND source_sha256 = %s LIMIT 1""", (e[PERIOD],
-                                                            e["sha256"]))
-        if not cur.fetchone() and (m.REF_DIR / e["file"]).exists():
-            todo = e
-            break
-    sup = (_halts(lambda: m.main(["load", "--financial-year", todo[PERIOD],
-                                  "--manifest-label", todo["release_label"],
-                                  "--supersedes", "7", "--simulate"]))
-           if todo else (True, "chain tip (no unrecorded local file to try)"))
+    t = tip(cur, fy)
+    wrong = _halts(lambda: m.check_supersedes(t + 1, t, fy))
+    right = _halts(lambda: m.check_supersedes(t, t, fy))
+    default = _halts(lambda: m.check_supersedes(None, t, fy))
+    twin = [dict(entry), dict(entry, file="gate-twin.ods")]
+    amb = _halts(lambda: m.select_entry(twin, fy, label=entry[
+        "release_label_stored"]))
+    byfile = m.select_entry(twin, fy, file="gate-twin.ods")["file"]
+    none_or_two = _halts(lambda: m.select_entry(twin, fy))
     cur.execute(f"SELECT COUNT(*) FROM public.{TABLE}")
     n1 = cur.fetchone()[0]
-    ok = ("already loaded" in buf.getvalue() and both[0] and sup[0]
-          and "chain tip" in sup[1] and n0 == n1)
+    ok = ("already loaded" in buf.getvalue() and both[0]
+          and wrong[0] and "chain tip" in wrong[1] and not right[0]
+          and not default[0] and amb[0] and "ambiguous" in amb[1]
+          and byfile == "gate-twin.ods" and none_or_two[0] and n0 == n1)
     report(19, name, ok, f"said={buf.getvalue().strip()[:50]!r}; --commit with "
-           f"--simulate refused={both[0]}; supersedes: {sup[1][:60]!r}; table "
-           f"rows {n0}->{n1}")
+           f"--simulate refused={both[0]}; supersedes tip+1: {wrong[1][:50]!r}; "
+           f"ambiguous label: {amb[1][:40]!r}; table rows {n0}->{n1}")
+
+
+# ---- cover sheet and stored-label provenance (the error that was missed)
+
+def gate_20_front_pages(cur):
+    name = ("every manifest file's own Front_Page says what the manifest's "
+            "actual label and date say")
+    bad = m.check_manifest_front_pages()
+    held = [e["file"] for e in m.load_manifest() if (m.REF_DIR / e["file"]).exists()]
+    report(20, name, not bad and bool(held), "; ".join(bad[:4]) if bad else
+           f"{len(held)} files checked: " + ", ".join(
+               f"{e['file']} = {e['release_label_actual']}"
+               for e in m.load_manifest() if e["file"] in held))
+
+
+def gate_20s_front_page_seeded(cur):
+    name = ("seeded: a file filed under the wrong release (wrong ordinal, wrong "
+            "date, inconsistent label, unreadable file) is flagged, and load "
+            "refuses it")
+    held = [e for e in m.load_manifest() if (m.REF_DIR / e["file"]).exists()]
+    if not held:
+        return report("20s", name, False, "no manifest file held locally")
+    e = held[0]
+    path = m.REF_DIR / e["file"]
+    word = e["release_label_actual"].split()[0]
+    wrong_word = "third" if word != "third" else "second"
+    cases = {
+        "wrong release ordinal": dict(e, release_label_actual=e[
+            "release_label_actual"].replace(word, wrong_word, 1)),
+        "wrong published date": dict(e, published_date_actual="2000-01-01"),
+        "label and date disagree": dict(e, release_label_actual=e[
+            "release_label_actual"].replace("20", "19", 1)),
+        "label without a date": dict(e, release_label_actual=f"{word} release"),
+    }
+    flagged = {k: bool(m.check_front_page(path, v)) for k, v in cases.items()}
+    unreadable = bool(m.check_front_page(Path(__file__), e))
+    clean = m.check_front_page(path, e) == []
+    saved = m.load_manifest
+    m.load_manifest = lambda: [cases["wrong release ordinal"]]
+    try:
+        refused = _halts(lambda: m.main(
+            ["load", "--financial-year", e[PERIOD], "--manifest-file",
+             e["file"]]))
+    finally:
+        m.load_manifest = saved
+    ok = (clean and all(flagged.values()) and unreadable and refused[0]
+          and "cover sheet" in refused[1])
+    report("20s", name, ok, f"genuine entry clean={clean}; flagged={flagged}; "
+           f"unreadable flagged={unreadable}; load refused: {refused[1][:60]!r}")
+
+
+def gate_21_stored_label_provenance(cur):
+    name = ("seeded: provenance compares each edition with the STORED label and "
+            "date, and flags a stored label that differs")
+    if not table_exists(cur):
+        return report(21, name, False, f"{TABLE} absent")
+    clean = m.check_provenance(cur)[0]
+    saved = m.load_manifest
+
+    def doctored(field, value):
+        def f():
+            out = []
+            for i, x in enumerate(saved()):
+                out.append(dict(x, **{field: value}) if i == 0 else x)
+            return out
+        return f
+    flagged = {}
+    for field, value in (("release_label_stored", "second release, published "
+                          "4 Dec 2025"), ("published_date_stored", "1999-01-01")):
+        m.load_manifest = doctored(field, value)
+        try:
+            flagged[field] = bool(m.check_provenance(cur)[0])
+        finally:
+            m.load_manifest = saved
+    report(21, name, not clean and all(flagged.values()),
+           f"genuine manifest problems={clean[:2]}; doctored flagged={flagged}")
 
 
 # Retired literals: a typed authority count and fixed year lists.
@@ -1148,6 +1224,8 @@ ALLOWED_MODULE_R = {"RETIRED_R", "ALLOWED_R", "ALLOWED_MODULE_R", "FY",
 REFRESH_PATH_R = ("status", "sync_new", "check_coverage", "backfill",
                   "check_latest_equals_live", "expected_authorities",
                   "refresh_latest", "refresh_counts", "_plan", "_unrepairable",
+                  "select_entry", "check_supersedes", "check_front_page",
+                  "check_manifest_front_pages",
                   "_one_sided", "record_edition1", "check_loaded",
                   "check_raw_integrity", "run_load_gates", "diff_recs",
                   "raw_cells", "cmd_load", "cmd_sync_new",
@@ -1219,6 +1297,9 @@ def main():
             gate_17_bootstrap_needs_explicit_count(cur)
             gate_18_load_gates_seeded(cur)
             gate_19_load_cli_guards(cur)
+            gate_20_front_pages(cur)
+            gate_20s_front_page_seeded(cur)
+            gate_21_stored_label_provenance(cur)
     finally:
         conn.rollback()
         conn.close()

@@ -30,7 +30,8 @@ Subcommands:
         # what needs action (new year, newer edition not yet in live, live
         # changed outside the editions table, bad row counts); exit 1 if any
     python scripts/ro4_editions.py load --financial-year FY
-        (--manifest-label LABEL | --manifest-entry N) [--supersedes N]
+        (--manifest-label LABEL | --manifest-entry N | --manifest-file F)
+        [--supersedes N]
         [--commit | --simulate]
         # a later release of a year already held. DRY-RUN by default: parses
         # the manifest entry's local file with s2_ro4_load.parse and prints a
@@ -42,7 +43,9 @@ Subcommands:
         # NULL/zero/data_missing re-read from the raw file by an independent
         # route), rolling back on failure; --simulate does the same and always
         # rolls back. --supersedes must equal the chain tip. A file whose
-        # sha256 is already recorded for the year is 'already loaded'.
+        # sha256 is already recorded for the year is 'already loaded'. A file
+        # whose own Front_Page does not say what the manifest's
+        # release_label_actual / published_date_actual say it is is refused.
     python scripts/ro4_editions.py sync-new [--expected-authorities N]
                                             [--commit | --simulate]
         # records every live financial year that has no editions as edition 1
@@ -126,16 +129,29 @@ def manifest_entries(fy: str) -> list:
     return [e for e in load_manifest() if e[PERIOD] == fy]
 
 
-def select_entry(manifest, fy, label=None, index=None) -> dict:
-    """Manifest entry chosen by release_label or 0-based index, never both."""
-    if (label is None) == (index is None):
-        halt("give exactly one of --manifest-label and --manifest-entry")
+def select_entry(manifest, fy, label=None, index=None, file=None) -> dict:
+    """Manifest entry chosen by stored release label, 0-based index or file
+    name; exactly one selector. A label shared by two entries of the year is
+    refused as ambiguous (use --manifest-file or --manifest-entry)."""
+    if sum(x is not None for x in (label, index, file)) != 1:
+        halt("give exactly one of --manifest-label, --manifest-entry and "
+             "--manifest-file")
     if label is not None:
         hits = [e for e in manifest
-                if e[PERIOD] == fy and e["release_label"] == label]
+                if e[PERIOD] == fy and e["release_label_stored"] == label]
+        if len(hits) > 1:
+            halt(f"{len(hits)} manifest entries for {fy} share the stored "
+                 f"label {label!r} ({[e['file'] for e in hits]}); the label "
+                 "is ambiguous, select by --manifest-file or --manifest-entry")
         if len(hits) != 1:
-            halt(f"{len(hits)} manifest entries for {fy} with release_label "
-                 f"{label!r}, expected exactly 1")
+            halt(f"0 manifest entries for {fy} with stored label {label!r}, "
+                 "expected exactly 1")
+        return hits[0]
+    if file is not None:
+        hits = [e for e in manifest if e[PERIOD] == fy and e["file"] == file]
+        if len(hits) != 1:
+            halt(f"{len(hits)} manifest entries for {fy} with file {file!r}, "
+                 "expected exactly 1")
         return hits[0]
     if not 0 <= index < len(manifest):
         halt(f"--manifest-entry {index} outside 0..{len(manifest) - 1}")
@@ -146,8 +162,10 @@ def select_entry(manifest, fy, label=None, index=None) -> dict:
 
 def source_text(entry: dict) -> str:
     """The text the live `source` column carries for a release: the same form
-    s2_ro4_load.FILES uses."""
-    return f"MHCLG Revenue Outturn RO4 {entry[PERIOD]}, {entry['release_label']}"
+    s2_ro4_load.FILES uses, built from what the file really is (its cover
+    sheet), not from the label stored in the editions table."""
+    return (f"MHCLG Revenue Outturn RO4 {entry[PERIOD]}, "
+            f"{entry['release_label_actual']}")
 
 
 # ------------------------------------------------------------------ schema
@@ -388,8 +406,8 @@ def check_provenance(cur) -> tuple:
         if entry is not None:
             kind = "the manifest file"
             if (label, pub.isoformat() if pub else None, src) != (
-                    entry["release_label"], entry["published_date"],
-                    entry["file"]):
+                    entry["release_label_stored"],
+                    entry["published_date_stored"], entry["file"]):
                 bad.append(f"{tag}: records the manifest file's sha but its "
                            "label/date/file differ from the manifest")
         elif ed == 1:
@@ -420,18 +438,8 @@ def parse_file(cur, fy, entry=None):
     holds only the releases it first loaded); otherwise the parser's own."""
     import s2_ro4_load
     warnings.filterwarnings("ignore")
-    saved = s2_ro4_load.FILES.get(fy)
-    if entry is not None:
-        s2_ro4_load.FILES[fy] = (entry["file"], entry["sheet"],
-                                 source_text(entry))
-    try:
-        df, *_ = s2_ro4_load.parse(fy, cur.connection)
-    finally:
-        if entry is not None:
-            if saved is None:
-                s2_ro4_load.FILES.pop(fy, None)
-            else:
-                s2_ro4_load.FILES[fy] = saved
+    spec = None if entry is None else dict(entry, source=source_text(entry))
+    df, *_ = s2_ro4_load.parse(fy, cur.connection, spec)
     return df.set_index("lad24cd")
 
 
@@ -512,6 +520,69 @@ def reparse_report(cur) -> list:
     return out
 
 
+# ------------------------------------------------------- cover-sheet check
+
+FRONT_PAGE = re.compile(r"(\w+) release\W+which was published on "
+                        r"(\d{1,2} [A-Za-z]+ \d{4})", re.I)
+
+
+def front_page_release(path: Path) -> set:
+    """{(ordinal word, date)} of the release sentences on the file's own
+    Front_Page sheet, e.g. ('third', date(2026, 6, 11)). Read straight from the
+    workbook, not from the manifest or the database."""
+    import pandas as pd
+    warnings.filterwarnings("ignore")
+    fp = pd.read_excel(path, sheet_name="Front_Page", engine="odf", header=None)
+    out = set()
+    for v in fp.stack().astype(str):
+        for hit in FRONT_PAGE.finditer(v):
+            out.add((hit.group(1).lower(),
+                     datetime.strptime(hit.group(2), "%d %B %Y").date()))
+    return out
+
+
+def check_front_page(path: Path, entry: dict) -> list:
+    """Problems if the file's cover sheet does not say what the manifest's
+    release_label_actual / published_date_actual say it is (or those two
+    disagree with each other). This is the check that refuses a file filed
+    under the wrong release."""
+    tag = f"{entry['file']}"
+    try:
+        found = front_page_release(path)
+    except Exception as e:  # unreadable workbook or no Front_Page sheet
+        return [f"{tag}: cannot read the Front_Page ({type(e).__name__})"]
+    if len(found) != 1:
+        return [f"{tag}: Front_Page carries {len(found)} release sentences "
+                f"{sorted(found)}, expected exactly 1"]
+    (word, when), = found
+    label, want = entry["release_label_actual"], entry["published_date_actual"]
+    bad = []
+    if not label.lower().startswith(f"{word} release"):
+        bad.append(f"{tag}: cover sheet says '{word} release' but the "
+                   f"manifest's actual label is {label!r}")
+    if when.isoformat() != want:
+        bad.append(f"{tag}: cover sheet says published {when}, manifest says "
+                   f"{want}")
+    tail = label.split("published", 1)[-1].strip()
+    try:
+        if datetime.strptime(tail, "%d %B %Y").date().isoformat() != want:
+            bad.append(f"{tag}: actual label date {tail!r} is not {want}")
+    except ValueError:
+        bad.append(f"{tag}: actual label {label!r} has no 'published D Month "
+                   "YYYY' date")
+    return bad
+
+
+def check_manifest_front_pages() -> list:
+    """check_front_page for every manifest file held locally."""
+    bad = []
+    for e in load_manifest():
+        p = REF_DIR / e["file"]
+        if p.exists():
+            bad += check_front_page(p, e)
+    return bad
+
+
 # ---------------------------------------------------------------- backfill
 
 PUBLISHED = re.compile(r"published (\d{1,2} [A-Za-z]+ \d{4})")
@@ -555,8 +626,9 @@ def record_edition1(cur, fy, want, plan_only=False) -> tuple:
         cmp = compare_parsed(parse_file(cur, fy, entry),
                              {r["lad24cd"]: r for r in recs})
     if cmp is not None and cmp["equal"]:
-        kw = dict(release_label=entry["release_label"],
-                  published_date=date.fromisoformat(entry["published_date"]),
+        kw = dict(release_label=entry["release_label_stored"],
+                  published_date=date.fromisoformat(
+                      entry["published_date_stored"]),
                   source_file=entry["file"], source_sha256=entry["sha256"])
         how = f"the file {entry['file']} (re-parse equals the live rows)"
     else:
@@ -903,11 +975,13 @@ def check_loaded(cur, fy, edition, known_codes=None) -> list:
     return bad
 
 
-def run_load_gates(cur, fy, edition, raw=None) -> None:
-    """The authority count, la_code_lookup, measure presence and the
-    independent raw re-read for the edition just inserted; halt on any
-    problem."""
-    problems = check_loaded(cur, fy, edition)
+def run_load_gates(cur, fy, edition, raw=None, entry=None) -> None:
+    """The cover-sheet check (when the manifest entry is given), the authority
+    count, la_code_lookup, measure presence and the independent raw re-read for
+    the edition just inserted; halt on any problem."""
+    problems = (check_front_page(REF_DIR / entry["file"], entry)
+                if entry is not None else [])
+    problems += check_loaded(cur, fy, edition)
     p2, _, _ = check_raw_integrity(cur, fy, edition, raw)
     problems += p2
     if problems:
@@ -915,11 +989,18 @@ def run_load_gates(cur, fy, edition, raw=None) -> None:
              + "; ".join(problems[:5]))
 
 
+def check_supersedes(wanted, tip, fy) -> None:
+    """--supersedes, if given, must be the year's chain tip."""
+    if wanted is not None and wanted != tip:
+        halt(f"--supersedes {wanted} is not the current chain tip "
+             f"(edition {tip}) of {fy}")
+
+
 def cmd_load(args):
     from _db import get_conn, get_readonly_conn
     fy = args.financial_year
     entry = select_entry(load_manifest(), fy, args.manifest_label,
-                         args.manifest_entry)
+                         args.manifest_entry, args.manifest_file)
     path = REF_DIR / entry["file"]
     writing = args.commit or args.simulate
     conn = get_conn() if writing else get_readonly_conn()
@@ -933,6 +1014,10 @@ def cmd_load(args):
             if sha != entry["sha256"]:
                 halt(f"{entry['file']}: sha256 {sha} does not match manifest "
                      f"{entry['sha256']}")
+            problems = check_front_page(path, entry)
+            if problems:
+                halt("cover sheet does not match the manifest, refusing to "
+                     "load: " + "; ".join(problems))
             cur.execute(f"SELECT DISTINCT edition FROM public.{TABLE} "
                         f"WHERE {PERIOD} = %s AND source_sha256 = %s",
                         (fy, sha))
@@ -947,14 +1032,17 @@ def cmd_load(args):
                 halt(f"{fy} has no edition 1; run sync-new (or backfill) first")
             except ValueError as e:
                 halt(f"cannot determine latest edition: {e}")
-            if args.supersedes is not None and args.supersedes != prev:
-                halt(f"--supersedes {args.supersedes} is not the current "
-                     f"chain tip (edition {prev}) of {fy}")
+            check_supersedes(args.supersedes, prev, fy)
             recs = recs_from_df(parse_file(cur, fy, entry), fy)
             d = diff_recs(recs, edition_rows(cur, fy, prev))
-            print(f"{fy} {entry['file']} ({entry['release_label']}) vs stored "
-                  f"edition {prev}:\n"
-                  + format_diff(d, {r["lad24cd"]: r["la_name"] for r in recs}))
+            names = {r["lad24cd"]: r["la_name"] for r in recs}
+            print(f"{fy} {entry['file']} (cover sheet: "
+                  f"{entry['release_label_actual']}; stored as "
+                  f"{entry['release_label_stored']!r}) vs stored edition "
+                  f"{prev}:\n" + format_diff(d, names))
+            if prev != 1:
+                d1 = diff_recs(recs, edition_rows(cur, fy, 1))
+                print("and vs stored edition 1:\n" + format_diff(d1, names))
             if not (d["changed_cells"] or d["to_missing"] or d["to_reported"]
                     or d["names"] or d["only_new"] or d["only_old"]):
                 print("  NOTE: identical in values to the previous edition; "
@@ -963,12 +1051,13 @@ def cmd_load(args):
                 print("DRY RUN: nothing written (use --commit or --simulate)")
                 return
             ed = insert_edition(
-                cur, recs, fy, release_label=entry["release_label"],
-                published_date=date.fromisoformat(entry["published_date"]),
+                cur, recs, fy, release_label=entry["release_label_stored"],
+                published_date=date.fromisoformat(
+                    entry["published_date_stored"]),
                 source_file=entry["file"], source_sha256=sha, supersedes=prev)
             if latest_edition(cur, fy) != ed:
                 halt(f"{fy}: new edition {ed} is not the chain tip")
-            run_load_gates(cur, fy, ed)
+            run_load_gates(cur, fy, ed, entry=entry)
             cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} WHERE "
                         f"{PERIOD} = %s AND edition = %s", (fy, ed))
             n = cur.fetchone()[0]
@@ -1343,7 +1432,10 @@ def main(argv=None):
                         "with --commit")
     ld.add_argument("--financial-year", required=True)
     ld.add_argument("--manifest-label", help="select the year's manifest "
-                    "entry by release_label")
+                    "entry by its STORED release label (refused if two "
+                    "entries share it)")
+    ld.add_argument("--manifest-file", help="select the manifest entry by "
+                    "file name")
     ld.add_argument("--manifest-entry", type=int,
                     help="alternative: 0-BASED index into the manifest")
     ld.add_argument("--supersedes", type=int, help="must equal the current "

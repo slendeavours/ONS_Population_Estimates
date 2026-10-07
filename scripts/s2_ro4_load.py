@@ -11,7 +11,7 @@ held alongside, and this script will not overwrite one. A later release of a yea
 through scripts/ro4_editions.py load (append-only editions table), then
 ro4_editions.py refresh-latest; this script stays the parser and first-load tool.
 
-    python scripts/s2_ro4_load.py reproduce 2024-25    # parse the original, compare with the table
+    python scripts/s2_ro4_load.py reproduce 2024-25    # parse the file at the FILES name (the 2024-25 one is the SECOND release), compare with the table
     python scripts/s2_ro4_load.py dry-run   2025-26    # parse and report, write nothing
     python scripts/s2_ro4_load.py apply     2025-26    # insert missing rows
 """
@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 REF = Path(__file__).resolve().parent.parent / "data" / "reference"
 
 FILES = {"2024-25": ("RO4_LA_Data_2024-25_data_by_LA.ods", "RO4_LA_Data_202425",
-                     "MHCLG Revenue Outturn RO4 2024-25, third release, published 11 Jun 2026"),
+                     "MHCLG Revenue Outturn RO4 2024-25, second release, published 4 December 2025"),
          "2025-26": ("RO4_LA_Data_2025-26_data_by_LA.ods", "RO4_LA_Data_202526",
                      "MHCLG Revenue Outturn RO4 2025-26, first release, published 17 Sep 2026")}
 
@@ -55,8 +55,15 @@ COLS = {
 TO_TABLE_CODE = {"E08000038": "E08000016", "E08000039": "E08000019"}
 
 
-def parse(fy, conn):
-    fname, sheet, source = FILES[fy]
+def parse(fy, conn, spec=None):
+    """Parse one RO4 workbook. spec (optional) is a manifest entry or any dict
+    with 'file' (a name in data/reference, or an absolute path), 'sheet' and
+    'source' (the text for the source column); without it the FILES entry of
+    the year is used, as before."""
+    if spec is None:
+        fname, sheet, source = FILES[fy]
+    else:
+        fname, sheet, source = spec["file"], spec["sheet"], spec["source"]
     raw = pd.read_excel(REF / fname, sheet_name=sheet, engine="odf", header=None)
     hdr = [str(v) for v in raw.iloc[6]]
     pos = {}
@@ -96,7 +103,7 @@ def main():
         bad = 0
         for c in COLS:
             if c == "hra_admin_prevention_relief_net_exp_000":
-                print(f"  {c}: skipped (the table holds TA administration net here; known defect, docs/decisions/2026-09-30)")
+                print(f"  {c}: skipped (the second release and the live rows loaded from it held TA administration net under this name; the third release has the right line, see docs/decisions/2026-09-30)")
                 continue
             a = df.set_index("lad24cd")[c].astype(float); b = db[c].astype(float).reindex(a.index)
             n = int(((a.fillna(-1) - b.fillna(-1)).abs() > 0.005).sum()); bad += n
