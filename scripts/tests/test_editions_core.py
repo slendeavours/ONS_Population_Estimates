@@ -395,13 +395,49 @@ class EditionsCoreDB(unittest.TestCase):
                     f()
                 self.assertIn("fork", str(cm.exception))
 
-    @unittest.skip("needs the S1, S1b and RO4 SPEC objects; Tasks 5 to 7 "
-                   "declare them and unskip this test")
     def test_create_schema_matches_existing_tables(self):
         """For each real spec: create_schema on a throwaway copy of the spec
         (editions_table renamed zz_core_<name>_editions, inside rolled_back)
         and compare column names and types from information_schema.columns
-        with the real editions table's. The real table is only read."""
+        with the real editions table's, and the CHECK constraint definitions.
+        The real table is only read. Column order and primary-key column
+        order are known to differ and are not compared."""
+        import dataclasses
+        import s1b_editions
+        specs = {"s1": None, "s1b": s1b_editions.SPEC, "ro4": None}
+        for name, spec in specs.items():
+            with self.subTest(spec=name):
+                if spec is None:
+                    self.skipTest(f"{name}: no SPEC declared yet (Tasks 6 and "
+                                  "7 move S1 and RO4 onto the core)")
+                copy = dataclasses.replace(
+                    spec, name=f"zz_core_{name}",
+                    editions_table=f"zz_core_{name}_editions")
+
+                def shape(cur, table):
+                    cur.execute("""SELECT column_name, data_type,
+                                          character_maximum_length
+                                   FROM information_schema.columns
+                                   WHERE table_schema = 'public'
+                                     AND table_name = %s""", (table,))
+                    cols = set(cur.fetchall())
+                    cur.execute("""SELECT pg_get_constraintdef(oid)
+                                   FROM pg_constraint
+                                   WHERE conrelid = %s::regclass
+                                     AND contype = 'c'""",
+                                (f"public.{table}",))
+                    return cols, {" ".join(r[0].split())
+                                  for r in cur.fetchall()}
+                with rolled_back(self.conn) as cur:
+                    cur.execute("SELECT to_regclass(%s)",
+                                (f"public.{copy.editions_table}",))
+                    self.assertIsNone(cur.fetchone()[0])
+                    real_cols, real_chk = shape(cur, spec.editions_table)
+                    core.create_schema(cur, copy)
+                    new_cols, new_chk = shape(cur, copy.editions_table)
+                self.assertTrue(real_cols)
+                self.assertEqual(new_cols, real_cols)
+                self.assertEqual(new_chk, real_chk)
 
 
 class ChainValidation(unittest.TestCase):

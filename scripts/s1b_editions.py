@@ -6,6 +6,10 @@ quarter (the latest layer). This module owns
 la_homelessness_support_needs_editions, which keeps every published edition of
 a quarter so a revision never overwrites what was sent. Rows are immutable:
 triggers raise on UPDATE, DELETE and TRUNCATE. It mirrors s1_editions.py.
+The editions machinery (schema, chain tip, status, refresh-latest and the
+loader's inserts) is editions_core driven by SPEC; what is S1b's own (file
+extraction, the gates, sync-new's category and source checks and its
+'as loaded' hash) stays here.
 
 Subcommands:
     python scripts/s1b_editions.py ddl                 # idempotent
@@ -66,12 +70,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from s1_editions import (Q2_FILES, STALE_PERIODS, classify_period,  # noqa: E402
-                         format_status, guard_problems, halt, latest_map,
-                         load_manifest, modal_count, period_hashes,
-                         rows_differing, select_entry, sha256_file)
-from s1_editions import status as _status  # noqa: E402
-from s1_editions import latest_edition as _s1_latest_edition  # noqa: E402
+import editions_core as core  # noqa: E402
+from editions_core import modal_count  # noqa: E402
+from s1_editions import (Q2_FILES, STALE_PERIODS, format_status,  # noqa: E402
+                         halt, load_manifest, select_entry, sha256_file)
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -88,6 +90,11 @@ DATA_COLS = ("lad24cd", "period", "category_code", "value", "value_flag",
              "release_page_url", "layout_version", "publisher_la_code")
 EXTRA_COLS = ("release_label", "published_date", "source_file",
               "source_sha256", "supersedes")
+# the live columns refresh-latest may overwrite (and status compares)
+REFRESH_COLS = ("value", "value_flag", "category_label", "source_url",
+                "source_edition", "edition_variant")
+KEY = ("lad24cd", "category_code")
+HASH_KEY = ("period", "lad24cd", "category_code")
 
 REPO = Path(__file__).resolve().parent.parent
 RAW_DIR = REPO / "data" / "raw" / "s1b_a3"
@@ -146,56 +153,86 @@ def _live_expected_rows(cur, period) -> int:
     return expected_authorities(cur) * cur.fetchone()[0]
 
 
+def _status_expected_rows(cur, period) -> int:
+    """Live rows status expects of a period: the derived authority count x the
+    period's category count (that of its edition 1, or the live rows' own for
+    a period with no edition 1 yet). Exactly what S1b's status passed to
+    s1_editions.status as expected_rows before the move to editions_core."""
+    cur.execute(f"""SELECT COUNT(DISTINCT category_code) FROM public.{TABLE}
+                    WHERE period = %s AND edition = 1""", (period,))
+    cats = cur.fetchone()[0]
+    if not cats:
+        cur.execute(f"""SELECT COUNT(DISTINCT category_code)
+                        FROM public.{LIVE} WHERE period = %s""", (period,))
+        cats = cur.fetchone()[0]
+    return expected_authorities(cur) * cats
+
+
+_T = TABLE
+# The S1b tables for editions_core. Every live column except loaded_at is a
+# value or extra column (so insert_edition writes them all); compare_cols, the
+# columns status and refresh-latest compare, are therefore exactly
+# REFRESH_COLS, as before. Types and CHECKs are those of the real editions
+# table. A fresh create_schema differs from the existing table only in column
+# order and primary-key column order (accepted; the existing table is never
+# re-created).
+SPEC = core.EditionSpec(
+    name="s1b",
+    live_table=LIVE,
+    editions_table=TABLE,
+    key_cols=KEY,
+    period_col="period",
+    key_types=(("period", f"varchar(6) NOT NULL CONSTRAINT {_T}_period_chk "
+                "CHECK (period ~ '^\\d{4}Q[1-4]$')"),),
+    value_cols=(
+        ("value", "integer"),
+        ("value_flag", f"text CONSTRAINT {_T}_value_flag_chk CHECK "
+         "(value_flag IS NULL OR value_flag IN "
+         "('missing','suppressed','not_applicable'))"),
+    ),
+    extra_cols=(
+        ("category_group", f"text NOT NULL CONSTRAINT {_T}_category_group_chk "
+         "CHECK (category_group IN "
+         "('support_need','needs_breakdown','needs_total','duty_total'))"),
+        ("category_label", "text NOT NULL"),
+        ("reference_quarter", "varchar(7) NOT NULL"),
+        ("source_url", "text NOT NULL"),
+        ("source_edition", "text NOT NULL"),
+        ("edition_variant", f"text NOT NULL CONSTRAINT "
+         f"{_T}_edition_variant_chk CHECK (edition_variant IN "
+         "('original','revised','corrected','fixed'))"),
+        ("release_page_url", "text NOT NULL"),
+        ("layout_version", "text NOT NULL"),
+        ("publisher_la_code", "varchar(9) NOT NULL"),
+    ),
+    table_constraints=(f"CONSTRAINT {_T}_value_xor_flag_chk "
+                       "CHECK (num_nonnulls(value, value_flag) = 1)",),
+    refresh_cols=REFRESH_COLS,
+    expected_rows_per_period=_status_expected_rows,
+    as_loaded_source_col="source_edition",
+)
+
+
 def create_schema(cur) -> None:
-    """Create the table and immutability triggers if absent. Idempotent."""
-    t = TABLE
-    cur.execute(f"""
-    CREATE TABLE IF NOT EXISTS public.{t} (
-        lad24cd           varchar(9)  NOT NULL
-            REFERENCES public.la_boundaries (lad24cd),
-        period            varchar(6)  NOT NULL
-            CONSTRAINT {t}_period_chk CHECK (period ~ '^\\d{{4}}Q[1-4]$'),
-        category_code     text        NOT NULL,
-        edition           integer     NOT NULL,
-        value             integer,
-        value_flag        text
-            CONSTRAINT {t}_value_flag_chk CHECK (value_flag IS NULL
-                OR value_flag IN ('missing','suppressed','not_applicable')),
-        category_group    text        NOT NULL
-            CONSTRAINT {t}_category_group_chk CHECK (category_group IN
-                ('support_need','needs_breakdown','needs_total','duty_total')),
-        category_label    text        NOT NULL,
-        reference_quarter varchar(7)  NOT NULL,
-        source_url        text        NOT NULL,
-        source_edition    text        NOT NULL,
-        edition_variant   text        NOT NULL
-            CONSTRAINT {t}_edition_variant_chk CHECK (edition_variant IN
-                ('original','revised','corrected','fixed')),
-        release_page_url  text        NOT NULL,
-        layout_version    text        NOT NULL,
-        publisher_la_code varchar(9)  NOT NULL,
-        loaded_at         timestamptz NOT NULL DEFAULT now(),
-        release_label     text,
-        published_date    date,
-        source_file       text,
-        source_sha256     text,
-        supersedes        integer,
-        CONSTRAINT {t}_value_xor_flag_chk
-            CHECK (num_nonnulls(value, value_flag) = 1),
-        PRIMARY KEY (lad24cd, period, category_code, edition)
-    )""")
-    cur.execute(f"""
-    CREATE OR REPLACE FUNCTION public.{TRIGGER}() RETURNS trigger AS $f$
-    BEGIN
-        RAISE EXCEPTION '{TABLE} is append-only: % is not permitted', TG_OP;
-    END
-    $f$ LANGUAGE plpgsql""")
-    cur.execute(f"""CREATE OR REPLACE TRIGGER {TRIGGER}
-        BEFORE UPDATE OR DELETE ON public.{TABLE}
-        FOR EACH ROW EXECUTE FUNCTION public.{TRIGGER}()""")
-    cur.execute(f"""CREATE OR REPLACE TRIGGER {TRUNCATE_TRIGGER}
-        BEFORE TRUNCATE ON public.{TABLE}
-        FOR EACH STATEMENT EXECUTE FUNCTION public.{TRIGGER}()""")
+    """Create the table and immutability triggers if absent. Idempotent
+    (editions_core.create_schema with SPEC; the trigger function and triggers
+    are the same names and text as before)."""
+    core.create_schema(cur, SPEC)
+
+
+def _insert(cur, rows: list, period: str, *, release_label: str,
+            published_date, source_file: str, source_sha256: str,
+            supersedes) -> int:
+    """The loader's own writes (backfill, load, sync-new): editions_core's
+    insert_edition with SPEC, strict (a row lacking any column halts, as
+    S1b's insert always refused one) and with supersedes required to be the
+    period's chain tip (None only for a period with no editions)."""
+    return core.insert_edition(cur, SPEC, rows, period,
+                               release_label=release_label,
+                               published_date=published_date,
+                               source_file=source_file,
+                               source_sha256=source_sha256,
+                               supersedes=supersedes, strict=True)
 
 
 def insert_edition(cur, rows: list, period: str, *, release_label: str,
@@ -208,6 +245,11 @@ def insert_edition(cur, rows: list, period: str, *, release_label: str,
     Empty rows is a hard stop, and so is a `supersedes` that is not an existing
     edition of the period or a row whose period differs. source_url overrides
     the rows' own source_url only when given (None keeps the row value).
+
+    Kept as S1b's own (not editions_core's): s1b_editions_verify plants a
+    fork (gate 3b) and a second root (gate 3f) through this function to prove
+    latest_edition refuses them, and the core insert refuses both up front.
+    The loader itself no longer calls it; its writes go through _insert.
     """
     from psycopg2.extras import execute_values
     if not rows:
@@ -246,8 +288,16 @@ def insert_edition(cur, rows: list, period: str, *, release_label: str,
 def latest_edition(cur, period: str) -> int:
     """Chain tip of the period in the S1b editions table; the validation
     (single root, no fork, no self/dangling supersedes, whole chain reachable)
-    lives in s1_editions.latest_edition."""
-    return _s1_latest_edition(cur, period, table=TABLE)
+    is editions_core.chain_tip. Raises LookupError (no editions) or ValueError
+    (broken chain) rather than halting, as callers here catch those."""
+    return core.chain_tip(cur, SPEC, period)
+
+
+def latest_map(cur) -> tuple:
+    """(tips, new_periods, chain_errors) of the live periods
+    (editions_core.latest_map with SPEC). A module-level name so that
+    s1b_editions_verify gate 16 can stand in for it."""
+    return core.latest_map(cur, SPEC)
 
 
 # ---------------------------------------------------------------- checks
@@ -446,11 +496,9 @@ def backfill(cur, plan_only=False) -> list:
         if plan_only:
             out.append((period, 1, len(rows), "would insert"))
             continue
-        ed = insert_edition(cur, rows, period, release_label=LIVE_LABEL,
-                            published_date=loaded.pop(), source_url=None,
-                            source_file=files.pop(),
-                            source_sha256=live_rows_sha256(rows),
-                            supersedes=None)
+        ed = _insert(cur, rows, period, release_label=LIVE_LABEL,
+                     published_date=loaded.pop(), source_file=files.pop(),
+                     source_sha256=live_rows_sha256(rows), supersedes=None)
         out.append((period, ed, _count(cur, period, ed), "inserted"))
 
     urls = _q2_urls(cur)
@@ -482,10 +530,12 @@ def backfill(cur, plan_only=False) -> list:
         want = _live_expected_rows(cur, "2025Q2")
         if len(rows) != want:
             halt(f"{fname}: {len(rows)} rows extracted, expected {want}")
-        ed = insert_edition(cur, rows, "2025Q2", release_label=label,
-                            published_date=published, source_url=None,
-                            source_file=edition["filename"], source_sha256=sha,
-                            supersedes=prev if sup is not None else None)
+        # Original: None (2025Q2 has no editions yet); Revised: prev, the
+        # Original's edition, which is then the chain tip
+        ed = _insert(cur, rows, "2025Q2", release_label=label,
+                     published_date=published,
+                     source_file=edition["filename"], source_sha256=sha,
+                     supersedes=prev if sup is not None else None)
         prev = ed
         out.append(("2025Q2", ed, _count(cur, "2025Q2", ed), "inserted"))
     return out
@@ -556,6 +606,10 @@ def cmd_backfill(args):
 # ------------------------------------------------------------ load (Task 3)
 
 ONE_OR_MORE = "hh_one_or_more_support_needs"
+# The publisher's markers and the flag each is stored as: the same mapping as
+# the extractor's s1b_support_needs_build.FLAGS (legacy '..' and '-', 2026
+# layout '[x]', '[c]', '[z]'). A blank cell is not a marker; it is 'missing'
+# by S1b's own rule (see _expected_from_raw).
 MARKERS = {"..": "missing", "-": "suppressed", "[x]": "missing",
            "[c]": "suppressed", "[z]": "not_applicable"}
 
@@ -719,7 +773,14 @@ def raw_cells(cur, path) -> dict:
 
 def _expected_from_raw(raw):
     """(value, flag) a raw cell must be stored as, independent of s1b.cell():
-    None/blank -> missing; a documented marker -> its flag; else the number."""
+    None/blank -> missing; a documented marker -> its flag; else the number.
+
+    Not routed through blank_reader.read_cell. On the 174,640 mapped cells of
+    the stored raw files the two agree on every cell (checked 2026-10-07,
+    task 5), but they differ on inputs those files happen not to contain:
+    read_cell refuses a blank or NaN cell, which S1b's rule (and its
+    extractor, s1b_support_needs_build.cell) stores as 'missing', and it
+    accepts '1,234', which S1b refuses. Gate 7 would change, so it stays."""
     if raw is None or (isinstance(raw, float) and raw != raw):
         return None, "missing"
     text = str(raw).strip()
@@ -857,9 +918,9 @@ def cmd_load(args):
             if not writing:
                 print("DRY RUN: nothing written (use --commit to insert)")
                 return
-            ed = insert_edition(
+            ed = _insert(  # prev is the chain tip (latest_edition above)
                 cur, rows, args.period, release_label="registry",
-                published_date=published, source_url=None,
+                published_date=published,
                 source_file=edition["filename"], source_sha256=sha,
                 supersedes=prev)
             if latest_edition(cur, args.period) != ed:
@@ -973,28 +1034,18 @@ def cmd_dryrun_all(args):
 # table), and a refresh is checked by a per-period before/after content hash in
 # the same transaction.
 
-REFRESH_COLS = ("value", "value_flag", "category_label", "source_url",
-                "source_edition", "edition_variant")
-KEY = ("lad24cd", "category_code")
-HASH_KEY = ("period", "lad24cd", "category_code")
-
-
-def _refresh_where() -> str:
-    return "(" + " OR ".join(f"l.{c} IS DISTINCT FROM e.{c}"
-                             for c in REFRESH_COLS) + ")"
-
-
 def status(cur) -> dict:
-    """What needs action between the live table and its editions (read-only);
-    the shape is s1_editions.status. The row count expected of a period is the
-    derived authority count x the period's category count (that of its edition
-    1, or the live rows' own for a period with no editions yet)."""
-    auths = expected_authorities(cur)
-    cats = edition1_category_counts(cur)
-    cur.execute(f"""SELECT period, COUNT(DISTINCT category_code)
-                    FROM public.{LIVE} GROUP BY 1""")
-    want = {p: auths * cats.get(p, c) for p, c in cur.fetchall()}
-    return _status(cur, LIVE, TABLE, KEY, REFRESH_COLS, expected_rows=want)
+    """What needs action between the live table and its editions (read-only).
+
+    editions_core.status with SPEC (the row count expected of a period is
+    _status_expected_rows), returned under the key names S1b has always used
+    (s1_editions.format_status, cmd_sync_new and the verify gates read them):
+    the core's 'drift' is 'drift_periods' and 'forked' is 'chain_errors'."""
+    st = core.status(cur, SPEC)
+    return {"new_periods": st["new_periods"], "drift_periods": st["drift"],
+            "pending_refresh": st["pending_refresh"],
+            "chain_errors": st["forked"], "bad_counts": st["bad_counts"],
+            "periods": st["periods"], "ok": st["ok"]}
 
 
 def _edition1_categories(cur, period) -> set:
@@ -1049,11 +1100,9 @@ def _record_as_loaded(cur, period, expected, accept_categories=False) -> int:
     if len(loaded) != 1 or len(files) != 1 or len(urls) != 1:
         halt(f"{period}: live rows differ in loaded_at/source_edition/"
              f"source_url ({len(loaded)}/{len(files)}/{len(urls)})")
-    return insert_edition(cur, rows, period, release_label=LIVE_LABEL,
-                          published_date=loaded.pop(), source_url=None,
-                          source_file=files.pop(),
-                          source_sha256=live_rows_sha256(rows),
-                          supersedes=None)
+    return _insert(cur, rows, period, release_label=LIVE_LABEL,
+                   published_date=loaded.pop(), source_file=files.pop(),
+                   source_sha256=live_rows_sha256(rows), supersedes=None)
 
 
 def sync_new(cur, expected_authorities_n=None, accept_categories=()) -> list:
@@ -1065,8 +1114,13 @@ def sync_new(cur, expected_authorities_n=None, accept_categories=()) -> list:
     periods that were given an edition. If no live period has editions yet
     there is nothing to derive the count from, so expected_authorities_n (CLI
     --expected-authorities N) must be given; once a count can be derived N is
-    accepted only if it equals it."""
-    tips, new, errors = latest_map(cur, LIVE, TABLE)
+    accepted only if it equals it.
+
+    S1b's own rather than editions_core.sync_new: the core has no category-set
+    check, no single-source_url check, and hashes the rows without the period
+    (rows_sha256), while S1b's 'as loaded' editions carry live_rows_sha256.
+    The chain map and the insert are the core's (latest_map, _insert)."""
+    tips, new, errors = latest_map(cur)
     if errors:
         halt("sync-new: invalid edition chain " + "; ".join(
             f"{p}: {m}" for p, m in errors.items()))
@@ -1093,117 +1147,64 @@ def sync_new(cur, expected_authorities_n=None, accept_categories=()) -> list:
 
 
 def _plan(cur, accept_drift=()) -> tuple:
-    """({period: {edition, kind, rows}} for every period whose live rows differ
-    from the latest edition, unaccepted drift periods). kind is 'pending' (live
-    equals an earlier edition) or 'drift' (it equals none)."""
-    tips, new, errors = latest_map(cur, LIVE, TABLE)
-    if new:
-        halt(f"periods with no editions {new}; run sync-new first")
-    if errors:
-        halt("invalid edition chain: " + "; ".join(
-            f"{p}: {m}" for p, m in errors.items()))
-    plan, drift = {}, []
-    for p, tip in tips.items():
-        kind, _ = classify_period(cur, LIVE, TABLE, KEY, REFRESH_COLS, p, tip)
-        if kind == "current":
-            continue
-        if kind == "drift" and p not in accept_drift:
-            drift.append(p)
-        plan[p] = {"edition": tip, "kind": kind}
-    stray = sorted(set(accept_drift) - {p for p, v in plan.items()
-                                        if v["kind"] == "drift"})
-    if stray:
-        halt(f"--accept-drift {stray}: not drifted periods, nothing to accept")
-    for p, v in plan.items():
-        cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} l
-                        JOIN public.{TABLE} e ON e.lad24cd = l.lad24cd
-                         AND e.period = l.period
-                         AND e.category_code = l.category_code
-                         AND e.edition = %s
-                        WHERE l.period = %s AND {_refresh_where()}""",
-                    (v["edition"], p))
-        v["rows"] = cur.fetchone()[0]
-    return plan, drift
+    """({period: {edition, kind, rows, one_sided}} for every period whose live
+    rows differ from the latest edition, unaccepted drift periods). kind is
+    'pending' (live equals an earlier edition) or 'drift' (it equals none).
+    editions_core._plan with SPEC: same comparison (key + REFRESH_COLS), same
+    halts and messages; one_sided is the core's addition."""
+    return core._plan(cur, SPEC, accept_drift)
 
 
 def _unrepairable(plan) -> list:
     """Planned periods that differ from their edition but have no row to
     update (rows missing from, or extra in, the live table): an UPDATE cannot
-    repair them."""
+    repair them. S1b's own rule, kept for the refresh-latest preview so its
+    output is unchanged; the core's refresh_latest also refuses a period with
+    a key in only one side, which S1b's after-checks used to catch after the
+    UPDATE (and roll back) instead."""
     return sorted(p for p, v in plan.items() if not v["rows"])
 
 
 def refresh_counts(cur, accept_drift=()) -> dict:
     """{period: rows refresh_latest would write} (read-only)."""
-    plan, _ = _plan(cur, accept_drift)
-    return {p: v["rows"] for p, v in sorted(plan.items())}
+    return core.refresh_counts(cur, SPEC, accept_drift)
 
 
 def refresh_latest(cur, accept_drift=(), _after_update_hook=None) -> dict:
     """Copy the latest edition into the live table for every period whose live
     rows differ from it (NULL-safe); return a result dict.
 
-    Updates ONLY value, value_flag, category_label, source_url, source_edition
-    and edition_variant, on the rows of those periods that differ. Every other
-    column, including loaded_at, and every other period is untouched. Inside
-    the caller's transaction the per-period content hash (excluding loaded_at)
-    is taken before and after: a period not being refreshed must be identical,
-    a refreshed one may differ only in the refresh columns; each refreshed
-    period must then equal its latest edition on every column bar loaded_at.
-    A period whose live rows equal no stored edition is drift: it halts unless
-    named in accept_drift. Any failure halts (the caller rolls back).
+    editions_core.refresh_latest with SPEC: updates ONLY value, value_flag,
+    category_label, source_url, source_edition and edition_variant, on the
+    rows of those periods that differ; every other column, including
+    loaded_at, and every other period is untouched; the per-period content
+    hash (excluding loaded_at) is taken before and after, a period not being
+    refreshed must be identical and a refreshed one may differ only in the
+    refresh columns. A period whose live rows equal no stored edition is
+    drift: it halts unless named in accept_drift.
+
+    Kept from S1b on top of the core: each refreshed period must then equal
+    its latest edition on every column bar loaded_at (check_latest_equals_live,
+    not only the refresh columns). The whole runs in a savepoint of S1b's own,
+    so any failure, the core's or this one, rolls back to it and halts.
     _after_update_hook(cur) is a test seam that runs after the UPDATE and
-    before the after-checks.
+    before the after-checks (the core passes the plan too; it is dropped).
 
     Result: {'updated': {period: rows}, 'rows': n, 'drift_accepted': [...]}.
     """
-    plan, drift = _plan(cur, accept_drift)
-    if drift:
-        halt("live differs from the latest edition and matches no stored "
-             f"edition for {drift}: changed outside the editions tables. "
-             "Load it as an edition, or re-run with --accept-drift PERIOD to "
-             "overwrite it with the latest edition")
-    stuck = _unrepairable(plan)
-    if stuck:
-        halt(f"{stuck} differ from the latest edition in rows present in only "
-             "one of them; an update of the refresh columns cannot repair that")
-    result = {"updated": {}, "rows": 0,
-              "drift_accepted": sorted(p for p, v in plan.items()
-                                       if v["kind"] == "drift")}
-    if not plan:
-        return result
-    refreshed = set(plan)
-    full_b = period_hashes(cur, LIVE, HASH_KEY)
-    kept_b = period_hashes(cur, LIVE, HASH_KEY, exclude=REFRESH_COLS)
-    sets = ", ".join(f"{c} = e.{c}" for c in REFRESH_COLS)
-    pairs = tuple((p, v["edition"]) for p, v in sorted(plan.items()))
-    cur.execute(f"""UPDATE public.{LIVE} l SET {sets}
-                    FROM public.{TABLE} e
-                    WHERE e.lad24cd = l.lad24cd AND e.period = l.period
-                      AND e.category_code = l.category_code
-                      AND (e.period, e.edition) IN %s AND {_refresh_where()}""",
-                (pairs,))
-    n = cur.rowcount
-    expected = sum(v["rows"] for v in plan.values())
+    hook = None
     if _after_update_hook is not None:
-        _after_update_hook(cur)
-    full_a = period_hashes(cur, LIVE, HASH_KEY)
-    kept_a = period_hashes(cur, LIVE, HASH_KEY, exclude=REFRESH_COLS)
-    bad = guard_problems(full_b, full_a, kept_b, kept_a, refreshed)
-    if n != expected:
-        bad.append(f"wrote {n} rows, expected {expected}")
-    for p, v in sorted(plan.items()):
-        k = rows_differing(cur, LIVE, TABLE, KEY, REFRESH_COLS, p, v["edition"])
-        if k:
-            bad.append(f"{p}: {k} rows still differ from edition "
-                       f"{v['edition']} after the refresh")
-    bad += [f"live!=latest: {x}"
-            for x in check_latest_equals_live(cur, sorted(refreshed))]
-    if bad:
-        halt("refresh-latest failed its before/after checks, rolled back: "
-             + "; ".join(bad[:6]))
-    result["updated"] = {p: v["rows"] for p, v in sorted(plan.items())}
-    result["rows"] = n
+        def hook(c, _plan_unused):
+            _after_update_hook(c)
+    with core._own_savepoint(cur, "s1b_refresh_latest"):
+        result = core.refresh_latest(cur, SPEC, tuple(accept_drift),
+                                     _after_update_hook=hook)
+        if result["updated"]:
+            bad = [f"live!=latest: {x}" for x in
+                   check_latest_equals_live(cur, sorted(result["updated"]))]
+            if bad:
+                halt("refresh-latest failed its before/after checks, rolled "
+                     "back: " + "; ".join(bad[:6]))
     return result
 
 
@@ -1225,7 +1226,7 @@ def cmd_sync_new(args):
     conn = get_conn() if writing else get_readonly_conn()
     try:
         with conn.cursor() as cur:
-            tips, new, errors = latest_map(cur, LIVE, TABLE)
+            tips, new, errors = latest_map(cur)
             print("periods with no editions: " + (", ".join(new) or "none"))
             if not writing:
                 print("DRY RUN: nothing written (use --commit or --simulate)")
