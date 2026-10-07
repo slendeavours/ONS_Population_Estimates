@@ -7,7 +7,9 @@ exactly one column. Positions are never used.
 
 Insert only. A (lad24cd, financial_year) already in the table is left as it is;
 a later release of the same year needs its own release marker before it can be
-held alongside, and this script will not overwrite one.
+held alongside, and this script will not overwrite one. A later release of a year already held goes
+through scripts/ro4_editions.py load (append-only editions table), then
+ro4_editions.py refresh-latest; this script stays the parser and first-load tool.
 
     python scripts/s2_ro4_load.py reproduce 2024-25    # parse the original, compare with the table
     python scripts/s2_ro4_load.py dry-run   2025-26    # parse and report, write nothing
@@ -116,4 +118,5 @@ def main():
             print("  dry run: nothing written")
 
 
-main()
+if __name__ == "__main__":
+    main()

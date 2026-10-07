@@ -1,0 +1,20 @@
+[
+  {
+    "financial_year": "2024-25",
+    "file": "RO4_LA_Data_2024-25_data_by_LA.ods",
+    "sheet": "RO4_LA_Data_202425",
+    "release_label": "third release, published 11 Jun 2026",
+    "published_date": "2026-06-11",
+    "source_url": null,
+    "sha256": "5714c6efe64aca5e8bfe160ac25b3e85316ea5a4a54481ae2836bc4e891719a7"
+  },
+  {
+    "financial_year": "2025-26",
+    "file": "RO4_LA_Data_2025-26_data_by_LA.ods",
+    "sheet": "RO4_LA_Data_202526",
+    "release_label": "first release, published 17 Sep 2026",
+    "published_date": "2026-09-17",
+    "source_url": null,
+    "sha256": "3c4a8a04625f42a77e13486c38775655a693496fd0008f70811dea8946c798c4"
+  }
+]
