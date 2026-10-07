@@ -8,10 +8,15 @@ open item. Those records are left as written.
 
 - The two n8n steps that loaded S1 ('Merge & Build Batch' and 'Process Homelessness Data' in the S1 workflow) are
   retired with a hard stop: their code is replaced by a single error that begins `RETIRED 2026-10-07` and points to
-  `load-new`. Running either now fails at once and writes nothing. The workflow was already inactive, and nothing else
-  in it was changed. `scripts/s1_n8n_retire_loaders.py` did this; it checks the stored code first, can be run again
+  `load-new`. Running either now throws that error and writes no data. It is not instant: in the loop path 'Create Quarter
+  URLs Table' and 'Fetch File' (a download) run before the throw. The workflow was already inactive (it has only a
+  manual trigger), and nothing else in it was changed. `scripts/s1_n8n_retire_loaders.py` did this; it checks the stored code first, can be run again
   safely (a second run reports both steps already retired and changes nothing) and reads the result back.
 - The old code is kept in `build_reports/w1_node_backups/s1_n8n_backup_2026-10-07T112539Z.json`.
+- **n8n's saved version history still contains the old code.** The retirement script updated the stored nodes but did
+  not create a new saved version, so restoring an earlier version of the workflow in the n8n editor would bring the
+  faulty code back. Saving the workflow once in the editor fixes the history. Scott should do that; the workflow is
+  inactive and has only a manual trigger, so nothing runs in the meantime.
 - A new quarter is loaded with `python scripts/s1_editions.py load-new`. The steps are in
   [../QUARTERLY_REFRESH.md](../QUARTERLY_REFRESH.md), Step 2a.
 
@@ -36,8 +41,12 @@ open item. Those records are left as written.
 - opens the file's own cover or contents sheet and refuses the file unless it names the same quarter and release date
   as the manifest entry (after the RO4 incident of 2026-10-07, where a label written into code was trusted without
   opening the file);
-- re-reads the raw cells independently for all six stored measures (temporary accommodation, support needs, and the
-  four assessment and duty counts) and refuses if anything stored differs;
+- re-reads the raw cells of all six stored measures (temporary accommodation, support needs, and the four
+  assessment and duty counts) and refuses if anything stored differs. Each cell is classified independently of the
+  loader (its own marker list; an unknown format stops the load), but the column for the A1 and TA1 measures is found
+  by the same header-text reading as the loader and the code recode is shared; the support-needs column is read by
+  the S1b reader with its own header mapping. A renamed header that matched the wrong column would still pass for A1
+  and TA1;
 - checks the authority count (worked out from the earlier quarters) and that every code is recognised;
 - records edition 1 from the file, the live rows and the `homelessness_quarter_urls` row in one transaction, and
   checks that the live rows equal edition 1 before it commits;

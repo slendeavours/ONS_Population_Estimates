@@ -44,7 +44,7 @@ says `ACTION NEEDED`, read the line above it and go to the matching case:
 
 | Status line | Meaning | Go to |
 | --- | --- | --- |
-| `NEW, no editions recorded` | A quarter is in the live table but has no edition 1. Normal for S1b straight after a new quarter is loaded; for S1, `load-new` records edition 1 itself, so it means rows were put in some other way. | Step 2b |
+| `NEW, no editions recorded` | A quarter is in the live table but has no edition 1. Normal for S1b straight after a new quarter is loaded; for S1, `load-new` records edition 1 itself, so it means rows were put in some other way. | S1: Step 2a (S1b: Step 2b) |
 | `NEWER EDITION NOT YET IN LIVE` | A later edition exists but the live table still holds an earlier one (normal after loading a revision). | Step 3 |
 | `DRIFT` | The live rows differ from the latest edition and match no stored edition: somebody changed the live table directly. | Step 4 |
 | `CHAIN ERROR` | An edition's `supersedes` link is broken or forked. Do not load or refresh. Stop and ask for it to be investigated. | stop |
@@ -114,8 +114,13 @@ that already exists.
    code is not recognised; or a figure re-read straight from the file's cells
    differs from what would be stored (a suppressed figure shown as zero, or a
    published figure missing). Fix the cause and re-run; do not edit the check.
+
+   **What that re-read does and does not prove.** It covers all six stored measures and classifies each cell on its own (its own list of suppression markers; an unknown cell format stops the load), but the column for each A1 and TA1 measure is found by the same header-text reading as the loader, and the authority-code recode is shared; the support-needs column (A3) is read by the S1b reader, which has its own header mapping. So a header renamed by the publisher so that it matches the wrong column would still pass for A1 and TA1: read the dry run's figures against the published sheet.
 5. **Check:** `python scripts/s1_editions.py status` should say
    `status: OK, nothing to do`.
+6. Re-run workflow 1 and re-export the map data as for any other change to S1.
+   Until you do, `python scripts/verify_national_ta.py` fails: it compares the
+   stored national figures with the newest live quarter.
 
 ### 2b. S1b (support needs)
 
@@ -173,6 +178,12 @@ order.
    | `last_modified` | The `Last-Modified` header of the download, as `YYYY-MM-DDTHH:MM:SSZ`: `curl -sI <url>` shows it (convert to UTC). It becomes the edition's informational published date. |
 
    The loader refuses a file whose checksum does not match the manifest.
+
+   **`load` does not read the file's cover sheet the way `load-new` does.** Before
+   running it, open the file's cover or contents sheet yourself and check the
+   release name and release date against the manifest entry (and against the
+   quarter you are revising). A file saved under the wrong name would otherwise
+   be stored without question.
 3. **S1 first: load the revised file as a new edition** (rehearse first):
    ```
    python scripts/s1_editions.py load --period 2026Q1 --manifest-label registry
@@ -248,7 +259,7 @@ locks on the editions tables, so a second one waits or fails.
 | Order | Command | Typical run time |
 | --- | --- | --- |
 | 1 | `python scripts/verify_source_registry.py` | a few seconds |
-| 2 | `python scripts/verify_national_ta.py` | under a second |
+| 2 | `python scripts/verify_national_ta.py` | under a second. **Expected to fail between a new quarter's load (or a refresh) and the workflow 1 re-run**; it passes again once workflow 1 has run |
 | 3 | `python scripts/s1_editions_verify.py` | about 2 minutes (2 min 6 s measured alone 2026-10-07, 45 checks) |
 | 4 | `python scripts/s1b_support_needs_verify.py` | about 3 minutes |
 | 5 | `python scripts/s1b_editions_verify.py` | about 4 minutes (3 min 59 s measured) |
