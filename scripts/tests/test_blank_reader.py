@@ -57,6 +57,23 @@ class T(unittest.TestCase):
         self.assertEqual(read_cell(Decimal("2.5"), M).value, Decimal("2.5"))
         self.assertIsInstance(read_cell(0.1, M).value, Decimal)
 
+    def test_numeric_looking_marker_key_rejected(self):
+        for key in ("0", "0.0", "12", " 5 ", "1,234"):
+            with self.assertRaises(ValueError) as cm:
+                read_cell("..", {key: "missing"})
+            self.assertIn(key, str(cm.exception))
+        self.assertEqual(read_cell(0, M), CellResult(Decimal(0), None))
+
+    def test_malformed_thousands_rejected(self):
+        for raw in ("1,23", "1,2,3", ",5", "1,2345"):
+            with self.assertRaises(UnknownCellError):
+                read_cell(raw, M)
+
+    def test_valid_thousands_parse(self):
+        self.assertEqual(read_cell("1,234", M).value, Decimal(1234))
+        self.assertEqual(read_cell("12,345.6", M).value, Decimal("12345.6"))
+        self.assertEqual(read_cell("0,000", M), CellResult(Decimal(0), None))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,15 @@ from typing import NamedTuple, Optional
 
 FLAGS = ("suppressed", "missing", "not_applicable")
 
-_NUMBER = re.compile(r"[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
+_NUMBER = re.compile(
+    r"[+-]?((\d{1,3}(,\d{3})+|\d+)(\.\d*)?|\.\d+)([eE][+-]?\d+)?")
+
+
+def _parse(text: str) -> Optional[Decimal]:
+    """Parse stripped text as a number (commas only as 3-digit groups)."""
+    if _NUMBER.fullmatch(text):
+        return Decimal(text.replace(",", ""))
+    return None
 
 
 class UnknownCellError(ValueError):
@@ -28,6 +36,9 @@ def read_cell(raw, markers: dict) -> CellResult:
         if flag not in FLAGS:
             raise ValueError(f"marker {marker!r} maps to invalid flag {flag!r}; "
                              f"expected one of {FLAGS}")
+        if _parse(marker.strip()) is not None:
+            raise ValueError(f"marker key {marker!r} parses as a number; "
+                             "a numeric value can never be a marker")
 
     if raw is None:
         key = ""
@@ -39,9 +50,9 @@ def read_cell(raw, markers: dict) -> CellResult:
     if key is not None:
         if key in markers:
             return CellResult(None, markers[key])
-        text = key.replace(",", "")
-        if _NUMBER.fullmatch(text):
-            return CellResult(Decimal(text), None)
+        number = _parse(key)
+        if number is not None:
+            return CellResult(number, None)
         raise UnknownCellError(f"unknown cell value {raw!r}")
 
     if isinstance(raw, bool):
