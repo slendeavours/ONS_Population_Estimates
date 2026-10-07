@@ -970,13 +970,15 @@ def gate_15_chain_error_reported(cur):
     name = "seeded: a forked supersedes chain shows up in status as a chain error"
 
     def body(cur):
-        _fake_edition(cur, "2025Q3", _bump())
-        # a third edition that also supersedes edition 1 forks the chain
+        tip0 = latest_edition(cur, "2025Q3")
+        ed = _fake_edition(cur, "2025Q3", _bump())
+        # another edition that also supersedes the old tip forks the chain
         cur.execute(f"""INSERT INTO public.{TABLE} ({', '.join(DATA_COLS)},
                         edition, supersedes, source_sha256)
-                        SELECT {', '.join(DATA_COLS)}, 3, 1, 'gate-fork'
+                        SELECT {', '.join(DATA_COLS)}, %s, %s, 'gate-fork'
                         FROM public.{TABLE}
-                        WHERE period = '2025Q3' AND edition = 1""")
+                        WHERE period = '2025Q3' AND edition = %s""",
+                    (ed + 1, tip0, tip0))
         return status(cur)
     try:
         st = _in_savepoint(cur, body)

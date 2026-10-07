@@ -1099,6 +1099,13 @@ def _plan(cur, accept_drift=()) -> tuple:
     return plan, drift
 
 
+def _unrepairable(plan) -> list:
+    """Planned periods that differ from their edition but have no row to
+    update (rows missing from, or extra in, the live table): an UPDATE of the
+    refresh columns cannot repair them."""
+    return sorted(p for p, v in plan.items() if not v["rows"])
+
+
 def refresh_counts(cur, accept_drift=()) -> dict:
     """{period: rows refresh_latest would write} (read-only)."""
     plan, _ = _plan(cur, accept_drift)
@@ -1217,6 +1224,10 @@ def refresh_latest(cur, accept_drift=(), _after_update_hook=None) -> dict:
              f"edition for {drift}: changed outside the editions tables. "
              "Load it as an edition, or re-run with --accept-drift PERIOD to "
              "overwrite it with the latest edition")
+    stuck = _unrepairable(plan)
+    if stuck:
+        halt(f"{stuck} differ from the latest edition in rows present in only "
+             "one of them; an update of the refresh columns cannot repair that")
     result = {"updated": {}, "rows": 0,
               "drift_accepted": sorted(p for p, v in plan.items()
                                        if v["kind"] == "drift"),
@@ -1266,14 +1277,29 @@ def refresh_latest(cur, accept_drift=(), _after_update_hook=None) -> dict:
     return result
 
 
+def reproduction_verdict(diff_cells, file_url, source_url) -> tuple:
+    """(reproduces, url_note) for one refreshed period.
+
+    The verdict rests on the cell-by-cell comparison with the edition's
+    recorded file only: reproduces = 0 cells differ. A file_url in
+    homelessness_quarter_urls that differs from the edition's source_url is
+    not a failure (the table holds the release-page link, an edition may come
+    from a registry file); it is returned as a note to print and record."""
+    note = ("" if file_url == source_url else
+            f"; file_url differs from the edition's source_url ({source_url})"
+            " (noted, not a failure)")
+    return diff_cells == 0, note
+
+
 def reproduction_update(cur, periods) -> list:
     """Re-evaluate homelessness_quarter_urls for the periods just refreshed.
 
     'Reproduces from source' means: the live layer now equals the file named
     in the period's latest edition. The edition's file is re-extracted and
     compared cell by cell with the live six measures; reproduces_from_source is
-    true only when 0 cells differ AND the row's file_url is the edition's
-    source_url. reproduction_checked_at = now(); reproduction_diff_cells =
+    true only when 0 cells differ. A file_url that differs from the edition's
+    source_url is printed and recorded in the note, not treated as a failure
+    (reproduction_verdict). reproduction_checked_at = now(); reproduction_diff_cells =
     cells differing; reproduction_note states the result and keeps the earlier
     note text. A period whose edition file is not in the manifest, or that has
     no homelessness_quarter_urls row, is reported as skipped (None) rather
@@ -1306,12 +1332,13 @@ def reproduction_update(cur, periods) -> list:
                 if f is None or f.get(m) != v:
                     diff += 1
         file_url, old_note = urls_row
-        repro = diff == 0 and file_url == url
+        repro, url_note = reproduction_verdict(diff, file_url, url)
+        if url_note:
+            print(f"NOTE {period}{url_note}")
         note = (f"Live layer re-extracted against {fname} (edition {ed}, "
-                f"{'registry file' if repro else 'check failed'}): {diff} "
+                f"{'edition file' if repro else 'check failed'}): {diff} "
                 "cells of the six S1 measures differ"
-                + ("" if file_url == url else
-                   f"; file_url differs from the edition's source_url ({url})")
+                + url_note
                 + f". Checked {date.today().isoformat()} by s1_editions.py "
                 f"refresh-latest. Earlier note: {old_note}")
         cur.execute("""UPDATE public.homelessness_quarter_urls
@@ -1386,6 +1413,10 @@ def cmd_refresh_latest(args):
                 halt(f"drift: live differs from the latest edition and matches "
                      f"no stored edition for {drift}; load it as an edition or "
                      "pass --accept-drift PERIOD to overwrite it")
+            if _unrepairable(plan):
+                halt(f"{_unrepairable(plan)} differ from the latest edition "
+                     "in rows present in only one of them; an update cannot "
+                     "repair that")
             if not writing:
                 print("DRY RUN: nothing written (use --commit or --simulate)")
                 return

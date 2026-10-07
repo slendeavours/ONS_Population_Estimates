@@ -40,7 +40,8 @@ from s1_editions import (TABLE, MEASURES, STALE_PERIODS,  # noqa: E402
                          expected_authorities, insert_edition, latest_edition,
                          LIVE_LABEL, live_text_sha256, modal_count,
                          period_hashes,
-                         refresh_counts, refresh_latest, status, sync_new,
+                         refresh_counts, refresh_latest, reproduction_update,
+                         reproduction_verdict, status, sync_new,
                          w1_snapshot, LIVE)
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -357,13 +358,18 @@ def gate_5_latest_equals_live(cur):
     cur.execute(f"""SELECT edition, total_assessments FROM public.{TABLE}
                     WHERE period = '2025Q2' AND lad24cd = 'E06000001'
                     ORDER BY edition""")
-    hart = cur.fetchall()
-    if hart != [(1, 138), (2, 159)]:
-        bad.append(f"Hartlepool 2025Q2 total_assessments {hart}, "
-                   "expected [(1, 138), (2, 159)]")
+    hart = dict(cur.fetchall())
+    cur.execute(f"""SELECT total_assessments FROM public.{LIVE}
+                    WHERE period = '2025Q2' AND lad24cd = 'E06000001'""")
+    live_h = cur.fetchone()[0]
+    latest_h = hart.get(latest_edition(cur, "2025Q2"))
+    if hart.get(1) != 138 or hart.get(2) != 159 or latest_h != live_h:
+        bad.append(f"Hartlepool 2025Q2 total_assessments by edition {hart}, "
+                   f"live {live_h}: expected edition 1 = 138, edition 2 = 159 "
+                   "and live = the latest edition")
     report(5, name, bool(periods) and not bad,
            "; ".join(bad[:5]) if bad else f"{len(periods)} periods match; "
-           "Hartlepool 138 -> 159")
+           "Hartlepool ed1 138, ed2 159, live = latest")
 
 
 def _revised_editions(cur):
@@ -753,9 +759,11 @@ def gate_12_new_period(cur):
     except (psycopg2.Error, SystemExit) as e:
         return report(12, name, False, str(e).splitlines()[0])
     n_auth = expected_authorities(cur)
+    cur.execute(f"SELECT MAX(period) FROM public.{LIVE}")
+    newest = cur.fetchone()[0]
     cur.execute(f"SELECT {', '.join(('lad24cd',) + MEASURES)} "
-                f"FROM public.{TABLE} WHERE edition = 1 AND period = "
-                f"(SELECT MAX(period) FROM public.{LIVE})")
+                f"FROM public.{TABLE} WHERE period = %s AND edition = %s",
+                (newest, latest_edition(cur, newest)))
     want = live_text_sha256([dict(zip(("lad24cd",) + MEASURES, r))
                              for r in cur.fetchall()])
     ok = (s1["new_periods"] == ["2099Q1"] and not s1["ok"]
@@ -837,19 +845,69 @@ def gate_16_chain_error_reported(cur):
     name = "seeded: a forked supersedes chain shows up in status as a chain error"
 
     def body(cur):
-        _fake_edition(cur, "2025Q3", _bump("owed_duty"))
-        tip = 2
+        tip0 = latest_edition(cur, "2025Q3")
+        ed = _fake_edition(cur, "2025Q3", _bump("owed_duty"))
+        # another edition that also supersedes the old tip forks the chain
         cur.execute(f"""INSERT INTO public.{TABLE} (lad24cd, period, edition,
                         total_assessments, source_file, source_sha256,
-                        supersedes) VALUES (%s, '2025Q3', 3, 1, 'gate-fake',
-                        'gate-fork', 1)""", (LAD,))
-        return status(cur), tip
+                        supersedes) VALUES (%s, '2025Q3', %s, 1, 'gate-fake',
+                        'gate-fork', %s)""", (LAD, ed + 1, tip0))
+        return status(cur), ed
     try:
         st, _ = _in_savepoint(cur, body)
     except psycopg2.Error as e:
         return report(16, name, False, str(e).splitlines()[0])
     report(16, name, "2025Q3" in st["chain_errors"] and not st["ok"],
            str(st["chain_errors"])[:120])
+
+
+def gate_19_url_mismatch_not_a_failure(cur):
+    name = "reproduction verdict rests on cells only; a file_url mismatch is a note"
+    same = reproduction_verdict(0, "u", "u")
+    differ = reproduction_verdict(0, "page", "registry")
+    cells = reproduction_verdict(3, "u", "u")
+    both = reproduction_verdict(3, "page", "registry")
+    ok = (same == (True, "")
+          and differ[0] is True and "file_url differs" in differ[1]
+          and cells == (False, "")
+          and both[0] is False and "file_url differs" in both[1])
+
+    # end to end where a manifest file is available: 2025Q1-Q4 and the
+    # revised quarters carry URLs that differ from the edition's source_url
+    cur.execute("""SELECT h.period FROM public.homelessness_quarter_urls h
+                   JOIN (SELECT DISTINCT period, source_url FROM
+                         public.{t}) e USING (period)
+                   WHERE h.file_url IS DISTINCT FROM e.source_url""".format(
+        t=TABLE))
+    mism = [r[0] for r in cur.fetchall()]
+
+    def body(cur):
+        return reproduction_update(cur, mism[:1]) if mism else []
+    try:
+        res = _in_savepoint(cur, body)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(19, name, False, str(e).splitlines()[0])
+    e2e = all(r[2] is not False for r in res)
+    report(19, name, ok and e2e,
+           f"verdicts ok={ok}; periods whose file_url differs from the "
+           f"edition URL: {len(mism)}; reproduction_update on one -> {res}")
+
+
+def gate_20_missing_row_halts(cur):
+    name = "seeded: an accepted drift that is only a missing live row halts, not 'nothing to refresh'"
+
+    def body(cur):
+        cur.execute(f"DELETE FROM public.{LIVE} WHERE period = '2025Q3' "
+                    "AND lad24cd = %s", (LAD,))
+        st = status(cur)
+        plan_halt = _halts(lambda: refresh_latest(cur, accept_drift=("2025Q3",)))
+        return st, plan_halt
+    try:
+        st, h = _in_savepoint(cur, body)
+    except psycopg2.Error as e:
+        return report(20, name, False, str(e).splitlines()[0])
+    ok = (not st["ok"] and h[0] and "only one of them" in h[1])
+    report(20, name, ok, f"status ok={st['ok']}; refresh: {h[1][:90]}")
 
 
 # Retired literals: the snapshot table names, the fixed live row count, the
@@ -1020,6 +1078,8 @@ def main():
             gate_16_chain_error_reported(cur)
             gate_17_no_snapshot_dependency(cur)
             gate_18_bootstrap_needs_explicit_count(cur)
+            gate_19_url_mismatch_not_a_failure(cur)
+            gate_20_missing_row_halts(cur)
     finally:
         conn.rollback()
         conn.close()
