@@ -65,12 +65,22 @@ def normalise(stdout, keep_all=False):
             if ln.strip() and (keep_all or _KEEP.match(ln))]
 
 
-def run_command(args):
-    p = subprocess.run([sys.executable, str(SCRIPTS / args[0])] + args[1:],
-                       capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", cwd=str(SCRIPTS.parent))
+COMMAND_TIMEOUT = 900
+
+
+def run_command(args, timeout=COMMAND_TIMEOUT):
+    try:
+        p = subprocess.run([sys.executable, str(SCRIPTS / args[0])] + args[1:],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", cwd=str(SCRIPTS.parent),
+                           timeout=timeout)
+    except subprocess.TimeoutExpired:
+        sys.exit(f"HALT: {' '.join(args)} exceeded {timeout}s; baseline not written.")
     lines = normalise(p.stdout, keep_all=args[-1] == "status")
-    return {"exit_code": p.returncode, "lines": lines, "line_count": len(lines)}
+    res = {"exit_code": p.returncode, "lines": lines, "line_count": len(lines)}
+    if p.returncode != 0 and p.stderr:
+        res["stderr_tail"] = p.stderr.strip().splitlines()[-20:]
+    return res
 
 
 def capture(cur):
@@ -86,6 +96,8 @@ def capture(cur):
 
 def _flat(d, prefix=""):
     for k, v in d.items():
+        if k == "stderr_tail":
+            continue
         if isinstance(v, dict):
             yield from _flat(v, f"{prefix}{k}.")
         else:
