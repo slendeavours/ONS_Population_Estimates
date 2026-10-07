@@ -189,7 +189,7 @@ locks on the editions tables, so a second one waits or fails.
 | 3 | `python scripts/s1_editions_verify.py` | about 1.5 minutes |
 | 4 | `python scripts/s1b_support_needs_verify.py` | about 3 minutes |
 | 5 | `python scripts/s1b_editions_verify.py` | about 4 minutes (3 min 59 s measured) |
-| 6 | `python scripts/ro4_editions_verify.py` | about 35 seconds (41 checks, measured alone 2026-10-07) |
+| 6 | `python scripts/ro4_editions_verify.py` | about 1 minute 18 seconds (44 checks incl. the cover-sheet gate, measured alone 2026-10-07) |
 
 Each exits 0 when everything passes; any `FAIL` exits non-zero. Never run two
 at once: a parallel run waits on database locks held by the other (an earlier
@@ -220,36 +220,53 @@ aggregates read only the latest financial year, so a release of an older year
 changes the table but not them.
 
 **When it applies.** MHCLG publishes each financial year of RO4 more than
-once. The table holds 2024-25 (edition 1 as loaded, edition 2 the third
-release of 11 June 2026) and 2025-26 (edition 1, first release of 17 September
-2026). The second 2025-26 release is expected later and is a new edition.
+once. The table holds 2024-25 (edition 1 as loaded, edition 2 the second release of
+4 December 2025, edition 3 the third release of 11 June 2026) and 2025-26
+(edition 1, first release of 17 September 2026). The second 2025-26 release is expected later and is a new edition.
 Nothing detects a new release automatically yet: someone has to notice it on
 the GOV.UK collection page.
 
 1. **Get the file** into `data/reference/` (the folder is gitignored; Scott's
-   permission is needed for any download). Keep the publisher's file name.
-2. **Add an entry to `scripts/ro4_editions_manifest.json`.** The fields:
+   permission is needed for any download). **Save it under a release-specific
+   name**, e.g. `RO4_LA_Data_2025-26_second_release.ods`. The publisher reuses
+   the same file name for every release of a year; saving the second release as
+   `RO4_LA_Data_2025-26_data_by_LA.ods` would overwrite the first-release
+   original that edition 1's provenance checks re-read.
+2. **Read the file's own cover sheet before anything else.** Open the workbook,
+   go to the `Front_Page` sheet, and note the release ordinal ("first",
+   "second", "third") and the publication date in the sentence that says "...
+   release ... which was published on ...". Do not take the release from the
+   file name, the download page title or any label in the code: the 2024-25
+   second release was once filed as the third from a label in a loader
+   constant. Then **add an entry to `scripts/ro4_editions_manifest.json`**.
+   The fields:
 
    | Field | What to put |
    | --- | --- |
    | `financial_year` | `2025-26` style. |
    | `file` | The file name exactly as saved in `data/reference/`. |
    | `sheet` | The data sheet's name, e.g. `RO4_LA_Data_202526` (open the workbook to read it). |
-   | `release_label` | Plain words, e.g. `second release, published 14 Jan 2027`. You pass this text to `load`. |
-   | `published_date` | The publication date shown on the GOV.UK release page, `YYYY-MM-DD`. Informational: it does not decide which edition is latest. |
+   | `release_label_stored`, `published_date_stored` | What the editions table will say, in plain words, e.g. `second release, published 14 Jan 2027` and `2027-01-14`. |
+   | `release_label_actual`, `published_date_actual` | What the cover sheet says, as read in the previous step, e.g. `second release, published 14 January 2027` and `2027-01-14`. Normally the same facts as the stored fields; they differ only to record a stored label that is wrong. |
    | `source_url` | The download link, or `null`. |
    | `sha256` | The file's checksum, lower case. PowerShell: `Get-FileHash -Algorithm SHA256 data\reference\<file>`; Git Bash: `sha256sum data/reference/<file>`. |
 
-   The loader refuses a file whose checksum does not match the manifest.
+   The loader refuses a file whose checksum does not match the manifest, and a
+   cover-sheet gate refuses a file whose front page says a different release
+   or date from the manifest entry. The stored label is permanent once loaded
+   (the table is append-only), so check it before `--commit`.
 3. **Check where things stand:** `python scripts/ro4_editions.py status` (exit
    0, `OK`, if there is nothing to do).
 4. **Load it as a new edition** (dry run first, then the rehearsal, then the
    real load):
    ```
-   python scripts/ro4_editions.py load --financial-year 2026-27 --manifest-label "second release, published 14 Jan 2027"
-   python scripts/ro4_editions.py load --financial-year 2026-27 --manifest-label "second release, published 14 Jan 2027" --simulate
-   python scripts/ro4_editions.py load --financial-year 2026-27 --manifest-label "second release, published 14 Jan 2027" --commit
+   python scripts/ro4_editions.py load --financial-year 2025-26 --manifest-file RO4_LA_Data_2025-26_second_release.ods
+   python scripts/ro4_editions.py load --financial-year 2025-26 --manifest-file RO4_LA_Data_2025-26_second_release.ods --simulate
+   python scripts/ro4_editions.py load --financial-year 2025-26 --manifest-file RO4_LA_Data_2025-26_second_release.ods --commit
    ```
+   Select the entry by `--manifest-file` (or `--manifest-entry N`, counting
+   from 0): `--manifest-label` is refused as ambiguous when two entries share a
+   label, as the two 2024-25 entries do.
    The dry run prints the difference from the previous edition: authorities
    changed, cells changed per measure, values that become NULL or appear,
    `data_missing` flips both ways, name changes and national sums. **Read it.**
@@ -273,7 +290,8 @@ the GOV.UK collection page.
    refresh of the latest year, re-run workflow 1 and the map export as for any
    new data.
 6. **Check:** `python scripts/ro4_editions.py status` reports `OK`, then
-   `python scripts/ro4_editions_verify.py` (see Step 5).
+   `python scripts/ro4_editions_verify.py` (see Step 5), which re-checks every
+   manifest file's cover sheet.
 
 **First-ever release of a financial year.** If the live table has no rows for
 that year, `python scripts/s2_ro4_load.py apply` loads it (insert only; it
@@ -283,10 +301,15 @@ never overwrites). Then `python scripts/ro4_editions.py sync-new` (dry run,
 derived (296 authorities per year at present); a short year is refused.
 
 **Limitation.** The editions form a chain: each edition supersedes the one
-before, and a new edition can only be added at the end. 2024-25 edition 1 is
-what the live table held ('as loaded', labelled 'published 18 Sep 2025'); the
-first and second releases of 2024-25 are not held and have not been fetched,
-and the chain cannot place an earlier release before an existing edition.
+before, and a new edition can only be added at the end. The chain records the
+order releases were loaded, not the order they were published. 2024-25 edition
+1 is what the live table held ('as loaded', labelled 'published 18 Sep 2025');
+edition 2 is actually the second release (4 Dec 2025) stored under a wrong
+'third release' label, and edition 3 is the third release (11 Jun 2026). The
+first release of 2024-25 is not held and has not been fetched, and the chain
+cannot place an earlier release before an existing edition. What guards
+against a mislabelled file is the manifest and the cover-sheet check, not the
+chain.
 
 ## What is still manual
 

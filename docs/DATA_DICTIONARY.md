@@ -163,7 +163,7 @@ All spend figures are in **£ thousands (£000s)**. Multiply by 1,000 for £ ste
 
 ### Housing expenditure editions (RO4)
 
-`ro4_housing_expenditure_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, financial_year, edition)`; 888 rows (296 authorities in each of 2024-25 editions 1 and 2 and 2025-26 edition 1). `financial_year` is `YYYY-YY` (e.g. `2024-25`). All spend figures are £ thousands, `numeric(12,2)`.
+`ro4_housing_expenditure_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, financial_year, edition)`; 1,184 rows (296 authorities in each of 2024-25 editions 1, 2 and 3 and 2025-26 edition 1). `financial_year` is `YYYY-YY` (e.g. `2024-25`). All spend figures are £ thousands, `numeric(12,2)`.
 
 | Column | Description |
 |---|---|
@@ -176,7 +176,7 @@ All spend figures are in **£ thousands (£000s)**. Multiply by 1,000 for £ ste
 | `release_label`, `published_date` | Description and date of the release. Informational only; they do not decide which edition is latest. |
 | `source_file`, `source_sha256`, `loaded_at` | The source file name and the insert time. `source_sha256` is the checksum of the local source file for an edition loaded from a file; for 2024-25 edition 1, recorded 'as loaded' (no source file in hand), it is the sha256 of a canonical text rendering of the stored rows, sorted by `lad24cd`. |
 
-**Live-layer rule.** `ro4_housing_expenditure` holds, for each authority and financial year, the latest edition (the one no other edition supersedes). It is refreshed with `python scripts/ro4_editions.py refresh-latest --commit` and changes only the eleven measures, `la_name`, `data_missing` and `source`; `loaded_at` is never touched. A financial year with one edition is identical in both tables. 2024-25 has two editions: edition 1 is what the live table held before 2026-10-07, edition 2 the third release (published 11 Jun 2026), which is now in live. Eight authorities are NULL in edition 2 with `data_missing` true (the file marks them `[x]`); their earlier figures are in edition 1. The first and second releases of 2024-25 are not held. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
+**Live-layer rule.** `ro4_housing_expenditure` holds, for each authority and financial year, the latest edition (the one no other edition supersedes). It is refreshed with `python scripts/ro4_editions.py refresh-latest --commit` and changes only the eleven measures, `la_name`, `data_missing` and `source`; `loaded_at` is never touched. A financial year with one edition is identical in both tables. 2024-25 has three editions: edition 1 is what the live table held before 2026-10-07 (published 18 Sep 2025), edition 2 is actually the second release (4 Dec 2025; its stored label wrongly says third release, and the append-only table keeps it), and edition 3 is the third release (published 11 Jun 2026), which is now in live. Eight authorities are NULL in edition 2 (the second release marks them `[x]`) and have figures in editions 1 and 3. The first release of 2024-25 is not held; the chain records the order releases were loaded, not published. The manifest holds each file's stored and actual label. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
 
 ---
 
