@@ -58,7 +58,7 @@ Subcommands:
         # rows equal no stored edition is drift (changed outside the editions
         # tables): the command halts unless --accept-drift PERIOD names it.
 
-Helpers imported by later steps: create_schema, insert_edition, latest_edition,
+Helpers imported by later steps: create_schema, _insert, latest_edition,
 check_coverage, check_latest_equals_live, check_q2_pair, status, sync_new,
 refresh_latest.
 """
@@ -88,8 +88,6 @@ DATA_COLS = ("lad24cd", "period", "category_code", "value", "value_flag",
              "category_group", "category_label", "reference_quarter",
              "source_url", "source_edition", "edition_variant",
              "release_page_url", "layout_version", "publisher_la_code")
-EXTRA_COLS = ("release_label", "published_date", "source_file",
-              "source_sha256", "supersedes")
 # the live columns refresh-latest may overwrite (and status compares)
 REFRESH_COLS = ("value", "value_flag", "category_label", "source_url",
                 "source_edition", "edition_variant")
@@ -223,7 +221,8 @@ def create_schema(cur) -> None:
 def _insert(cur, rows: list, period: str, *, release_label: str,
             published_date, source_file: str, source_sha256: str,
             supersedes) -> int:
-    """The loader's own writes (backfill, load, sync-new): editions_core's
+    """The only writer of editions (backfill, load, sync-new, and the verify
+    gates): editions_core's
     insert_edition with SPEC, strict (a row lacking any column halts, as
     S1b's insert always refused one) and with supersedes required to be the
     period's chain tip (None only for a period with no editions)."""
@@ -233,56 +232,6 @@ def _insert(cur, rows: list, period: str, *, release_label: str,
                                source_file=source_file,
                                source_sha256=source_sha256,
                                supersedes=supersedes, strict=True)
-
-
-def insert_edition(cur, rows: list, period: str, *, release_label: str,
-                   published_date, source_url, source_file: str,
-                   source_sha256: str, supersedes) -> int:
-    """Insert one edition of a period; return its edition number.
-
-    rows are dicts keyed by DATA_COLS. If source_sha256 is already recorded for
-    the period nothing is inserted and the existing edition number is returned.
-    Empty rows is a hard stop, and so is a `supersedes` that is not an existing
-    edition of the period or a row whose period differs. source_url overrides
-    the rows' own source_url only when given (None keeps the row value).
-
-    Kept as S1b's own (not editions_core's): s1b_editions_verify plants a
-    fork (gate 3b) and a second root (gate 3f) through this function to prove
-    latest_edition refuses them, and the core insert refuses both up front.
-    The loader itself no longer calls it; its writes go through _insert.
-    """
-    from psycopg2.extras import execute_values
-    if not rows:
-        halt(f"insert_edition: no rows supplied for {period}")
-    cur.execute(f"SELECT DISTINCT edition FROM public.{TABLE} "
-                "WHERE period = %s AND source_sha256 = %s",
-                (period, source_sha256))
-    existing = [r[0] for r in cur.fetchall()]
-    if existing:
-        return existing[0]
-    cur.execute(f"SELECT COALESCE(MAX(edition), 0) FROM public.{TABLE} "
-                "WHERE period = %s", (period,))
-    edition = cur.fetchone()[0] + 1
-    if supersedes is not None:
-        cur.execute(f"SELECT 1 FROM public.{TABLE} "
-                    "WHERE period = %s AND edition = %s LIMIT 1",
-                    (period, supersedes))
-        if cur.fetchone() is None:
-            halt(f"insert_edition: supersedes={supersedes} is not an existing "
-                 f"edition of {period}")
-    if any(r["period"] != period for r in rows):
-        halt(f"insert_edition: rows contain a period other than {period}")
-    cols = list(DATA_COLS) + ["edition"] + list(EXTRA_COLS)
-    data = []
-    for r in rows:
-        vals = [r[c] for c in DATA_COLS]
-        if source_url is not None:
-            vals[DATA_COLS.index("source_url")] = source_url
-        data.append(vals + [edition, release_label, published_date,
-                            source_file, source_sha256, supersedes])
-    execute_values(cur, f"INSERT INTO public.{TABLE} ({', '.join(cols)}) "
-                   "VALUES %s", data, page_size=2000)
-    return edition
 
 
 def latest_edition(cur, period: str) -> int:
