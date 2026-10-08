@@ -132,7 +132,7 @@ CHANGELOG.md                                Dated record of pipeline changes
   export_map_data.py                        Builds the three published data files from the pipeline database
   s6_asylum_build.py / s6_asylum_verify.py  Source 6 ETL and its 13 halting checks - standalone, not in W1
   s14_lha_rates_build.py                    Source 14 (VOA/DWP LHA rates) ETL
-  s15_hpi_build.py                          Source 15 (Land Registry UK HPI) ETL
+  s15_hpi_editions.py                       Source 15 (Land Registry UK HPI) editions loader (old s15_hpi_build.py is in scripts/historical/)
   /verify/                                  Source reconciliation against publication (2026-08 assurance)
 /sql/                                       Table definitions
   /w1/                                      Workflow 1: eight numbered SQL steps

@@ -246,6 +246,23 @@ Source: DWP Universal Credit Local Housing Allowance rates (FY 2026-27, frozen a
 
 ---
 
+## House Prices (S15)
+
+Source: HM Land Registry / ONS UK House Price Index, average prices by local authority and month (`period`, first day of the month, from 2022-01-01). `la_house_prices` holds the latest edition of each month; `la_house_prices_editions` holds every release of a month that differed from the one before.
+
+| Column | Type | Description |
+|---|---|---|
+| `avg_price_all` | numeric(12,2) | Average price, all property types, GBP |
+| `avg_price_all_sa` | numeric(12,2) | Seasonally adjusted all-property price. NULL throughout in the current file, as published |
+| `annual_change_pct` | numeric(6,2) | Year-on-year change in the all-property price, per cent |
+| `avg_price_detached`, `avg_price_semi`, `avg_price_terraced`, `avg_price_flat` | numeric(12,2) | Average price by property type, GBP. NULL where the Land Registry suppresses a low-volume price; never zero-filled |
+
+`la_house_prices_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, period, edition)`. Columns as for the other editions tables: `edition` (1 = first loaded), `supersedes`, the seven values above, `release_label` and `published_date` (informational), and `source_file`, `source_sha256`, `loaded_at` (provenance). 20,355 rows on 2026-10-09: edition 1 for 55 months (January 2022 to July 2026, 295 authorities, 16,225 rows) and edition 2 for the 14 months the July 2026 release revised (4,130 rows).
+
+**Live-layer rule.** The live table holds, for each authority and month, the latest edition. A new month's live rows are inserted by `python scripts/s15_hpi_editions.py load --commit` in the same transaction as its edition 1; a revised month reaches live through `refresh-latest --commit`, which changes only the seven value columns; `loaded_at` is never touched. The source revises: the first comparison (2026-10-09) found 14 of 55 months revised, May 2025 to June 2026. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
+
+---
+
 ## Care Providers (Supply Side)
 
 Source: CQC Care directory with filters (monthly). Only supply-side column in the pipeline — every other signal measures demand.

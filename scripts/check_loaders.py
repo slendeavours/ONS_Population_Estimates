@@ -56,7 +56,7 @@ LOADERS = {
     "S9b": ["s9b_crfd_build.py"],
     "S11": ["s11_cqc_load.py"],
     "S14": ["s14_lha_rates_build_v2.py"],
-    "S15": ["s15_hpi_build.py"],
+    "S15": ["s15_hpi_editions.py"],
     "S18": ["s18_pipr_load.py"],
     "S19": ["s19_pip_editions.py"],
     "S21": ["s21_statistical_neighbours_build.py"],

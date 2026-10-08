@@ -548,11 +548,54 @@ registry's `overdue` flag reflects cadence, not a missed load.
 **Never run the old loader.** `scripts/historical/s19_pip_build.py` writes text
 month labels and would undo the `yyyymm` keys.
 
+## S15 House prices: the monthly check
+
+`la_house_prices` (S15, HM Land Registry / ONS UK House Price Index) has an
+append-only editions table, `la_house_prices_editions` (key
+`lad24cd, period, edition`), and the live table holds the latest edition of
+each month. It is monthly and independent of the other sources. Every release
+republishes the full back series and the July 2026 comparison showed recent
+months are revised (14 of 55), so every `load` compares every held month.
+Record: [decisions/2026-10-08-s15-editions-first-load.md](decisions/2026-10-08-s15-editions-first-load.md).
+
+Run from `ONS_Population_Estimates`:
+
+1. `python scripts/s15_hpi_editions.py load` (preview). It reads the
+   collections page, downloads the two newest CSVs to `data/raw/`, checks that
+   they name the same edition and compares every held month cell by cell
+   (new, unchanged or revised, with area and cell counts). Nothing is written.
+   To work from files you already have, add `--avg-prices FILE` and
+   `--property-type FILE` (offline).
+2. Read the preview. Stop and look if a month has fewer than 295 authorities, a
+   NULL replaces a number in more than five areas, a price is zero or
+   negative, more than ten areas of a month revise by over 50%, or an area code
+   is unresolved. The loader refuses short months and unresolved codes.
+3. `python scripts/s15_hpi_editions.py load --commit` stores a new month as
+   edition 1 with its live rows in one transaction, and a revised month as the
+   next edition. A run that succeeds writes one `pipeline_run_log` row
+   (source `15`); `--simulate` rehearses everything and writes nothing.
+4. If any month was revised, `python scripts/s15_hpi_editions.py
+   refresh-latest` previews the live rows that would change; run it again with
+   `--commit`. After any `refresh-latest --commit` that wrote rows, run
+   `python scripts/w1_run.py` (one run a day) and then
+   `python scripts/refresh_map.py`: `refresh-latest` leaves `loaded_at` alone,
+   so `refresh_map.py` cannot see a refreshed revision by itself.
+5. `python scripts/s15_hpi_editions.py status` should say OK, and
+   `python scripts/s15_hpi_editions_verify.py` should pass all 20 gates.
+
+**First time on a table with no editions.** The first `sync-new` needs
+`--expected-authorities 295`, because with no month recorded the count cannot
+be derived; later runs derive it.
+
+**Never run the old loader.** `scripts/historical/s15_hpi_build.py` upserts in
+place and would overwrite held values; it now stops with a RETIRED message.
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
 - **Running the S8b monthly check.** `check_sources.py 8b` detects a newer month but nothing runs `load` for you; see the S8b section.
 - **Running the S19 monthly check.** Nothing runs `s19_pip_editions.py load` for you; see the S19 section.
+- **Running the S15 monthly check.** Nothing runs `s15_hpi_editions.py load` for you; see the S15 section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

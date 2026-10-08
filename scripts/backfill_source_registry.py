@@ -661,8 +661,17 @@ SOURCES = [
     dict(
         source_code="15",
         revises_back_series=True,
-        revision_note=("Every edition republishes the full back series and the monthly "
-            "upsert revises any previously provisional values."),
+        revision_note=("Established. Every edition republishes the full back "
+            "series. The first comparison, on 2026-10-09, of the July 2026 "
+            "release against what was held (edition 1) found 14 of 55 months "
+            "revised, May 2025 to June 2026: 3,540 area-month rows, 20,513 "
+            "changed cells, largest single move 8.92% (City of London, "
+            "March 2026). The 41 months before May 2025 and the latest month "
+            "were unchanged. Since then each revised month is stored as the "
+            "next edition in la_house_prices_editions rather than overwriting "
+            "(scripts/s15_hpi_editions.py); la_house_prices holds the latest "
+            "edition of each month. Record: "
+            "docs/decisions/2026-10-08-s15-editions-first-load.md."),
         source_name="Land Registry UK HPI",
         publisher="HM Land Registry",
         series_name=("UK House Price Index: average prices and property type "
@@ -677,21 +686,33 @@ SOURCES = [
             "extract Average-prices-{YYYY}-{MM}.csv and "
             "Average-prices-Property-Type-{YYYY}-{MM}.csv. Every edition "
             "republishes the full back series from 1968 (all-property) and "
-            "1995 (by type); only data from 2022-01-01 onward is loaded."),
+            "1995 (by type); only data from 2022-01-01 onward is loaded. "
+            "scripts/s15_hpi_editions.py finds the two files itself "
+            "(collections page, newest data downloads page, then the two "
+            "CSVs, saved to data/raw/) or reads them with --avg-prices and "
+            "--property-type; both file names and the data's latest Date "
+            "must name the same edition or it halts. The first sync-new "
+            "needs --expected-authorities 295. Barnsley and Sheffield codes "
+            "resolve through scripts/geography.py. The old loader "
+            "scripts/s15_hpi_build.py is archived in scripts/historical/ "
+            "and must not be run: it upserted in place."),
         cadence="monthly", cadence_months=1, expected_lag_days=42,
         publication_window="~6 weeks after the reference month",
         target_table="la_house_prices", geography_level="LAD24",
-        join_path=("lad24cd via la_code_lookup, plus hard recodes for "
-                   "post-boundary-change Barnsley and Sheffield."),
-        build_script_path="scripts/s15_hpi_build.py",
+        join_path=("lad24cd via la_code_lookup, plus the shared "
+                   "scripts/geography.py recode for post-boundary-change "
+                   "Barnsley and Sheffield."),
+        build_script_path="scripts/s15_hpi_editions.py",
         node_docs_path=("s19_node1_fetch_collection_page.md .. "
                         "s19_node6_log_run.md (misnamed: these are S15's node "
                         "docs, left over from the S19 to S15 renumbering)"),
         source_doc_path="s15_hpi_source.md",
-        verification_checks={"script": "scripts/s15_hpi_build.py", "checks": 6,
-                             "gate": "all checks must PASS before the run is "
-                                     "logged; on FAIL the script exits 1 and "
-                                     "no log entry is written"},
+        verification_checks={"script": "scripts/s15_hpi_editions_verify.py",
+                             "checks": 20,
+                             "gate": "all gates must pass; the loader halts "
+                                     "before any write on a short month, an "
+                                     "unresolved code or a file identity "
+                                     "mismatch"},
         caveats=["Open-market prices only. Right-to-buy, shared ownership and "
                  "sub-market transactions are excluded where identifiable.",
                  "The Land Registry suppresses average prices where "

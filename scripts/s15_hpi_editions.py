@@ -7,7 +7,7 @@ fetch of a month that differed from the one before, so a revision in a new
 UK HPI release never overwrites what was held. The editions machinery is
 editions_core driven by SPEC, through period_editions (pe) bound to PROFILE.
 The pure part (file names, parsing, records, page parsers) comes first and is
-ported from s15_hpi_build.py with identical behaviour; the loader follows.
+ported from the retired scripts/historical/s15_hpi_build.py with identical behaviour; the loader follows.
 Importing this module needs no database, no network and no key.
 
 Periods are the live table's DATE column, handled as ISO strings
@@ -687,7 +687,7 @@ def plan_window(held: list, available: list, *, widen: bool,
             recheck = recheck[-recheck_n:] if recheck_n > 0 else []
         return new, recheck, []
     new, recheck = plan_months(held, available,
-                               recheck_n if recheck_n is not None else 0,
+                               recheck_n if recheck_n is not None else 0,  # not a source value
                                recheck_n is None)
     earliest = min(held) if held else None
     earlier = [p for p in sorted(available)

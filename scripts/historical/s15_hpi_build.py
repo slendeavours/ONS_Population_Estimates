@@ -85,6 +85,7 @@ def load_csv(path):
 
 
 def main():
+    sys.exit("RETIRED: use scripts/s15_hpi_editions.py. This loader upserted la_house_prices in place, so a revised month overwrote what was held, and it read its edition from a hand-off file in the temp folder.")
     started_at = datetime.datetime.now(datetime.timezone.utc)
 
     conn = get_conn()
