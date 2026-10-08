@@ -9,7 +9,10 @@ was held. The editions machinery is editions_core driven by SPEC.
 
 Blanks and zeros (docs/RULES.md rule 1): an API null is None, a returned 0 is
 0, and a blank is never coerced to zero. A merged-area total is the sum of its
-parts only if every part is present; otherwise it is None. Nothing needs the
+parts only if every part is present; otherwise it is None. Cells are read by
+parse_cube, not blank_reader: the Stat-Xplore API returns JSON, each cell a
+JSON integer or null (no text markers), and parse_cube is the stricter reader
+for that (an int or None, anything else refused). Nothing needs the
 database, the network or the API key at import; the Stat-Xplore client is
 imported only when a fetch is made.
 
@@ -416,25 +419,19 @@ def apply_month(cur, spec, month: str, records: list, *,
     """Classify, then store: edition 1 (supersedes None) when new, the next
     edition superseding the tip when revised, nothing when unchanged. Checks
     the stored edition (tip, row count, distinct keys) before returning; never
-    commits. Halts if the content equals an older, non-tip edition (the source
-    went back to an earlier state): the core would silently not store it."""
+    commits. A return to the content of an older, non-tip edition (DWP
+    publishes A, then B, then A again) is a revision against the tip (RULES
+    2.1) and is stored as a new edition: insert_edition(allow_revert=True)."""
     kind = classify_month(cur, spec, month, records)
     if kind == "unchanged":
         return kind
     sha = content_sha256(records)
     tip = None if kind == "new" else core.chain_tip(cur, spec, month)
-    cur.execute(f"SELECT DISTINCT edition FROM public.{spec.editions_table} "
-                "WHERE month = %s AND source_sha256 = %s", (month, sha))
-    again = [r[0] for r in cur.fetchall()]
-    if again:
-        halt(f"{month}: the fetched content equals stored edition {again[0]}, "
-             f"which is not the tip (edition {tip}); the source has gone back "
-             "to an earlier state. Not stored; decide how to record it")
     ed = core.insert_edition(
         cur, spec, records, month,
         release_label=RELEASE_LABEL.format(fetched_on.isoformat()),
         published_date=fetched_on, source_file=SOURCE_FILE,
-        source_sha256=sha, supersedes=tip, strict=True)
+        source_sha256=sha, supersedes=tip, strict=True, allow_revert=True)
     bad = load_checks.check_coverage(cur, spec, month, ed, len(records))
     if core.chain_tip(cur, spec, month) != ed:
         bad.append(f"{month}: edition {ed} is not the chain tip")
@@ -747,7 +744,7 @@ def main(argv=None) -> int:
                        "by default)")
     p.add_argument("--recheck-all", action="store_true",
                    help="recheck every held month still available")
-    p.add_argument("--recheck-n", type=int, default=6, metavar="N",
+    p.add_argument("--recheck-n", type=int, default=None, metavar="N",
                    help="recheck the latest N held months (default 6)")
     p.add_argument("--months", nargs="+", metavar="M",
                    help="fetch exactly these yyyymm months instead of planning")
@@ -761,6 +758,12 @@ def main(argv=None) -> int:
                    "stored edition (repeatable)")
     p.set_defaults(func=cmd_refresh_latest)
     args = ap.parse_args(argv)
+    if args.cmd == "load":
+        if args.months and (args.recheck_all or args.recheck_n is not None):
+            print("WARNING: --months given; --recheck-all / --recheck-n are "
+                  "ignored", file=sys.stderr)
+        if args.recheck_n is None:
+            args.recheck_n = 6
     return args.func(args)
 
 

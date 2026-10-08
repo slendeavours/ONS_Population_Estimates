@@ -166,6 +166,34 @@ class EditionsCoreDB(unittest.TestCase):
                 ins(cur, "z", None, period="2025Q3",
                     rows=[{"lad24cd": "E06000001", "period": "2025Q4"}])
 
+    def test_same_hash_as_older_edition_returns_it_by_default(self):
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, SPEC)
+            ins(cur, "A", None)
+            ins(cur, "B", 1)
+            self.assertEqual(ins(cur, "A", 2), 1)  # as before: nothing stored
+            cur.execute("SELECT COUNT(DISTINCT edition) FROM zz_core_editions")
+            self.assertEqual(cur.fetchone()[0], 2)
+
+    def test_allow_revert_stores_a_return_to_older_content(self):
+        def rev(sha, sup):
+            return core.insert_edition(
+                cur, SPEC, ROWS, "2025Q1", release_label="test",
+                published_date=date(2026, 1, 1), source_file=None,
+                source_sha256=sha, supersedes=sup, allow_revert=True)
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, SPEC)
+            self.assertEqual(rev("A", None), 1)
+            self.assertEqual(rev("B", 1), 2)
+            self.assertEqual(rev("A", 2), 3)          # A, B, A: edition 3
+            cur.execute("SELECT DISTINCT supersedes FROM zz_core_editions "
+                        "WHERE edition = 3")
+            self.assertEqual(cur.fetchall(), [(2,)])
+            self.assertEqual(core.chain_tip(cur, SPEC, "2025Q1"), 3)
+            self.assertEqual(rev("A", 3), 3)          # tip is A: nothing
+            cur.execute("SELECT COUNT(DISTINCT edition) FROM zz_core_editions")
+            self.assertEqual(cur.fetchone()[0], 3)
+
     def test_strict_insert_refuses_a_missing_column(self):
         with rolled_back(self.conn) as cur:
             core.create_schema(cur, SPEC)

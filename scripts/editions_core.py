@@ -302,7 +302,8 @@ def latest_edition(cur, spec: EditionSpec, period: str) -> int:
 def insert_edition(cur, spec: EditionSpec, rows: list, period: str, *,
                    release_label: str, published_date: "date | None",
                    source_file: "str | None", source_sha256: str,
-                   supersedes: "int | None", strict: bool = False) -> int:
+                   supersedes: "int | None", strict: bool = False,
+                   allow_revert: bool = False) -> int:
     """Insert one edition of a period; return its edition number.
 
     If source_sha256 is already recorded for the period nothing is inserted
@@ -314,7 +315,15 @@ def insert_edition(cur, spec: EditionSpec, rows: list, period: str, *,
     strict is true: then every row must carry every data column (spec.data_cols,
     the period included) and a row that lacks one halts before anything is
     written (S1b's original insert refused a missing column; its value and
-    value_flag are both nullable, so the table alone would not catch one)."""
+    value_flag are both nullable, so the table alone would not catch one).
+
+    allow_revert (opt-in, for sources whose hash identifies content rather
+    than a file, e.g. S8b): the already-recorded shortcut applies only to the
+    chain TIP. Same hash as the tip: nothing is inserted and the tip is
+    returned. Same hash as an older edition but not the tip: the source has
+    gone back to earlier content, which is a revision against the tip (RULES
+    2.1), so a new edition superseding the tip is stored. False (default)
+    keeps the behaviour above unchanged."""
     from psycopg2.extras import execute_values
     t, pc = spec.editions_table, spec.period_col
     if not rows:
@@ -323,7 +332,16 @@ def insert_edition(cur, spec: EditionSpec, rows: list, period: str, *,
                 f"WHERE {pc} = %s AND source_sha256 = %s",
                 (period, source_sha256))
     existing = [r[0] for r in cur.fetchall()]
-    if existing:
+    if allow_revert:
+        try:
+            current = chain_tip(cur, spec, period)
+        except LookupError:
+            current = None
+        except ValueError as e:
+            halt(f"insert_edition: {t}: {e}")
+        if current is not None and current in existing:
+            return current
+    elif existing:
         return existing[0]
     try:
         tip = chain_tip(cur, spec, period)

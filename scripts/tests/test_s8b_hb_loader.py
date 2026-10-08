@@ -126,6 +126,34 @@ class LoaderDB(unittest.TestCase):
             self.assertEqual(editions(cur), [(1, None, n), (2, 1, n)])
             self.assertEqual(core.chain_tip(cur, ZZ, "202604"), 2)
 
+    def test_revert_to_earlier_content_is_stored_as_edition_3(self):
+        with rolled_back(self.conn) as cur:
+            a = recs("202604")
+            b = recs("202604", value=lambda i, t: i + 1)
+            m.apply_month(cur, ZZ, "202604", a, fetched_on=FETCHED)
+            m.apply_month(cur, ZZ, "202604", b, fetched_on=FETCHED)
+            self.assertEqual(m.classify_month(cur, ZZ, "202604", a), "revised")
+            self.assertEqual(m.apply_month(cur, ZZ, "202604", a,
+                                           fetched_on=FETCHED), "revised")
+            n = 4 * m.EXPECTED_AREAS
+            self.assertEqual(editions(cur), [(1, None, n), (2, 1, n), (3, 2, n)])
+            self.assertEqual(m.apply_month(cur, ZZ, "202604", a,
+                                           fetched_on=FETCHED), "unchanged")
+            self.assertEqual(len(editions(cur)), 3)
+
+    def test_months_with_recheck_flags_warns(self):
+        err = io.StringIO()
+        with mock.patch.object(m, "cmd_load", return_value=0), \
+                contextlib.redirect_stderr(err):
+            m.main(["load", "--months", "202603", "--recheck-all"])
+            m.main(["load", "--months", "202603", "--recheck-n", "3"])
+        self.assertEqual(err.getvalue().count("ignored"), 2)
+        err = io.StringIO()
+        with mock.patch.object(m, "cmd_load", return_value=0), \
+                contextlib.redirect_stderr(err):
+            m.main(["load", "--months", "202603"])
+        self.assertEqual(err.getvalue(), "")
+
     def test_null_versus_zero_counts_as_revised(self):
         with rolled_back(self.conn) as cur:
             m.apply_month(cur, ZZ, "202604",
