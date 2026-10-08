@@ -8,6 +8,7 @@ zz_core_editions, created inside that transaction, so they never persist.
 Statements expected to fail (UPDATE, DELETE, TRUNCATE) run inside a savepoint
 so the transaction stays usable.
 """
+import dataclasses
 import sys
 import unittest
 from contextlib import contextmanager
@@ -311,6 +312,62 @@ class EditionsCoreDB(unittest.TestCase):
             cur.execute("SELECT COUNT(*) FROM public.zz_core_editions "
                         "WHERE period = '2025Q3'")
             self.assertEqual(cur.fetchone()[0], 0)
+
+    # ------------------------------------ as_loaded_date: several load days
+
+    def live_two_days(self, cur, period="2025Q1"):
+        """ROWS in live, the first row loaded 2026-07-14, the second
+        2026-10-01 (two load dates in one period)."""
+        for r, day in zip(ROWS, ("2026-07-14", "2026-10-01")):
+            cur.execute("INSERT INTO public.zz_core_live (lad24cd, period, "
+                        "value, loaded_at) VALUES (%s, %s, %s, %s)",
+                        (r["lad24cd"], period, r["value"], day + " 12:00+00"))
+
+    def test_as_loaded_single_halts_on_two_load_dates(self):
+        self.assertEqual(SPEC.as_loaded_date, "single")
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, SPEC)
+            self.live_two_days(cur)
+            with self.assertRaises(SystemExit) as cm:
+                core.sync_new(cur, SPEC, expected_authorities_n=2)
+            self.assertIn("differ in loaded_at", str(cm.exception))
+
+    def test_as_loaded_latest_records_edition_1_with_latest_date(self):
+        spec = dataclasses.replace(SPEC, as_loaded_date="latest")
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, spec)
+            self.live_two_days(cur)
+            self.assertEqual(core.sync_new(cur, spec, expected_authorities_n=2),
+                             ["2025Q1"])
+            cur.execute("SELECT DISTINCT edition, published_date, "
+                        "release_label FROM public.zz_core_editions")
+            self.assertEqual(cur.fetchall(), [
+                (1, date(2026, 10, 1), core.AS_LOADED_LATEST_LABEL)])
+            self.assertIn("latest load date", core.AS_LOADED_LATEST_LABEL)
+            self.assertTrue(core.status(cur, spec)["ok"])
+
+    def test_as_loaded_latest_keeps_other_checks(self):
+        spec = dataclasses.replace(SPEC, as_loaded_date="latest")
+        with rolled_back(self.conn) as cur:
+            core.create_schema(cur, spec)
+            self.live_two_days(cur)
+            # a missing authority still halts
+            with self.assertRaises(SystemExit) as cm:
+                core.sync_new(cur, spec, expected_authorities_n=3)
+            self.assertIn("expected 3 authorities", str(cm.exception))
+            # a repeated key still halts (drop the primary-key-less live
+            # table's uniqueness: the throwaway table has no constraint)
+            cur.execute("INSERT INTO public.zz_core_live (lad24cd, period, "
+                        "value) VALUES ('E06000001', '2025Q1', 1)")
+            with self.assertRaises(SystemExit) as cm:
+                core.sync_new(cur, spec, expected_authorities_n=2)
+            self.assertIn("repeat a key", str(cm.exception))
+            cur.execute("SELECT COUNT(*) FROM public.zz_core_editions")
+            self.assertEqual(cur.fetchone()[0], 0)
+
+    def test_as_loaded_date_value_refused(self):
+        with self.assertRaises(ValueError):
+            dataclasses.replace(SPEC, as_loaded_date="earliest")
 
     def test_refresh_copies_latest_into_live_and_nothing_else(self):
         with rolled_back(self.conn) as cur:

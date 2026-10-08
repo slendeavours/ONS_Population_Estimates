@@ -322,6 +322,7 @@ SPEC = core.EditionSpec(
                 ("avg_price_flat", "numeric(12,2)")),
     refresh_cols=VALUE_COLUMNS,
     key_types=(("period", "date NOT NULL"),),
+    as_loaded_date="latest",   # live periods carry several load dates
 )
 
 RUN_AGENT = "Source 15 - Land Registry UK HPI"

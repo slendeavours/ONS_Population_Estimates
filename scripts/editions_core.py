@@ -105,6 +105,10 @@ class EditionSpec:
     key_types: optional (column, SQL) for key and period columns; a column
     not listed is 'text NOT NULL' (lad24cd: 'varchar(9) NOT NULL').
     table_constraints: optional extra table-level constraint clauses.
+    as_loaded_date: 'single' (default) = sync-new needs one loaded_at date
+    per live period and halts otherwise; 'latest' = a period's live rows may
+    carry several load dates and edition 1 takes the latest as its
+    published_date (S15 only).
     """
     name: str
     live_table: str
@@ -120,6 +124,7 @@ class EditionSpec:
     table_constraints: tuple = ()
     refresh_from: tuple = ()
     as_loaded_source_col: "str | None" = None
+    as_loaded_date: str = "single"
 
     def __post_init__(self):
         for n in (self.name, self.live_table, self.editions_table,
@@ -131,6 +136,9 @@ class EditionSpec:
                   *((self.as_loaded_source_col,)
                     if self.as_loaded_source_col is not None else ())):
             _ident(n)
+        if self.as_loaded_date not in ("single", "latest"):
+            raise ValueError(f"{self.name}: as_loaded_date must be 'single' "
+                             f"or 'latest', not {self.as_loaded_date!r}")
         cols = self.data_cols + ("edition",) + tuple(c for c, _ in META_COLS)
         if len(set(cols)) != len(cols):
             raise ValueError(f"{self.name}: a column is declared twice {cols}")
@@ -385,6 +393,7 @@ def insert_edition(cur, spec: EditionSpec, rows: list, period: str, *,
 # ---------------------------------------------------------------------------
 
 AS_LOADED_LABEL = "as loaded; published_date is the load date"
+AS_LOADED_LATEST_LABEL = ("as loaded; published_date is the latest load date")
 
 
 @contextmanager
@@ -592,7 +601,8 @@ def _record_as_loaded(cur, spec: EditionSpec, period: str,
              f"expected {expected} authorities and {expected * len(others)} "
              "rows")
     loaded = {r[len(cols)] for r in fetched}
-    if len(loaded) != 1:
+    latest = spec.as_loaded_date == "latest"
+    if not latest and len(loaded) != 1:
         halt(f"{period}: live rows differ in loaded_at ({len(loaded)} dates)")
     source_file = None
     if src:
@@ -601,8 +611,10 @@ def _record_as_loaded(cur, spec: EditionSpec, period: str,
             halt(f"{period}: live rows differ in {src} ({len(files)} values)")
         source_file = files.pop()
     return insert_edition(cur, spec, recs, period,
-                          release_label=AS_LOADED_LABEL,
-                          published_date=loaded.pop(), source_file=source_file,
+                          release_label=(AS_LOADED_LATEST_LABEL if latest
+                                         else AS_LOADED_LABEL),
+                          published_date=max(loaded) if latest else loaded.pop(),
+                          source_file=source_file,
                           source_sha256=rows_sha256(spec, recs),
                           supersedes=None)
 

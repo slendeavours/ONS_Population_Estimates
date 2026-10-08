@@ -616,6 +616,7 @@ class LoaderDB(unittest.TestCase):
             "avg_price_flat": "numeric(12,2)"})
         self.assertEqual(m.SPEC.refresh_cols, m.VALUE_COLUMNS)
         self.assertTrue(m.SPEC.fk_la_boundaries)
+        self.assertEqual(m.SPEC.as_loaded_date, "latest")
         self.assertIsNone(m.PROFILE.expected_areas)
         self.assertEqual(m.release_label("2026-07"), "UK HPI July 2026 edition")
         with rolled_back(self.conn) as cur:
