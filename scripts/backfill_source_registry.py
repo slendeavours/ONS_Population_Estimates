@@ -695,7 +695,7 @@ SOURCES = [
             "needs --expected-authorities 295. Barnsley and Sheffield codes "
             "resolve through scripts/geography.py. The old loader "
             "scripts/s15_hpi_build.py is archived in scripts/historical/ "
-            "and must not be run: it upserted in place."),
+            "and must not be run: it inserted new months only and discarded revisions."),
         cadence="monthly", cadence_months=1, expected_lag_days=42,
         publication_window="~6 weeks after the reference month",
         target_table="la_house_prices", geography_level="LAD24",

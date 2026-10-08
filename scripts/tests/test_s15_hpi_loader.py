@@ -427,6 +427,53 @@ class LoaderDB(unittest.TestCase):
             rc, text, _, _ = self.run_main(cur, ["load"], files=bad)
             self.assertEqual(rc, "halt")
 
+    def test_older_file_halts_unless_allowed(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)
+            f7 = write_files(self.dir(), "2026-07", [P1, P2, P3],
+                             bump={(P2, CODES[0]): 7})
+            rc, text, _, _ = self.run_main(cur, ["load", "--commit"],
+                                           files=f7)
+            self.assertEqual(rc, 0, text)
+            before = (editions(cur), live(cur, P3))
+            # last month's file, in preview and with --commit
+            old = write_files(self.dir(), "2026-06", [P1, P2],
+                              bump={(P2, CODES[1]): 9})
+            for argv in (["load"], ["load", "--commit"], ["load", "--simulate"]):
+                with mock.patch.object(pe, "load_periods") as lp:
+                    rc, text, _, logged = self.run_main(cur, argv, files=old)
+                self.assertEqual(rc, "halt", argv)
+                self.assertIn("already held", text)
+                self.assertIn("--allow-older-file", text)
+                lp.assert_not_called()
+                logged.assert_not_called()
+            self.assertEqual((editions(cur), live(cur, P3)), before)
+            # the override is deliberate and allowed (preview shows the diff)
+            rc, text, _, _ = self.run_main(
+                cur, ["load", "--allow-older-file"], files=old)
+            self.assertEqual(rc, 0, text)
+            self.assertIn("--allow-older-file given", text)
+            # same-edition rerun and a newer file are unaffected
+            rc, text, _, _ = self.run_main(cur, ["load", "--commit"],
+                                           files=f7)
+            self.assertEqual(rc, 0, text)
+            self.assertNotIn("--allow-older-file", text)
+            f8 = write_files(self.dir(), "2026-08",
+                             [P1, P2, P3, "2026-08-01"])
+            rc, text, _, _ = self.run_main(cur, ["load"], files=f8)
+            self.assertEqual(rc, 0, text)
+            self.assertNotIn("--allow-older-file", text)
+
+    def test_older_file_problem_pure(self):
+        f = m.older_file_problem
+        self.assertIsNone(f("2026-07", ["2026-07-01"], ["2026-07-01"],
+                            "2026-07"))
+        self.assertIsNone(f("2026-08", ["2026-08-01"], ["2026-07-01"], None))
+        self.assertIn("July 2026", f("2026-06", ["2026-06-01"],
+                                   ["2026-06-01"], "2026-07"))
+        self.assertIn("already held", f("2026-06", ["2026-06-01"],
+                                        ["2026-07-01"], None))
+
     def test_window_never_loads_before_earliest_held(self):
         with rolled_back(self.conn) as cur:
             self.seed(cur, periods=(P2, P3), edition="2026-07")

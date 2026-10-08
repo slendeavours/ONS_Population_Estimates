@@ -28,7 +28,7 @@ Known breaches until corrected: S4 (care leavers) stores suppressed cells as 0 a
 1. A new release **and** a revision of a figure already held are both stored as new rows (a new edition). Nothing is overwritten.
 2. The live table is the latest-edition layer, refreshed from the editions table. The latest edition is the one no other edition supersedes.
 3. A sent or published deliverable is never overwritten. A new version is written and what changed is stated.
-4. Sources the registry marks `revises_back_series` must keep editions. Today only S1, S1b and RO4 do; the other revising sources are being brought across.
+4. Sources the registry marks `revises_back_series` must keep editions. Today S1, S1b, RO4, S8b, S19 and S15 do; the other revising sources are being brought across.
 
 Detail: `METHODOLOGY.md` (Revision Handling), `QUARTERLY_REFRESH.md`.
 
@@ -77,11 +77,11 @@ Detail: `METHODOLOGY.md` (Boundary Data), `docs/decisions/2026-10-08-barnsley-sh
 
 Loaders are to meet one standard, built from shared parts in `scripts/`. The parts below exist and are tested; adoption by the loaders is under way and not finished.
 
-- **Editions core** (`editions_core.py`): the append-only editions table, the supersedes chain, the latest-edition layer and the gates around them. A loader describes its table in a spec and supplies its own parser. S1, S1b and RO4 run on it today. Their commands are `status` (read-only health check), `load` (a revised or first edition of a period), `sync-new` (a newly published period) and `refresh-latest` (copy the latest edition into the live table).
+- **Editions core** (`editions_core.py`): the append-only editions table, the supersedes chain, the latest-edition layer and the gates around them. A loader describes its table in a spec and supplies its own parser. S1, S1b, RO4, S8b, S19 and S15 run on it today. Their commands are `status` (read-only health check), `load` (a revised or first edition of a period), `sync-new` (a newly published period) and `refresh-latest` (copy the latest edition into the live table).
 - **Blank reader** (`blank_reader.py`): turns the publisher's markers into NULL or a number as rule 1 requires. No loader uses it yet; loaders are to adopt it in place of their own conversion code.
 - **Shared checks** (`load_checks.py`): the per-column NULL, flagged and zero report, the check against the previous edition (rule 1.10), file identity (rule 3), geography resolution (rule 4), row counts, and the check that the live table equals the latest editions. Today only RO4 calls one of them (`check_latest_equals_live`); the per-column report and the previous-edition check are not yet called by any loader. Loaders are to adopt them.
-- **Preview by default:** in S1, S1b and RO4 every command that writes is a dry run unless given `--commit`, with one exception: `ddl` (create the editions table and its triggers if absent) writes when run. `status` is read-only. `--simulate` runs everything and rolls back.
-- **Conformance checker:** `python scripts/check_loaders.py` lists each loader as PASS or with the reasons it does not conform. 3 of 18 loaders conform today; the checker lists the rest. It reports only and does not yet gate a push. Its checks are heuristics and do not yet test use of the blank reader or the shared checks; the verify script remains the real test.
+- **Preview by default:** in the loaders on it every command that writes is a dry run unless given `--commit`, with one exception: `ddl` (create the editions table and its triggers if absent) writes when run. `status` is read-only. `--simulate` runs everything and rolls back.
+- **Conformance checker:** `python scripts/check_loaders.py` lists each loader as PASS or with the reasons it does not conform. 6 of 18 loaders conform today (S1, S1b, S2, S8b, S15, S19); the checker lists the rest. It reports only and does not yet gate a push. Its checks are heuristics and do not yet test use of the blank reader or the shared checks; the verify script remains the real test.
 
 The other loaders are to be brought across one at a time; the checker's FAIL list is that worklist. A source that is never revised may declare `NO_EDITIONS = "<reason>"` instead of using the core, but is still to use the blank reader and shared checks. Related: `docs/decisions/2026-10-07-editions-quarterly-refresh.md`.
 

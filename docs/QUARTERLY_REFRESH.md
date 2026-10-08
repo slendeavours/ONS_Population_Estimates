@@ -587,8 +587,14 @@ Run from `ONS_Population_Estimates`:
 `--expected-authorities 295`, because with no month recorded the count cannot
 be derived; later runs derive it.
 
-**Never run the old loader.** `scripts/historical/s15_hpi_build.py` upserts in
-place and would overwrite held values; it now stops with a RETIRED message.
+**Never run the old loader.** `scripts/historical/s15_hpi_build.py` inserted new
+months only and discarded revisions of months already held; it now stops with a
+RETIRED message.
+
+**An older file halts.** `load` stops, with nothing written, if the file's
+edition or latest month is earlier than what is held (for example last month's
+file passed by mistake). `--allow-older-file` overrides it for a deliberate
+re-load.
 
 ## What is still manual
 

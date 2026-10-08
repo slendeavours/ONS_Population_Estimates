@@ -870,6 +870,35 @@ def _derive_expected(cur, spec, override):
     return expected
 
 
+_LABEL_RE = re.compile(r"UK HPI ([A-Z][a-z]+) ([0-9]{4}) edition")
+
+
+def latest_held_edition(cur, editions_table):
+    """Newest YYYY-MM named by a stored release_label ('as loaded' labels
+    name none); None if no label names one."""
+    cur.execute(f"SELECT DISTINCT release_label FROM public.{editions_table}")
+    found = []
+    for (label,) in cur.fetchall():
+        m_ = _LABEL_RE.fullmatch(label or "")
+        if m_ and m_.group(1) in _MONTH_NAMES:
+            found.append(f"{m_.group(2)}-"
+                         f"{_MONTH_NAMES.index(m_.group(1)) + 1:02d}")
+    return max(found) if found else None
+
+
+def older_file_problem(edition, available, held, held_edition):
+    """A message if the file is older than what is held, else None. The file
+    is older when its edition is before the newest stored edition, or its
+    latest month is before the latest held month."""
+    if held_edition and edition < held_edition:
+        return (f"the file is the {release_label(edition)} but the "
+                f"{release_label(held_edition)} is already held")
+    if held and available and available[-1][:7] < held[-1][:7]:
+        return (f"the file's latest month is {available[-1][:7]} but "
+                f"{held[-1][:7]} is already held")
+    return None
+
+
 def cmd_load(args) -> int:
     spec = SPEC
     base = _profile(spec)
@@ -916,6 +945,16 @@ def cmd_load(args) -> int:
                 halt(f"file identity: the downloads page named edition "
                      f"{fetched}, the files are {edition}")
             available = sorted(by_period)
+            held_ed = (latest_held_edition(cur, spec.editions_table)
+                       if has_ed else None)
+            older = older_file_problem(edition, available, held, held_ed)
+            if older:
+                if args.allow_older_file:
+                    print(f"NOTE: --allow-older-file given; {older}")
+                else:
+                    halt(older + "; storing it would record an older "
+                         "edition as a revision. If this is deliberate, "
+                         "re-run with --allow-older-file")
             print(f"{release_label(edition)}: file periods {available[0]} .. "
                   f"{available[-1]} ({len(available)} from {min_period})")
             new_p, recheck, earlier = plan_window(
@@ -1023,6 +1062,9 @@ def main(argv=None) -> int:
                    "nothing is held)")
     p.add_argument("--recheck-n", type=int, metavar="N",
                    help="recheck only the latest N held months (default all)")
+    p.add_argument("--allow-older-file", action="store_true",
+                   help="load a file whose edition or latest month is "
+                   "earlier than what is held (default: halt)")
     p.add_argument("--expected-areas", type=int, metavar="N",
                    help="areas per month (default the held modal count)")
     pe.mode_parser(p)

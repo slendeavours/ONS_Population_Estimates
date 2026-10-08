@@ -87,9 +87,20 @@ From `ONS_Population_Estimates`:
 5. `python scripts/s15_hpi_editions.py status` should say OK, and
    `python scripts/s15_hpi_editions_verify.py` should pass all 20 gates.
 
-After a `refresh-latest --commit` that wrote rows, run `scripts/w1_run.py` and then
-`scripts/refresh_map.py` (the loaded-at follow-up in the S8b note applies here too). That was not done
-as part of this load.
+After a `refresh-latest --commit` that wrote rows, run `scripts/refresh_map.py`, and only if the latest
+month changed (the map shows the latest month only). `la_house_prices` is read by `export_map_data.py`,
+not by Workflow 1 (no W1 step file names it), so it does not make W1 stale; `refresh_map.py` re-runs W1 only
+if some other W1 input table was loaded after the latest complete run, and otherwise just exports. Do not
+run `scripts/w1_run.py` separately for S15. That was not done as part of this load, and the 3,540 rows
+written did not change the latest month.
+
+## Follow-ups
+
+- Commit-time enforcement of the preview stop conditions (short months and unresolved codes are refused;
+  NULL replacing a number, zero or negative prices, and large price revisions are only reported) is not
+  built. Rule 1.10 is acknowledged, not met: the check is the person reading the preview.
+- An older file is refused by `load` (its edition or latest month earlier than what is held) unless
+  `--allow-older-file` is given.
 
 ## Notes
 
