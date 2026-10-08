@@ -307,6 +307,11 @@ SPEC = core.EditionSpec(
 
 RELEASE_LABEL = "stat-xplore fetch {}"
 SOURCE_FILE = "Stat-Xplore table query PIP_Monthly_new by local authority"
+# The only database and measure this loader stores (s19_cache/discovery.json
+# and the old loader's selection, checked 2026-10-08); check_discovery halts
+# on anything else before a fetch.
+EXPECTED_DATABASE_ID = "str:database:PIP_Monthly_new"
+EXPECTED_MEASURE_ID = "str:count:PIP_Monthly_new:V_F_PIP_MONTHLY"
 
 
 def create_schema(cur, spec: core.EditionSpec = SPEC) -> None:
@@ -558,8 +563,33 @@ def get_discovery() -> dict:
         print(f"  English LAs: {len(discovery['la_english_members'])}")
         print("  (the checkpoint's latest month is not used; months are read "
               "from the live date valueset)")
-        return discovery
-    return discover_schema()
+    else:
+        discovery = discover_schema()
+    check_discovery(discovery)
+    return discovery
+
+
+def check_discovery(discovery: dict) -> None:
+    """Halt unless the discovered database and measure are the ones this
+    loader's editions record (EXPECTED_DATABASE_ID, EXPECTED_MEASURE_ID).
+    Discovery picks the database by its label, so a deleted cache plus a
+    new DWP 'cases with entitlement' database could otherwise fetch a
+    different source and store it as revisions of this one."""
+    db = (discovery.get("database") or {}).get("id")
+    measure = (discovery.get("measure") or {}).get("id")
+    if (db, measure) != (EXPECTED_DATABASE_ID, EXPECTED_MEASURE_ID):
+        halt(f"schema discovery chose database {db!r} and measure "
+             f"{measure!r}, expected {EXPECTED_DATABASE_ID!r} and "
+             f"{EXPECTED_MEASURE_ID!r}; nothing fetched. If DWP has moved "
+             "the series, review it and change the expected ids (and the "
+             "edition history) deliberately")
+
+
+def source_file_for(discovery: dict) -> str:
+    """The edition's source_file, built from the database actually queried
+    (for the expected database: SOURCE_FILE)."""
+    db = discovery["database"]["id"]
+    return f"Stat-Xplore table query {db.split(':')[-1]} by local authority"
 
 
 def get_available_months(discovery: dict) -> list:
@@ -610,8 +640,15 @@ def resolve_geography(discovery, conn):
         else:
             unresolvable.append(code)
 
-    if unresolvable:
-        sys.exit(f"HARD STOP: Unresolvable codes: {unresolvable}")
+    # Hard stop as in S8b: every code through load_checks.check_codes
+    # (UNEXPLAINED until explained in la_code_lookup), plus any code the
+    # resolution above could not place.
+    problems = load_checks.check_codes(cur, list(code_to_uri))
+    problems += [f"UNEXPLAINED {c}" for c in sorted(unresolvable)
+                 if f"UNEXPLAINED {c}" not in problems]
+    if problems:
+        halt(f"unresolvable Stat-Xplore geography codes: {problems}; explain "
+             "them in la_code_lookup before loading")
 
     resolved_lads = set(direct.keys()) | {v["target"] for v in historical.values()}
     coverage_count = len(resolved_lads)
@@ -728,9 +765,11 @@ def fetch_month(month: str, discovery: dict, geo: dict) -> list:
     if the month is not a yyyymm key or not in the date valueset, if any
     queried area is absent from either response, or if the result has fewer
     than EXPECTED_AREAS areas or a measure missing: never a short month.
-    Writes no files."""
+    Halts, before any API call, unless the discovery is the expected
+    database and measure (check_discovery). Writes no files."""
     if not isinstance(month, str) or not _MONTH_RE.fullmatch(month):
         raise ValueError(f"not a yyyymm month key: {month!r}")
+    check_discovery(discovery)   # before any API call
     if "date_members" not in discovery:
         get_available_months(discovery)
     ids = [d["id"] for d in discovery["date_members"]
@@ -872,7 +911,7 @@ def _live_into(cur, spec, month: str, records: list, edition: int) -> None:
 
 
 def apply_month(cur, spec, month: str, records: list, *,
-                fetched_on: date) -> str:
+                fetched_on: date, source_file: str = SOURCE_FILE) -> str:
     """Classify, then store: edition 1 (supersedes None) AND the month's
     live rows when new; the next edition superseding the tip when revised
     (live is left alone: a revision reaches live only through
@@ -883,7 +922,8 @@ def apply_month(cur, spec, month: str, records: list, *,
     halts so the caller's per-month savepoint rolls the whole month back.
     Never commits. A return to the content of an older, non-tip edition is
     a revision against the tip (RULES 2.1) and is stored as a new edition:
-    insert_edition(allow_revert=True)."""
+    insert_edition(allow_revert=True). source_file is what the edition
+    records; load passes source_file_for(discovery), the database queried."""
     kind = classify_month(cur, spec, month, records)
     if kind == "unchanged":
         return kind
@@ -895,7 +935,7 @@ def apply_month(cur, spec, month: str, records: list, *,
     ed = core.insert_edition(
         cur, spec, records, month,
         release_label=RELEASE_LABEL.format(fetched_on.isoformat()),
-        published_date=fetched_on, source_file=SOURCE_FILE,
+        published_date=fetched_on, source_file=source_file,
         source_sha256=sha, supersedes=tip, strict=True, allow_revert=True)
     bad = load_checks.check_coverage(cur, spec, month, ed, len(records))
     if core.chain_tip(cur, spec, month) != ed:
@@ -909,7 +949,8 @@ def apply_month(cur, spec, month: str, records: list, *,
 
 def load_months(cur, spec, months, fetch, fetched_on: date, commit: bool, *,
                 simulate: bool = False, against: str = "editions",
-                stats: dict | None = None) -> int:
+                stats: dict | None = None,
+                source_file: str = SOURCE_FILE) -> int:
     """Fetch, check and compare each month; store it when commit or
     simulate. Each month runs in its own savepoint: on commit the month is
     committed on its own; on simulate, and in preview (neither flag: compare
@@ -938,7 +979,8 @@ def load_months(cur, spec, months, fetch, fetched_on: date, commit: bool, *,
             kind = cmp["kind"]
             if write:
                 kind = apply_month(cur, spec, month, records,
-                                   fetched_on=fetched_on)
+                                   fetched_on=fetched_on,
+                                   source_file=source_file)
             if commit:
                 cur.execute("RELEASE SAVEPOINT s19_month")
                 in_sp = False
@@ -1334,7 +1376,8 @@ def cmd_load(args) -> int:
             rc = load_months(cur, SPEC, months,
                              lambda mo: fetch_month(mo, discovery, geo),
                              date.today(), args.commit, simulate=args.simulate,
-                             against=against, stats=stats)
+                             against=against, stats=stats,
+                             source_file=source_file_for(discovery))
             if args.commit:
                 if rc == 0:
                     # Stored something, or rechecked and found nothing new:

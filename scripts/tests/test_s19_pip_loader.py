@@ -495,8 +495,10 @@ class FetchMonth(unittest.TestCase):
 
     @staticmethod
     def disc():
-        return {"database": {"id": "str:database:PIP_Monthly_new"},
-                "measure": {"id": "str:count:PIP_Monthly_new:V"},
+        return {"database": {"id": m.EXPECTED_DATABASE_ID, "label": "PIP"},
+                "measure": {"id": m.EXPECTED_MEASURE_ID},
+                "la_english_members": [],
+                "date_valueset_id": "str:valueset:PIP:DATE2:C_PIP_DATE",
                 "geography_field_id": "GEO", "date_field_id": "DATE",
                 "daily_living_field_id": "DL", "enhanced_member_id": "DL:1",
                 "date_members": [{"id": "str:value:PIP:DATE2:C_PIP_DATE:202606"},
@@ -563,6 +565,138 @@ class FetchMonth(unittest.TestCase):
             self._run(N, month="202608")
 
 
+class DiscoveryGuard(unittest.TestCase):
+    """Only the expected database and measure are ever fetched; source_file
+    names the database queried. The client is patched and must not be
+    called."""
+
+    def _client(self):
+        return (mock.patch("statxplore_client.api_get"),
+                mock.patch("statxplore_client.api_get_all_pages"),
+                mock.patch("statxplore_client.api_post"))
+
+    def _cache(self, disc):
+        import json
+        import tempfile
+        d = tempfile.mkdtemp()
+        p = Path(d) / "discovery.json"
+        p.write_text(json.dumps(disc), encoding="utf-8")
+        return p
+
+    def test_other_database_halts_before_any_fetch(self):
+        other = dict(FetchMonth.disc(), database={
+            "id": "str:database:PIP_Other", "label": "PIP Cases with "
+            "Entitlement from 2030"})
+        other.pop("date_members")
+        bad_measure = dict(FetchMonth.disc(), measure={"id": "str:count:X"})
+        p1, p2, p3 = self._client()
+        with p1 as get, p2 as pages, p3 as post, quiet():
+            # from the cache
+            with mock.patch.object(m, "DISCOVERY_CACHE", self._cache(other)), \
+                    self.assertRaises(SystemExit) as ctx:
+                m.get_discovery()
+            self.assertIn("str:database:PIP_Other", str(ctx.exception.code))
+            self.assertIn("nothing fetched", str(ctx.exception.code))
+            # a fresh discovery (cache absent) is checked too
+            with mock.patch.object(m, "DISCOVERY_CACHE",
+                                   Path("no-such-dir/discovery.json")), \
+                    mock.patch.object(m, "discover_schema",
+                                      return_value=other), \
+                    self.assertRaises(SystemExit):
+                m.get_discovery()
+            # fetch_month refuses a wrong discovery handed to it directly
+            for bad in (other, bad_measure):
+                with self.assertRaises(SystemExit):
+                    m.fetch_month("202607", bad, FetchMonth.geo(N))
+            # and load stops before the date valueset is read
+            conn = mock.MagicMock()
+            with mock.patch.object(m, "_conn", return_value=conn), \
+                    mock.patch.object(m, "months_migrated", return_value=True), \
+                    mock.patch.object(m, "table_exists", return_value=True), \
+                    mock.patch.object(m, "held_months",
+                                      return_value=["202607"]), \
+                    mock.patch.object(m, "DISCOVERY_CACHE", self._cache(other)), \
+                    mock.patch.object(m, "load_months") as load, \
+                    self.assertRaises(SystemExit):
+                m.main(["load"])
+            load.assert_not_called()
+        get.assert_not_called()
+        pages.assert_not_called()
+        post.assert_not_called()
+
+    def test_expected_ids_pass(self):
+        good = FetchMonth.disc()
+        good.pop("date_members")
+        self.assertIsNone(m.check_discovery(good))
+        p1, p2, p3 = self._client()
+        with p1 as get, p2, p3, quiet(), \
+                mock.patch.object(m, "DISCOVERY_CACHE", self._cache(good)):
+            got = m.get_discovery()
+        self.assertEqual(got["database"]["id"], "str:database:PIP_Monthly_new")
+        self.assertEqual(m.EXPECTED_MEASURE_ID,
+                         "str:count:PIP_Monthly_new:V_F_PIP_MONTHLY")
+        get.assert_not_called()
+
+    def test_source_file_names_the_database_queried(self):
+        disc = FetchMonth.disc()
+        self.assertEqual(m.source_file_for(disc), m.SOURCE_FILE)
+        self.assertIn("PIP_Monthly_new", m.source_file_for(disc))
+        self.assertIn("PIP_Other", m.source_file_for(
+            {"database": {"id": "str:database:PIP_Other"}}))
+        # apply_month stores what it is given
+        conn = get_conn()
+        try:
+            with rolled_back(conn) as cur:
+                m.apply_month(cur, ZZ, "202604", recs("202604"),
+                              fetched_on=FETCHED, source_file="SF-X")
+                cur.execute("SELECT DISTINCT source_file "
+                            "FROM public.zz_s19_editions")
+                self.assertEqual(cur.fetchall(), [("SF-X",)])
+        finally:
+            conn.close()
+        # and load passes the one built from the discovery it queried
+        rc, conn, cur, calls = Commands()._load(["--months", "202607"])
+        self.assertEqual(calls["load"].call_args.kwargs["source_file"],
+                         m.source_file_for(FetchMonth.disc()))
+
+
+class Geography(unittest.TestCase):
+    """resolve_geography on a stub cursor (no database): unresolved codes
+    are a hard stop reported UNEXPLAINED, as in S8b; a code explained by
+    la_code_lookup resolves to its successor."""
+
+    def _run(self, codes, boundaries, lookup):
+        cur = mock.MagicMock()
+        # la_boundaries, la_code_lookup (resolution), then check_codes'
+        # lookup and boundaries queries
+        cur.fetchall.side_effect = [
+            [(b,) for b in boundaries], list(lookup),
+            [(o, n) for o, n in lookup if o in codes],
+            [(b,) for b in boundaries]]
+        conn = mock.MagicMock()
+        conn.cursor.return_value = cur
+        disc = {"la_english_members": [{"id": f"str:value:PIP:X:{c}"}
+                                       for c in codes]}
+        with quiet():
+            return m.resolve_geography(disc, conn)
+
+    def test_unresolved_code_halts_as_unexplained(self):
+        with self.assertRaises(SystemExit) as ctx:
+            self._run(["E06000001", "E99999999"], ["E06000001"], [])
+        msg = str(ctx.exception.code)
+        self.assertIn("UNEXPLAINED E99999999", msg)
+        self.assertIn("explain them in la_code_lookup", msg)
+        self.assertNotIn("E06000001", msg)
+
+    def test_lookup_code_resolves_to_successor(self):
+        geo = self._run(["E06000001", "E07000001"],
+                        ["E06000001", "E06000099"],
+                        [("E07000001", "E06000099")])
+        self.assertEqual(geo["lad_to_uris"]["E06000099"],
+                         ["str:value:PIP:X:E07000001"])
+        self.assertEqual(geo["coverage_count"], 2)
+
+
 class Commands(unittest.TestCase):
     """The CLI on a mock connection (no database, no network)."""
 
@@ -596,7 +730,8 @@ class Commands(unittest.TestCase):
                 mock.patch.object(m, "held_months", return_value=list(held)), \
                 mock.patch.object(m, "live_missing_months", return_value=[]), \
                 mock.patch.object(m, "get_discovery",
-                                  return_value={}) as calls["disc"], \
+                                  return_value=FetchMonth.disc()) \
+                as calls["disc"], \
                 mock.patch.object(m, "get_available_months",
                                   return_value=["202606", "202607"]) \
                 as calls["avail"], \
