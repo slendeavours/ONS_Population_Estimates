@@ -283,53 +283,84 @@ def real_gate(cur, n, name, fn):
     report(n, name, ok, detail)
 
 
-def _live_months(cur):
-    cur.execute(f"SELECT DISTINCT month FROM public.{LIVE} ORDER BY 1")
+def _live_months(cur, spec=SPEC):
+    cur.execute(f"SELECT DISTINCT month FROM public.{spec.live_table} "
+                "ORDER BY 1")
     return [r[0] for r in cur.fetchall()]
 
 
-def real_edition1_present(cur):
-    months = _live_months(cur)
-    cur.execute(f"SELECT DISTINCT month FROM public.{TABLE} WHERE edition = 1")
+def real_edition1_present(cur, spec=SPEC):
+    months = _live_months(cur, spec)
+    cur.execute(f"SELECT DISTINCT month FROM public.{spec.editions_table} "
+                "WHERE edition = 1")
     have = {r[0] for r in cur.fetchall()}
     missing = [x for x in months if x not in have]
     return (not missing and bool(months),
-            f"{len(months)} live months" if not missing else
-            f"no edition 1 for {missing[:6]} ({len(missing)} of {len(months)})")
+            ("no live months to check" if not months else
+             f"{len(months)} live months" if not missing else
+             f"no edition 1 for {missing[:6]} ({len(missing)} of "
+             f"{len(months)})"))
 
 
-def real_latest_equals_live(cur):
-    bad = load_checks.check_latest_equals_live(cur, SPEC)
+def real_latest_equals_live(cur, spec=SPEC):
+    months = _live_months(cur, spec)
+    bad = load_checks.check_latest_equals_live(cur, spec)
+    if not months:
+        return False, "no live months to check (an empty state is not a pass)"
     return not bad, "; ".join(bad[:4]) if bad else (
-        f"{len(_live_months(cur))} months match row for row")
+        f"{len(months)} months match row for row")
 
 
-def real_coverage(cur):
-    bad, n = [], 0
-    for month in _live_months(cur):
+def real_coverage(cur, spec=SPEC):
+    """Every edition of every month holds areas x types rows with distinct
+    keys (load_checks.check_coverage), and the chain tip has the expected
+    areas in each type."""
+    want_n = m.EXPECTED_AREAS * len(m.ACCOM_TYPES)
+    cur.execute(f"SELECT DISTINCT month FROM public.{spec.live_table} UNION "
+                f"SELECT DISTINCT month FROM public.{spec.editions_table} "
+                "ORDER BY 1")
+    months = [r[0] for r in cur.fetchall()]
+    bad, n_ed = [], 0
+    for month in months:
+        cur.execute(f"SELECT DISTINCT edition FROM public.{spec.editions_table}"
+                    " WHERE month = %s ORDER BY 1", (month,))
+        eds = [r[0] for r in cur.fetchall()]
+        if not eds:
+            bad.append(f"{month}: no editions")
+        for ed in eds:
+            n_ed += 1
+            bad += load_checks.check_coverage(cur, spec, month, ed, want_n)
+        if not eds:
+            continue
         try:
-            ed = core.chain_tip(cur, SPEC, month)
+            tip = core.chain_tip(cur, spec, month)
         except (LookupError, ValueError) as e:
             bad.append(str(e))
             continue
-        cur.execute(f"""SELECT accom_type, COUNT(*), COUNT(DISTINCT lad24cd)
-                        FROM public.{TABLE} WHERE month = %s AND edition = %s
-                        GROUP BY 1""", (month, ed))
-        got = {a: (r, d) for a, r, d in cur.fetchall()}
-        want = {t: (m.EXPECTED_AREAS, m.EXPECTED_AREAS) for t in m.ACCOM_TYPES}
-        if got != want:
-            bad.append(f"{month} ed{ed}: {got}")
-        n += 1
-    return not bad and n > 0, "; ".join(bad[:3]) if bad else (
-        f"{n} months x {m.EXPECTED_AREAS} areas x {len(m.ACCOM_TYPES)} types")
+        cur.execute(f"""SELECT accom_type, COUNT(DISTINCT lad24cd)
+                        FROM public.{spec.editions_table}
+                        WHERE month = %s AND edition = %s GROUP BY 1""",
+                    (month, tip))
+        got = dict(cur.fetchall())
+        if got != {t: m.EXPECTED_AREAS for t in m.ACCOM_TYPES}:
+            bad.append(f"{month} ed{tip}: areas per type {got}")
+    if not months or not n_ed:
+        return False, "no months or editions to check (an empty state is not a pass)"
+    return not bad, "; ".join(bad[:3]) if bad else (
+        f"{len(months)} months, {n_ed} editions, each {want_n} rows = "
+        f"{m.EXPECTED_AREAS} areas x {len(m.ACCOM_TYPES)} types")
 
 
-def real_no_negatives(cur):
-    cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} WHERE claimants < 0")
+def real_no_negatives(cur, spec=SPEC):
+    cur.execute(f"SELECT COUNT(*) FROM public.{spec.editions_table} "
+                "WHERE claimants < 0")
     ed = cur.fetchone()[0]
-    cur.execute(f"SELECT COUNT(*) FROM public.{LIVE} WHERE claimants < 0")
+    cur.execute(f"SELECT COUNT(*) FROM public.{spec.live_table} "
+                "WHERE claimants < 0")
     live = cur.fetchone()[0]
-    return ed == 0 and live == 0, f"negative cells: editions {ed}, live {live}"
+    return ed == 0 and live == 0, (f"negative cells: editions {ed}, live "
+                                   f"{live} (non-empty data is required by "
+                                   "gate 2)")
 
 
 def null_zero_counts(cur, table, where=""):
@@ -339,13 +370,16 @@ def null_zero_counts(cur, table, where=""):
     return cur.fetchone()
 
 
-def real_null_vs_zero(cur):
-    bad = load_checks.check_latest_equals_live(cur, SPEC)
+def real_null_vs_zero(cur, spec=SPEC):
+    months = _live_months(cur, spec)
+    if not months:
+        return False, "no live months to check (an empty state is not a pass)"
+    bad = load_checks.check_latest_equals_live(cur, spec)
     diffs = []
-    for month in _live_months(cur):
-        ed = core.chain_tip(cur, SPEC, month)
-        ln = null_zero_counts(cur, LIVE, f"WHERE month = '{month}'")
-        en = null_zero_counts(cur, TABLE,
+    for month in months:
+        ed = core.chain_tip(cur, spec, month)
+        ln = null_zero_counts(cur, spec.live_table, f"WHERE month = '{month}'")
+        en = null_zero_counts(cur, spec.editions_table,
                               f"WHERE month = '{month}' AND edition = {ed}")
         if ln != en:
             diffs.append(f"{month}: live (NULL, 0) {ln} vs ed{ed} {en}")
@@ -365,14 +399,16 @@ def zero_report(rows):
     return out
 
 
-def real_zero_listing(cur):
-    tips, new, errors = core.latest_map(cur, SPEC)
+def real_zero_listing(cur, spec=SPEC):
+    tips, new, errors = core.latest_map(cur, spec)
+    if not tips:
+        return False, "no months to list zeros for (an empty state is not a pass)"
     if errors or new:
         return False, f"cannot list zeros: new={new} errors={errors}"
     tot = {t: 0 for t in m.ACCOM_TYPES}
     months_with = {t: 0 for t in m.ACCOM_TYPES}
     for month, ed in tips.items():
-        cur.execute(f"""SELECT accom_type, COUNT(*) FROM public.{TABLE}
+        cur.execute(f"""SELECT accom_type, COUNT(*) FROM public.{spec.editions_table}
                         WHERE month = %s AND edition = %s AND claimants = 0
                         GROUP BY 1""", (month, ed))
         for t, n in cur.fetchall():
