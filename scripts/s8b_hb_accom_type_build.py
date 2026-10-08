@@ -16,19 +16,20 @@ import requests
 from pathlib import Path
 from dotenv import load_dotenv
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from statxplore_client import (  # noqa: E402
+    API_ROOT, get_api_key, headers, api_get, api_get_all_pages, api_post,
+)
+
 # Resolved relative to this file so no local path is baked into a public
 # repository. Repository root first, then its parent, where the shared .env sits.
 _HERE = Path(__file__).resolve().parent
 load_dotenv(_HERE.parent / ".env")
 load_dotenv(_HERE.parent.parent / ".env")
 
-API_ROOT = "https://stat-xplore.dwp.gov.uk/webapi/rest/v1"
-API_KEY = (
-    os.environ.get("StatXplore_API_Key", "")
-    or os.environ.get("STATXPLORE_API_KEY", "")
-).strip()
-if not API_KEY:
-    sys.exit("HARD STOP: StatXplore_API_Key missing from environment.")
+# Stat-Xplore API code lives in the shared client; keep the import-time
+# hard stop when the key is missing.
+get_api_key()
 
 DB_HOST = (os.getenv("PG_HOST") or "localhost").replace("postgres", "localhost")
 
@@ -48,8 +49,6 @@ DB_CFG = dict(
     user=_require_env("PG_USER"),
     password=_require_env("PG_PASSWORD"),
 )
-
-HEADERS = {"APIKey": API_KEY, "Content-Type": "application/json"}
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -88,73 +87,6 @@ GEO_FIELD_ID = "str:field:hb_new:V_F_HB_NEW:ADMIN_LA_CODE"
 GEO_VALUESET_ID = "str:valueset:hb_new:V_F_HB_NEW:ADMIN_LA_CODE:V_C_ADMIN_LA"
 DATE_FIELD_ID = "str:field:hb_new:F_HB_NEW_DATE:NEW_DATE_NAME"
 SATA_FIELD_ID = "str:field:hb_new:V_F_HB_NEW:SATA"
-
-_last_api_call = 0.0
-
-
-def _throttle():
-    global _last_api_call
-    elapsed = time.time() - _last_api_call
-    if elapsed < 1.0:
-        time.sleep(1.0 - elapsed)
-    _last_api_call = time.time()
-
-
-def api_get(path, retries=3):
-    url = path if path.startswith("http") else f"{API_ROOT}/{path.lstrip('/')}"
-    _throttle()
-    for attempt in range(retries):
-        try:
-            r = requests.get(url, headers=HEADERS, timeout=120)
-            if r.status_code == 503 and attempt < retries - 1:
-                wait = 30 * (attempt + 1)
-                print(f"  503 maintenance, retrying in {wait}s...")
-                time.sleep(wait)
-                continue
-            r.raise_for_status()
-            return json.loads(r.text), r.headers
-        except requests.RequestException as e:
-            if attempt < retries - 1:
-                wait = 30 * (attempt + 1)
-                print(f"  Error: {e}, retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
-
-
-def api_get_all_pages(path):
-    all_children = []
-    url = path if path.startswith("http") else f"{API_ROOT}/{path.lstrip('/')}"
-    while url:
-        data, headers = api_get(url)
-        all_children.extend(data.get("children", []))
-        link = headers.get("Link", "")
-        m = re.search(r'<([^>]+)>;\s*rel="next"', link)
-        url = m.group(1) if m else None
-    return all_children
-
-
-def api_post(path, body, retries=5):
-    url = f"{API_ROOT}/{path.lstrip('/')}"
-    _throttle()
-    for attempt in range(retries):
-        try:
-            r = requests.post(url, headers=HEADERS, json=body, timeout=120)
-            if r.status_code in (500, 502, 503, 504) and attempt < retries - 1:
-                wait = 30 * (attempt + 1)
-                print(f"  {r.status_code} on POST, retrying in {wait}s...")
-                time.sleep(wait)
-                continue
-            r.raise_for_status()
-            return r.json()
-        except (requests.RequestException, requests.exceptions.ReadTimeout) as e:
-            if attempt < retries - 1:
-                wait = 30 * (attempt + 1)
-                print(f"  Error on POST: {e}, retrying in {wait}s...")
-                time.sleep(wait)
-            else:
-                raise
-
 
 def get_english_la_members():
     """Fetch English LA members from the admin geography valueset."""
