@@ -190,11 +190,13 @@ Raw Sources (CSV / API)
         │
         ▼
   scripts/export_map_data.py
-  (via scripts/refresh_map.py; stops on a
-  missing layer period or a column outside
-  the 14 expected, and runs the column-
-  contract check; refresh_map prints a
-  warning if the feature count is not 296)
+  (via scripts/refresh_map.py; runs the column-
+  contract check first; stops (non-zero exit,
+  after the local files are written) if a layer
+  period is missing or one of the 14 expected
+  columns is missing from the output;
+  refresh_map.py warns if the exported area
+  count is not 296)
         │
         ▼
   Review, then python scripts/push.py
