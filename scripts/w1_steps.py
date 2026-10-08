@@ -44,5 +44,7 @@ def normalised_sha256(sql: str) -> str:
 
 
 def load_manifest() -> dict:
+    """filename -> normalised sha256. Each hash sits on its own
+    `"sha256": "..."` line, the one shape the credential scan allows."""
     with open(W1_SQL_DIR / MANIFEST_NAME, encoding="utf-8") as f:
-        return json.load(f)
+        return {name: entry["sha256"] for name, entry in json.load(f).items()}
