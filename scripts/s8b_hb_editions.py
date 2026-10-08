@@ -73,6 +73,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import editions_core as core  # noqa: E402
 import load_checks  # noqa: E402
 from editions_core import halt  # noqa: E402
+from statxplore_months import (  # noqa: E402,F401
+    MONTH_RE as _MONTH_RE, available_months, month_from_member, parse_cube,
+    plan_months)
 
 ACCOM_TYPES = ("SA", "TA", "OTHER", "UNKNOWN")
 
@@ -83,31 +86,6 @@ ACCOM_MEMBER_IDS = {
     "OTHER": "str:value:hb_new:V_F_HB_NEW:SATA:C_SATA:9",
     "UNKNOWN": "str:value:hb_new:V_F_HB_NEW:SATA:C_SATA:99",
 }
-
-_MONTH_RE = re.compile(r"(19|20)[0-9]{2}(0[1-9]|1[0-2])")
-
-
-def parse_cube(resp: dict) -> dict:
-    """Map source geography code to value (int or None) from a cube response."""
-    cubes = resp["cubes"]
-    values = cubes[list(cubes.keys())[0]]["values"]
-    items = resp["fields"][0]["items"]
-    if len(values) != len(items):
-        raise ValueError(
-            f"Cube has {len(values)} values but {len(items)} geography items")
-    out = {}
-    for i, item in enumerate(items):
-        code = item["uris"][0].split(":")[-1]
-        v = values[i]
-        while isinstance(v, list):
-            if not v:
-                raise ValueError(f"Empty value list for geography {code}")
-            v = v[0]
-        if v is not None and (isinstance(v, bool) or not isinstance(v, int)):
-            raise ValueError(
-                f"Non-integer value {v!r} for geography {code}; refusing to coerce")
-        out[code] = v
-    return out
 
 
 def build_records(raw, lad_to_uris, month, accom_type):
@@ -122,41 +100,6 @@ def build_records(raw, lad_to_uris, month, accom_type):
         records.append({"lad24cd": lad, "month": month,
                         "accom_type": accom_type, "claimants": total})
     return records
-
-
-def month_from_member(member_id):
-    """Last colon segment as yyyymm (six digits), else None."""
-    last = str(member_id).split(":")[-1]
-    return last if _MONTH_RE.fullmatch(last) else None
-
-
-def available_months(date_members):
-    months = {month_from_member(d.get("id", "")) for d in date_members}
-    months.discard(None)
-    return sorted(months)
-
-
-def plan_months(held, available, recheck_n=6, recheck_all=False):
-    """Return (new, recheck), both ascending and never overlapping.
-
-    new: every available month that is not held and is later than the
-    EARLIEST held month (gaps inside the held range are loaded; history before
-    the first held month is never auto-loaded). If nothing is held, new is
-    empty: the loader must require an explicit --months list.
-    recheck: the latest recheck_n held months that are still available (all of
-    them when recheck_all).
-    """
-    avail = sorted(set(available))
-    earliest = min(held) if held else None
-    new = [a for a in avail if earliest is not None and a > earliest and a not in held]
-    still = [a for a in avail if a in held]
-    if recheck_all:
-        recheck = still
-    elif recheck_n > 0:
-        recheck = still[-recheck_n:]
-    else:
-        recheck = []
-    return new, recheck
 
 
 def content_sha256(records):
