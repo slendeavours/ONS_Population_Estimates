@@ -1,7 +1,8 @@
 """Tests for refresh_map: staleness reporting and the default-mode chain.
 
-No real table is read or written. Cursors are stubs; w1_run.main,
-export_map_data.main and subprocess.run are patched.
+No real table is read or written. Cursors are stubs; w1_run.main (or, for
+the refusal test, every database call inside it), export_map_data.main and
+subprocess.run are patched.
 """
 import contextlib
 import datetime
@@ -15,6 +16,8 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import psycopg2.errors  # noqa: E402
+
 import refresh_map  # noqa: E402
 
 UTC = datetime.timezone.utc
@@ -189,9 +192,60 @@ class Modes(unittest.TestCase):
         self.assertEqual(calls[0][1], [])
 
     def test_w1_refusal_stops_non_zero(self):
-        rc, calls, out = self._default(stale=True, w1_rc=1)
+        # Modelled as it really happens: the real w1_run.main runs, step 03
+        # raises the one-run-per-day RaiseException inside run_steps, main
+        # catches it and returns 1. Nothing reaches a database: the contract
+        # check, the snapshot, the connection and the sequence step are
+        # patched.
+        refusal = psycopg2.errors.RaiseException(
+            "A completed run already exists for today")
+        cur = StubCur(loaded={"la_population": RUN_DATE
+                              + datetime.timedelta(hours=1)})
+        conn = mock.Mock()
+        conn.cursor.return_value = cur
+        ex = mock.Mock()
+        out, err = io.StringIO(), io.StringIO()
+        w1 = refresh_map.w1_run
+        with mock.patch.object(refresh_map, "get_readonly_conn",
+                               return_value=conn), \
+             patch_inputs(), \
+             mock.patch.object(w1.w1_contract_check, "check",
+                               return_value=([], [], [])), \
+             mock.patch.object(w1, "_contract_snapshot", return_value=None), \
+             mock.patch.object(w1, "get_conn"), \
+             mock.patch.object(w1, "align_run_sequence"), \
+             mock.patch.object(w1, "run_steps", side_effect=refusal), \
+             mock.patch.object(refresh_map.export_map_data, "main", ex), \
+             redirect_stdout(out), redirect_stderr(err):
+            rc = refresh_map.main([])
         self.assertEqual(rc, 1)
-        self.assertEqual([c[0] for c in calls], ["w1"])
+        ex.assert_not_called()
+        self.assertIn("A completed run already exists for today",
+                      err.getvalue())
+        self.assertIn("W1 did not run; stopping before the export.",
+                      err.getvalue())
+
+    def test_export_stop_fails_non_zero(self):
+        def stop():
+            sys.exit("HARD STOP: the export failed 1 check(s); "
+                     "no file was written.")
+        cur = StubCur()
+        conn = mock.Mock()
+        conn.cursor.return_value = cur
+        summary = mock.Mock(return_value=[])
+        err = io.StringIO()
+        with mock.patch.object(refresh_map, "get_readonly_conn",
+                               return_value=conn), \
+             patch_inputs(), \
+             mock.patch.object(refresh_map.export_map_data, "main", stop), \
+             mock.patch.object(refresh_map, "export_summary", summary), \
+             redirect_stdout(io.StringIO()), redirect_stderr(err):
+            rc = refresh_map.main([])
+        self.assertEqual(rc, 1)
+        summary.assert_not_called()
+        self.assertIn("HARD STOP", err.getvalue())
+        self.assertIn("The export stopped; no map file was written",
+                      err.getvalue())
 
 
 class Summary(unittest.TestCase):

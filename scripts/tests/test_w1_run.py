@@ -10,9 +10,10 @@ in for staging_runs) and zz_w1_out, created inside that transaction.
 
 The remaining tests use a mock connection and touch no database.
 """
+import io
 import sys
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -89,6 +90,9 @@ class SavepointConn:
         self.rollbacks += 1
         with self._conn.cursor() as cur:
             cur.execute("ROLLBACK TO SAVEPOINT w1_test")
+
+    def close(self):
+        """main() closes its connection; the real one stays open here."""
 
 
 @contextmanager
@@ -175,6 +179,38 @@ class RunStepsDB(unittest.TestCase):
                 w1_run.run_steps(wrapped, fake_steps())
             self.assertIn("A completed run already exists for today",
                           str(cm.exception))
+            self.assertEqual(snapshot(cur), before)
+            self.assertEqual((wrapped.commits, wrapped.rollbacks), (0, 1))
+
+    def test_main_reports_a_raising_step_and_returns_non_zero(self):
+        # main() end to end, with the eight real step names but the throwaway
+        # tables: the real Create Run refuses a second run today and raises.
+        # The contract check (which would commit a contract refresh) and the
+        # sequence alignment (setval is not transactional) are patched out.
+        real_run_steps = w1_run.run_steps
+        with rolled_back(self.conn, seed_completed_run_today=True) as (
+                cur, wrapped):
+            before = snapshot(cur)
+            err = io.StringIO()
+            with mock.patch.object(w1_run.w1_contract_check, "check",
+                                   return_value=([], [], [])), \
+                    mock.patch.object(w1_run, "_contract_snapshot",
+                                      return_value=None), \
+                    mock.patch.object(w1_run, "get_conn",
+                                      return_value=wrapped), \
+                    mock.patch.object(w1_run, "align_run_sequence"), \
+                    mock.patch.object(
+                        w1_run, "run_steps",
+                        lambda conn, steps, **kw: real_run_steps(
+                            conn, fake_steps(), **kw)), \
+                    redirect_stdout(io.StringIO()), redirect_stderr(err):
+                rc = w1_run.main([])
+            self.assertEqual(rc, 1)
+            msg = err.getvalue()
+            self.assertIn("HALT: W1 stopped in the database: A completed run "
+                          "already exists for today", msg)
+            self.assertIn("Nothing was written except the contract refresh",
+                          msg)
             self.assertEqual(snapshot(cur), before)
             self.assertEqual((wrapped.commits, wrapped.rollbacks), (0, 1))
 

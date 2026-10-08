@@ -18,6 +18,9 @@ Before the run, as w1_rerun.py did:
     staging_la_signals (committed on its own; skipped under --simulate).
 
 The one-completed-run-per-day rule is enforced by the Create Run step itself.
+A database error from any step (that refusal included) is reported as a HALT
+line with the database's own message, and main() returns 1; the run
+transaction has already been rolled back.
 
 Usage:
     python scripts/w1_run.py --dry-run    guards and contract check only
@@ -28,6 +31,8 @@ import argparse
 import datetime
 import sys
 from pathlib import Path
+
+import psycopg2
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _db import get_conn, get_readonly_conn  # noqa: E402
@@ -282,6 +287,16 @@ def main(argv=None):
             align_run_sequence(conn, [])
         run_id = run_steps(conn, steps, simulate=args.simulate,
                            on_complete=_report_labels)
+    except psycopg2.Error as e:
+        diag = getattr(e, "diag", None)
+        msg = (getattr(diag, "message_primary", None) or str(e)).strip()
+        print(f"HALT: W1 stopped in the database: {msg}", file=sys.stderr)
+        print("The run transaction was rolled back. Nothing was written "
+              "except the contract refresh (committed before the run), any "
+              "run-id sequence alignment logged above, and possibly one "
+              "consumed run id (sequences are not rolled back).",
+              file=sys.stderr)
+        return 1
     finally:
         conn.close()
     print(run_id)

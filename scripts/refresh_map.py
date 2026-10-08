@@ -13,8 +13,11 @@ Default mode:
   2. Otherwise W1 runs first (w1_run.main). If w1_run refuses (for example a
      second run on the same day) its message is passed on and this stops with
      a non-zero exit.
-  3. export_map_data.main() writes data/signals and data/boundaries (local
-     files only).
+  3. export_map_data.main() checks the export (296 features; lad24cd, la_name
+     and geometry present on each; lad24cd unique; Polygon or MultiPolygon
+     only; one signals row per feature) and only then writes data/signals and
+     data/boundaries (local files only). If any check fails it writes nothing
+     and this stops with a non-zero exit.
   4. A short summary is printed. Nothing is committed and nothing is pushed.
      The push is a separate, approved step: python scripts/push.py
 
@@ -202,10 +205,8 @@ def changed_cells(old, new):
 def export_summary():
     latest = json.loads(LATEST_JSON.read_text(encoding="utf-8"))
     new = json.loads(SIGNALS_JSON.read_text(encoding="utf-8"))["signals"]
-    lines = [f"Run exported: {latest['run_id']}",
-             f"Areas: {len(new)} (296 expected)"]
-    if len(new) != 296:
-        lines.append("WARNING: area count is not 296")
+    # The 296-area count is a hard stop inside the export, so not repeated.
+    lines = [f"Run exported: {latest['run_id']}", f"Areas: {len(new)}"]
     r = subprocess.run(["git", "show", f"HEAD:{SIGNALS_REL}"], cwd=REPO,
                        capture_output=True, text=True, encoding="utf-8")
     if r.returncode != 0:
@@ -282,7 +283,16 @@ def main(argv=None):
                   file=sys.stderr)
             return rc
 
-    export_map_data.main()
+    try:
+        export_map_data.main()
+    except SystemExit as e:
+        if e.code in (None, 0):
+            raise
+        if isinstance(e.code, str):
+            print(e.code, file=sys.stderr)
+        print("The export stopped; no map file was written. Nothing pushed.",
+              file=sys.stderr)
+        return 1
     print()
     for line in export_summary():
         print(line)
