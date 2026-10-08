@@ -1,7 +1,7 @@
 """W1 node 5 <-> staging_la_signals column contract check.
 
 The defect this exists to prevent: the S9 and S19 integrations were applied
-to the database by direct SQL and never written back to the stored n8n node,
+to the database by direct SQL and never written back to the stored node,
 so the node was two builds behind the table for a month. The next genuine
 workflow run would have produced six null columns and nobody would have been
 told.
@@ -28,20 +28,17 @@ pre-flight node compares against. That node runs inside W1 itself, because
 W1 has been run without exporting and the export-time check alone would let
 a divergence sit undetected until the next publish.
 
-Read-only against the workflow. Writes only the contract table.
+Reads the LA Signals step from the repo (sql/w1/05_la_signals.sql, via
+w1_steps). Writes only the contract table.
 """
-import datetime
-import hashlib
 import re
 import sys
 from pathlib import Path
 
-import psycopg2
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _db import ENV, get_conn  # noqa: E402
+from _db import get_conn  # noqa: E402
+import w1_steps  # noqa: E402
 
-W1_ID = "IrrglXLYcphSg5bC"
 NODE5_NAME = "LA Signals"
 TABLE = "staging_la_signals"
 KEY_COLUMNS = {"run_id", "lad24cd"}
@@ -59,16 +56,17 @@ ALTER TABLE staging_signal_contract
     ADD COLUMN IF NOT EXISTS node_query_sha256 TEXT;
 
 COMMENT ON TABLE staging_signal_contract IS
- 'The columns W1 node 5 writes, as parsed from the stored workflow. '
+ 'The columns W1 node 5 writes, as parsed from sql/w1/05_la_signals.sql. '
  'Refreshed by scripts/w1_contract_check.py whenever node 5 changes. The '
  'W1 pre-flight node compares staging_la_signals against this and aborts '
  'the run on divergence.';
 """
 
 
-def n8n_conn():
-    return psycopg2.connect(host="localhost", port=5432, dbname="n8ndb",
-                            user=ENV["PG_USER"], password=ENV["PG_PASSWORD"])
+def node5_sql():
+    """The LA Signals SQL, read from the repo."""
+    step = next(s for s in w1_steps.STEPS if s.name == NODE5_NAME)
+    return w1_steps.read_step(step)
 
 
 # ── SQL parsing ─────────────────────────────────────────────────────────────
@@ -168,19 +166,8 @@ def alias_of(select_item):
 
 def check(refresh_contract=True):
     """Returns (errors, warnings, contract_rows)."""
-    nc = n8n_conn()
-    ncur = nc.cursor()
-    ncur.execute("SELECT nodes FROM workflow_entity WHERE id = %s", (W1_ID,))
-    row = ncur.fetchone()
-    if not row:
-        raise ValueError(f"workflow {W1_ID} not found in n8ndb")
-    node = next((n for n in row[0] if n["name"] == NODE5_NAME), None)
-    nc.close()
-    if node is None:
-        raise ValueError(f"node '{NODE5_NAME}' not found in Workflow 1")
-
-    node_sql = node["parameters"]["query"]
-    node_sha = hashlib.sha256(node_sql.encode("utf-8")).hexdigest()
+    node_sql = node5_sql()
+    node_sha = w1_steps.normalised_sha256(node_sql)
     insert_cols, select_items, set_cols = parse_node5(node_sql)
 
     conn = get_conn()
