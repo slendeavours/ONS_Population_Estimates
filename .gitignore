@@ -61,6 +61,8 @@ backups/
 # version control. The rule above exists to stop dumps, not definitions.
 # Nothing else is un-ignored, and a dump must never be written to sql/.
 !sql/*.sql
+# W1 step definitions (sql/w1) are source too, not dumps.
+!sql/w1/*.sql
 
 # Estate-tracing name lists (personal data of deceased individuals) - never public
 UnclaimedEstatesList.csv

@@ -2,6 +2,8 @@
 
 Reads only the repo's own SQL files; no database is touched.
 """
+import shutil
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -42,6 +44,15 @@ class W1StepsTest(unittest.TestCase):
         for s in w1_steps.STEPS:
             self.assertEqual("$1" in w1_steps.read_step(s), s.uses_run_id,
                              f"uses_run_id disagrees with {s.filename}")
+
+    def test_sql_files_are_not_git_ignored(self):
+        if shutil.which("git") is None:
+            self.skipTest("git is not available, cannot check ignore rules")
+        for s in w1_steps.STEPS:
+            rc = subprocess.run(
+                ["git", "check-ignore", "-q", str(w1_steps.W1_SQL_DIR / s.filename)],
+                cwd=w1_steps.W1_SQL_DIR).returncode
+            self.assertEqual(rc, 1, f"{s.filename} is git-ignored (rc={rc})")
 
     def test_normalised_sha256_ignores_whitespace(self):
         self.assertEqual(w1_steps.normalised_sha256("SELECT  1\n,\t2 "),
