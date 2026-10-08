@@ -118,7 +118,7 @@ See `docs/decisions/2026-08-20-s3b-tenure-rebasing-error.md`,
 | Where | What it catches | Fires on |
 |---|---|---|
 | `scripts/w1_run.py`, before any run id is issued | a table column the step does not write, or a step column absent from the table, compared against `staging_signal_contract` | **every W1 run** |
-| `scripts/w1_contract_check.py` | the same, plus positional misalignment between the INSERT column list and the SELECT list, plus columns with no `EXCLUDED` refresh. Reads the SQL in `sql/w1/` and refreshes the contract; the stored `node_query_sha256` is the normalised hash of that repo file | the scripted path, called by `scripts/s22_w1_wire.py` before any run |
+| `scripts/w1_contract_check.py` | the same, plus positional misalignment between the INSERT column list and the SELECT list, plus columns with no `EXCLUDED` refresh. Reads the SQL in `sql/w1/` and refreshes the contract; the stored `node_query_sha256` is the normalised hash of that repo file | called by `scripts/w1_run.py` before every run, and by `scripts/export_map_data.py` as a backstop; it can also be run alone |
 | `scripts/export_map_data.py` | backstop copy | every export |
 
 The check runs inside the runner rather than only in the export path because W1 has been run without exporting; an export-time check alone would let a divergence sit undetected until the next publish. It fails in **both** directions. A column in the table and absent from the SQL is the failure that actually happened; SQL naming a column that exists and populating it from the wrong expression would not throw on its own, which is what the positional check is for. Verified against a deliberately corrupted copy of the node: swapping two same-type expressions was reported as "position 37: inserts into `ctb_second_homes` but expression resolves to `ctb_empty_homes_premium`".
@@ -129,9 +129,9 @@ No path is uncovered now that the SQL is read from the repository: the contract 
 
 **Where a release declares its boundary vintage, that is the predictor — not the publication date.** Otherwise, assume any source published **after 1 April 2025** uses the recoded Barnsley and Sheffield codes E08000038 and E08000039, because `la_boundaries` is May 2024 and carries E08000016 and E08000019. This pair has appeared in S9b, S18, S21 and S22 and is predictable, not surprising. But the S3 mid-2025 refresh on 2026-08-13 published on **2023 local authority boundaries** despite postdating the recode by sixteen months, and so used the *old* codes. Verify against the file in either direction; do not infer from the date alone when a vintage is stated. Resolution is `change_type = 'recode'` only: a recode renumbers the same area and resolves, while `new_unitary` and `merger` are abolitions and must stay unmapped, because folding predecessor districts onto a successor makes every downstream sum count that successor once per predecessor.
 
-**Standing rule — derived rates live in views, and `staging_la_signals` is the one documented exception.** Source tables never store a rate. `staging_la_signals` is a point-in-time snapshot, so it does carry derived columns, but every one of them must take its definition from a view rather than from an expression written inline in node 5. Otherwise the definition exists only in the node and cannot be audited or reused. `ctb_lte_rate_pct` comes from `v_la_empty_homes_rates`; `pip_rate_per_1000` was inline in node 5 until 2026-08-13 and now comes from `v_la_pip_rates`.
+**Standing rule — derived rates live in views, and `staging_la_signals` is the one documented exception.** Source tables never store a rate. `staging_la_signals` is a point-in-time snapshot, so it does carry derived columns, but every one of them must take its definition from a view rather than from an expression written inline in step 05 (`sql/w1/05_la_signals.sql`, formerly node 5). Otherwise the definition exists only in that step and cannot be audited or reused. `ctb_lte_rate_pct` comes from `v_la_empty_homes_rates`; `pip_rate_per_1000` was inline in that step until 2026-08-13 and now comes from `v_la_pip_rates`.
 
-`v_la_pip_rates` also exposes `population_reference_year` next to the rate, because the numerator refreshes monthly and the denominator annually. A rate whose inputs refresh on different cadences can go stale against its own denominator without any row-level check noticing, so the denominator's vintage is published as data rather than left to documentation. The remaining inline derivations in node 5 — `ta_yoy_pct`, `ta_trend_label`, `data_quality` — are per-row transformations of columns already in the same SELECT, not cross-source rates, and are left as they are.
+`v_la_pip_rates` also exposes `population_reference_year` next to the rate, because the numerator refreshes monthly and the denominator annually. A rate whose inputs refresh on different cadences can go stale against its own denominator without any row-level check noticing, so the denominator's vintage is published as data rather than left to documentation. The remaining inline derivations in step 05 — `ta_yoy_pct`, `ta_trend_label`, `data_quality` — are per-row transformations of columns already in the same SELECT, not cross-source rates, and are left as they are.
 
 **Closed 2026-08-13 — the S3 refresh landed.** `pip_rate_per_1000` was Apr-26 claimants over a mid-2024 base; it is now over **mid-2025**. See the S3 section below. The three-layer HSS package (S11 supply, S19 PIP demand, S9 flow — 296/296 on all three at run 12) no longer carries a two-year denominator lag.
 
@@ -190,8 +190,11 @@ Raw Sources (CSV / API)
         │
         ▼
   scripts/export_map_data.py
-  (via scripts/refresh_map.py; validates
-  296 features, no NULLs, RFC 7946)
+  (via scripts/refresh_map.py; stops on a
+  missing layer period or a column outside
+  the 14 expected, and runs the column-
+  contract check; refresh_map prints a
+  warning if the feature count is not 296)
         │
         ▼
   Review, then python scripts/push.py
@@ -320,7 +323,7 @@ This section previously read "December 2024 ... BUC". Both were wrong. Two indep
 
 | Trigger | Action |
 |---|---|
-| A W1 input is loaded after the latest complete run | `python scripts/refresh_map.py` runs W1, then `scripts/export_map_data.py` exports GeoJSON + signals JSON, then stops (`--check` only reports staleness) |
+| A W1 input is loaded after the latest complete run, or no complete run exists | `python scripts/refresh_map.py` runs W1, then `scripts/export_map_data.py` exports GeoJSON + signals JSON, then stops (`--check` only reports staleness) |
 | Export reviewed and approved | `python scripts/push.py` pushes to GitHub (scan, verify, push); a separate approved step |
 | GitHub receives push | Raw URLs update immediately |
 | Browser opens viewer | Fetches latest GeoJSON from GitHub raw URL |

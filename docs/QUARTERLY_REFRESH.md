@@ -285,7 +285,7 @@ python scripts/refresh_map.py
 ```
 
 It runs Workflow 1 only if a W1 input was loaded after the latest complete
-run, then exports the map data, then stops with "Not pushed. Review, then:
+run (or no complete run exists), then exports the map data, then stops with "Not pushed. Review, then:
 python scripts/push.py". `python scripts/refresh_map.py --check` reports
 whether the map at git HEAD is behind the database, without changing
 anything. Review the export; the push is a separate approved step.
