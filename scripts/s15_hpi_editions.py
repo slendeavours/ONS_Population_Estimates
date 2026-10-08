@@ -23,9 +23,16 @@ BASE_URL = "https://www.gov.uk"
 # Column scales: prices numeric(12,2), annual change numeric(6,2).
 _PRICE_Q = Decimal("0.01")
 _CHANGE_Q = Decimal("0.01")
-VALUE_COLUMNS = ("avg_price_all", "avg_price_all_sa", "annual_change_pct",
-                 "avg_price_detached", "avg_price_semi",
-                 "avg_price_terraced", "avg_price_flat")
+COLUMN_QUANTA = {
+    "avg_price_all": _PRICE_Q,
+    "avg_price_all_sa": _PRICE_Q,
+    "annual_change_pct": _CHANGE_Q,
+    "avg_price_detached": _PRICE_Q,
+    "avg_price_semi": _PRICE_Q,
+    "avg_price_terraced": _PRICE_Q,
+    "avg_price_flat": _PRICE_Q,
+}
+VALUE_COLUMNS = tuple(COLUMN_QUANTA)
 
 EDITION_RE = re.compile(r"^Average-prices-(?:Property-Type-)?(\d{4}-\d{2})\.csv$")
 
@@ -73,8 +80,15 @@ def build_records(avg_rows, pt_rows, *, valid_lads, code_lookup,
     """Join the two CSVs on (Area_Code, Date), keep English areas from
     min_period on, reconcile codes. Returns (records_by_period, unresolved,
     no_property_type_count)."""
-    pt_lookup = {(r["Area_Code"], r["Date"]): r for r in pt_rows}
+    pt_lookup = {}
+    for r in pt_rows:
+        key = (r["Area_Code"], r["Date"])
+        if key in pt_lookup:
+            raise ValueError("property-type file repeats (Area_Code, Date) "
+                             f"{key!r}; refusing to choose a row")
+        pt_lookup[key] = r
     by_period = {}
+    seen = {}  # (lad24cd, iso period) -> source Area_Code
     unresolved = {}
     no_pt = 0
     for r in avg_rows:
@@ -93,6 +107,12 @@ def build_records(avg_rows, pt_rows, *, valid_lads, code_lookup,
         if pt is None:
             no_pt += 1
         iso = period.isoformat()
+        if (lad, iso) in seen:
+            raise ValueError(
+                f"duplicate record for lad24cd {lad} in period {iso}: source "
+                f"codes {seen[(lad, iso)]} and {area_code}; refusing to "
+                "choose a winner")
+        seen[(lad, iso)] = area_code
         by_period.setdefault(iso, []).append({
             "lad24cd": lad,
             "period": iso,
@@ -140,7 +160,7 @@ def _cell(r, col):
     if isinstance(v, bool) or not isinstance(v, Decimal):
         raise ValueError(f"{col} must be a Decimal or None, got {v!r} for "
                          f"{r['lad24cd']}")
-    return format(v.quantize(_PRICE_Q, rounding=ROUND_HALF_UP), "f")
+    return format(v.quantize(COLUMN_QUANTA[col], rounding=ROUND_HALF_UP), "f")
 
 
 def content_sha256(records) -> str:

@@ -152,6 +152,49 @@ class Build(unittest.TestCase):
             self.assertIsInstance(r[c], Decimal)
             self.assertEqual(r[c].as_tuple().exponent, -2)
 
+    def test_recoded_duplicates_in_same_period_raise(self):
+        a = [avg("E08000016", "2022-02-01"), avg("E08000038", "2022-02-01")]
+        with self.assertRaises(ValueError) as cm:
+            build(a, [])
+        msg = str(cm.exception)
+        for part in ("E08000016", "E08000038", "2022-02-01"):
+            self.assertIn(part, msg)
+        a = [avg("E08000019", "2022-02-01"), avg("E08000039", "2022-02-01")]
+        with self.assertRaises(ValueError):
+            build(a, [])
+
+    def test_same_codes_in_different_months_are_fine(self):
+        a = [avg("E08000016", "2022-02-01"), avg("E08000038", "2022-03-01")]
+        recs, _, _ = build(a, [])
+        self.assertEqual(len(recs["2022-02-01"]), 1)
+        self.assertEqual(len(recs["2022-03-01"]), 1)
+
+    def test_repeated_average_price_row_raises(self):
+        a = [avg("E06000001", "2022-02-01"), avg("E06000001", "2022-02-01")]
+        with self.assertRaises(ValueError) as cm:
+            build(a, [])
+        self.assertIn("E06000001", str(cm.exception))
+
+    def test_repeated_property_type_row_raises(self):
+        a = [avg("E06000001", "2022-02-01")]
+        p = [pt("E06000001", "2022-02-01"), pt("E06000001", "2022-02-01", det="1")]
+        with self.assertRaises(ValueError) as cm:
+            build(a, p)
+        self.assertIn("E06000001", str(cm.exception))
+        self.assertIn("2022-02-01", str(cm.exception))
+
+    def test_rounding_half_up_on_float_repr(self):
+        a = [avg("E06000001", "2022-02-01", price="0.285", sa="1234.565",
+                 chg="-0.285")]
+        r = build(a, [])[0]["2022-02-01"][0]
+        self.assertEqual(r["avg_price_all"], Decimal("0.29"))
+        self.assertEqual(r["avg_price_all_sa"], Decimal("1234.57"))
+        self.assertEqual(r["annual_change_pct"], Decimal("-0.29"))
+
+    def test_column_quanta_cover_all_value_columns(self):
+        self.assertEqual(set(m.COLUMN_QUANTA), set(m.VALUE_COLUMNS))
+        self.assertEqual(len(m.VALUE_COLUMNS), 7)
+
     def test_file_period_range(self):
         recs, _, _ = build([avg("E06000001", "2022-03-01"),
                             avg("E06000001", "2022-01-01")], [])
