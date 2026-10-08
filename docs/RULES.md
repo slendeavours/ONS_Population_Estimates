@@ -2,7 +2,7 @@
 
 One page for the rules that apply to every source. Each rule says what to do and where the detail is. If a source needs an exception, it is written in that source's own doc and says why.
 
-Status: drafted 2026-10-07 from the review. Rules 1 and 2 are new decisions; the rest collect existing rules that were spread across `METHODOLOGY.md`, the decision notes and session notes. The loader standard is described under rule 5.
+Status: drafted 2026-10-07 from the review. Rules 1 and 2 are new decisions, and rule 8 (period keys) was added 2026-10-08; the rest collect existing rules that were spread across `METHODOLOGY.md`, the decision notes and session notes. The loader standard is described under rule 5.
 
 ---
 
@@ -80,3 +80,11 @@ The other loaders are to be brought across one at a time; the checker's FAIL lis
 2. The map data is refreshed with `python scripts/refresh_map.py`, which runs Workflow 1 if a W1 input was loaded after the latest complete run (or no complete run exists), then exports the map data. `python scripts/refresh_map.py --check` says whether the map at git HEAD is behind the database. The published run should match the latest run; a gap means the map is out of date.
 
 Workflow 1's SQL lives in `sql/w1/`. A change to the columns of `staging_la_signals` is made there and checked by `scripts/w1_contract_check.py`. Detail: `METHODOLOGY.md`.
+
+## 8. Period keys
+
+1. **Periods are stored as sortable keys:** `yyyymm` for months (`202604`), `yyyy-yy` for financial years (`2025-26`), `yyyyQn` for quarters (`2025Q4`).
+2. **A display label is produced when needed and is never stored as the key.** A label such as `Apr-26` sorts as text by its first letter, so `max()` and `ORDER BY` give the wrong latest month (`Jul-26` sorts after `Aug-26`).
+3. **A source whose periods are stored as labels is relabelled in one documented migration** that records the mapping both ways (label to key and key to label), so it can be checked and reversed.
+
+S19 (PIP claimants) is the first case: its months were held as `Apr-26` and `Jul-26`. Detail: `docs/decisions/2026-10-08-s19-month-keys.md` (written with the S19 move onto the loader standard).
