@@ -117,13 +117,17 @@ def _halts(fn):
     return False, "no halt"
 
 
-def _guard_halts(fn):
-    """True only if fn halted (SystemExit). Any other outcome, including an
-    unrelated error after an unguarded start, means the guard did not stop it."""
+GUARD_TEXT = "schema discovery chose"
+
+
+def _guard_halts(fn, text=GUARD_TEXT):
+    """True only if fn halted (SystemExit) with the discovery guard's own
+    message. Any other outcome, including an unrelated halt or an error after
+    an unguarded start, means the guard did not stop it."""
     try:
         fn()
-    except SystemExit:
-        return True
+    except SystemExit as e:
+        return text in str(e.code)
     except Exception:
         return False
     return False
@@ -478,25 +482,34 @@ def gate_5_negatives(cur):
     real_gate(cur, 5, "no negative claimants", real_no_negatives)
 
 
+# (label, column, area index, new value): the base month holds NULL total at
+# area 0, 0 total at area 1, NULL enhanced at area 2, 0 enhanced at area 3
+VARIANTS = (("NULL->0", "pip_total_claimants", 0, 0),
+            ("0->NULL", "pip_total_claimants", 1, None),
+            ("enhanced NULL->0", "pip_enhanced_daily_living", 2, 0),
+            ("enhanced 0->NULL", "pip_enhanced_daily_living", 3, None))
+
+
 def seeded_null_zero(cur):
     """The scenario of gate 6, on throwaway tables, through the loader."""
     month = "202601"
     base = recs(month, total=lambda i: None if i == 0 else (
-        0 if i == 1 else i + 1))
+        0 if i == 1 else i + 1),
+        enhanced=lambda i: None if i == 2 else (0 if i == 3 else i))
 
     def body(cur):
         apply_new = m.apply_month(cur, ZZ, month, base, fetched_on=FETCHED)
         clean = load_checks.check_latest_equals_live(cur, ZZ)
         out = {"first": apply_new, "clean": clean}
-        for label, area, new in (("NULL->0", 0, 0), ("0->NULL", 1, None)):
-            def variant(cur, area=area, new=new):
-                changed = [dict(r, pip_total_claimants=new)
+        for label, col, area, new in VARIANTS:
+            def variant(cur, col=col, area=area, new=new):
+                changed = [dict(r, **{col: new})
                            if r["lad24cd"] == CODES[area] else r for r in base]
                 kind = m.classify_month(cur, ZZ, month, changed)
                 m.apply_month(cur, ZZ, month, changed, fetched_on=FETCHED)
                 flagged = load_checks.check_latest_equals_live(cur, ZZ)
                 stored = editions_of(cur, month)
-                cur.execute(f"""SELECT pip_total_claimants FROM public.{ZE}
+                cur.execute(f"""SELECT {col} FROM public.{ZE}
                     WHERE month = %s AND edition = 2 AND lad24cd = %s""",
                             (month, CODES[area]))
                 return kind, flagged, stored, cur.fetchone()
@@ -513,7 +526,7 @@ def gate_6_null_vs_zero(cur):
         return report(6, name, False, f"seeded scenario: {e}")
     seeded_ok = s["first"] == "new" and s["clean"] == []
     notes = []
-    for label, want in (("NULL->0", 0), ("0->NULL", None)):
+    for label, _col, _area, want in VARIANTS:
         kind, flagged, stored, cell = s[label]
         good = (kind == "revised" and len(stored) == 2 and cell == (want,)
                 and len(flagged) == 1 and "1 edition-only" in flagged[0])
@@ -537,6 +550,63 @@ def gate_7_zero_counts(cur):
 
 
 # ------------------------------------------------------------ seeded gates
+
+def seeded_enhanced_only(cur):
+    """The second measure on its own, through the loader: a change in
+    pip_enhanced_daily_living alone (total unchanged) is a revision stored as
+    edition 2 and refreshed into live (only that month's changed row); a NULL
+    in the enhanced measure alone is stored and read back as NULL."""
+    a, b, c = "202601", "202602", "202603"
+
+    def body(cur):
+        ra = recs(a)
+        rb = recs(b)
+        for mo, rr in ((a, ra), (b, rb)):
+            m.apply_month(cur, ZZ, mo, rr, fetched_on=FETCHED)
+        changed = [dict(r, pip_enhanced_daily_living=r[
+            "pip_enhanced_daily_living"] + 500) if r["lad24cd"] == CODES[7]
+            else r for r in ra]
+        kind = m.classify_month(cur, ZZ, a, changed)
+        m.apply_month(cur, ZZ, a, changed, fetched_on=FETCHED)
+        eds = editions_of(cur, a)
+        pre = load_checks.check_latest_equals_live(cur, ZZ)
+        plan = core.refresh_counts(cur, ZZ)
+        full_b = core.period_hashes(cur, ZZ, "live")
+        res = core.refresh_latest(cur, ZZ)
+        full_a = core.period_hashes(cur, ZZ, "live")
+        cur.execute(f"""SELECT pip_total_claimants, pip_enhanced_daily_living
+                        FROM public.{ZL} WHERE month = %s AND lad24cd = %s""",
+                    (a, CODES[7]))
+        live_row = cur.fetchone()
+        after = load_checks.check_latest_equals_live(cur, ZZ)
+        # (c) NULL in the enhanced measure only, one area
+        rc = recs(c, enhanced=lambda i: None if i == 9 else i)
+        m.apply_month(cur, ZZ, c, rc, fetched_on=FETCHED)
+        got = {}
+        for table, extra in ((ZE, " AND edition = 1"), (ZL, "")):
+            cur.execute(f"""SELECT pip_total_claimants,
+                                   pip_enhanced_daily_living
+                            FROM public.{table} WHERE month = %s
+                            AND lad24cd = %s{extra}""", (c, CODES[9]))
+            got[table] = cur.fetchone()
+        return {"kind": kind, "eds": eds, "pre": pre, "plan": plan,
+                "res": res, "b_same": full_b[b] == full_a[b],
+                "a_changed": full_b[a] != full_a[a], "live_row": live_row,
+                "want_live": (ra[7]["pip_total_claimants"],
+                              ra[7]["pip_enhanced_daily_living"] + 500),
+                "after": after, "null_only": got,
+                "want_null": (10, None)}
+    return _in_savepoint(cur, body)
+
+
+def enhanced_only_ok(e):
+    return (e["kind"] == "revised" and [x[0] for x in e["eds"]] == [1, 2]
+            and len(e["pre"]) == 1 and e["plan"] == {"202601": 1}
+            and e["res"]["updated"] == {"202601": 1} and e["res"]["rows"] == 1
+            and e["b_same"] and e["a_changed"]
+            and e["live_row"] == e["want_live"] and e["after"] == []
+            and e["null_only"] == {ZE: e["want_null"], ZL: e["want_null"]})
+
 
 def gate_8_seeded_revision(cur):
     name = ("seeded revision: edition 2 with one changed cell, refresh_latest "
@@ -571,7 +641,12 @@ def gate_8_seeded_revision(cur):
          b_eds, after) = _in_savepoint(cur, body)
     except (psycopg2.Error, SystemExit) as e:
         return report(8, name, False, str(e).splitlines()[0])
-    ok = (before_ok and kind == "revised" and plan == {a: 1}
+    try:
+        enh = seeded_enhanced_only(cur)
+    except (psycopg2.Error, SystemExit, KeyError) as e:
+        return report(8, name, False, f"enhanced-only scenario: {e}")
+    ok = (enhanced_only_ok(enh) and before_ok and kind == "revised"
+          and plan == {a: 1}
           and res["updated"] == {a: 1} and res["rows"] == 1
           and b in full_b and a in full_b
           and full_b[b] == full_a[b] and kept_b[b] == kept_a[b]
@@ -581,7 +656,9 @@ def gate_8_seeded_revision(cur):
            f"{res['updated']} ({res['rows']} row); {b} untouched="
            f"{full_b.get(b) == full_a.get(b)}; loaded_at and other columns "
            f"kept={kept_b.get(a) == kept_a.get(a)}; latest equals live "
-           f"after={after == []}")
+           f"after={after == []}; enhanced measure alone: {enh['kind']}, editions "
+           f"{[x[0] for x in enh['eds']]}, refreshed {enh['res']['updated']}, "
+           f"NULL in enhanced only reads back {enh['null_only'][ZL]}")
 
 
 def gate_9_fork_and_second_root(cur):
@@ -910,8 +987,10 @@ def real_period_keys(cur, spec=SPEC):
     table is the chronologically latest. A label such as 'Apr-26' fails
     (the migration has not run)."""
     problems, seen = [], 0
-    for kind, table in (("live", spec.live_table),
-                        ("editions", spec.editions_table)):
+    tables = [("live", spec.live_table)]
+    if table_exists(cur, spec.editions_table):
+        tables.append(("editions", spec.editions_table))
+    for kind, table in tables:
         cur.execute(f"SELECT DISTINCT month FROM public.{table} ORDER BY 1")
         months = [r[0] for r in cur.fetchall()]
         seen += len(months)
@@ -971,25 +1050,50 @@ def period_key_mapping():
                   "the keys remove")
 
 
+def _is_label(x):
+    try:
+        m.label_to_key(x)
+        return True
+    except ValueError:
+        return False
+
+
+def period_key_status(cur, spec=SPEC):
+    """(ok, detail, pending) of the real-table half of gate 17. Pending only
+    while the migration has plainly not run: every live month is a label, or
+    the editions table is absent and no live month is malformed. A mixed
+    table (keys and labels) or any month that is neither a key nor a label is
+    a plain failure naming the offending months."""
+    months = _live_months(cur, spec)
+    keys = [x for x in months if KEY_RE.fullmatch(x)]
+    labels = [x for x in months if _is_label(x)]
+    other = [x for x in months if x not in keys and x not in labels]
+    all_labels = bool(months) and len(labels) == len(months)
+    if (keys and labels) or other:
+        ok, detail = real_period_keys(cur, spec)
+        return False, ("corrupt or half-migrated live months (keys "
+                       f"{keys[:3]}, labels {labels[:3]}, other {other[:3]}): "
+                       + detail), False
+    if all_labels:
+        return False, (f"{spec.live_table} still holds {len(labels)} month "
+                       f"labels, e.g. {labels[:3]} (pending migration)"), True
+    if not table_exists(cur, spec.editions_table):
+        return False, (f"{spec.editions_table} does not exist yet (pending "
+                       "load)"), True
+    ok, detail = real_period_keys(cur, spec)
+    return ok, detail, False
+
+
 def gate_17_period_keys(cur):
     name = "period keys sort chronologically"
     map_ok, map_detail = period_key_mapping()
     if not map_ok:
         return report(17, name, False, map_detail)
-    if not table_exists(cur):
-        return report(17, name, False, f"{PENDING}; mapping: {map_detail}",
-                      pending=True)
-    if not m.months_migrated(cur):
-        cur.execute(f"SELECT DISTINCT month FROM public.{LIVE} ORDER BY 1")
-        labels = [r[0] for r in cur.fetchall() if not KEY_RE.fullmatch(r[0])]
-        return report(17, name, False, f"{LIVE} still holds {len(labels)} "
-                      f"month labels, e.g. {labels[:3]} (pending migration); "
-                      f"mapping: {map_detail}", pending=True)
     try:
-        ok, detail = real_period_keys(cur)
+        ok, detail, pending = period_key_status(cur)
     except (psycopg2.Error, SystemExit, ValueError, LookupError) as e:
         return report(17, name, False, str(e).splitlines()[0])
-    report(17, name, ok, f"{detail}; mapping: {map_detail}")
+    report(17, name, ok, f"{detail}; mapping: {map_detail}", pending=pending)
 
 
 # the independent expectation for gate 18: labels spelled out, not computed

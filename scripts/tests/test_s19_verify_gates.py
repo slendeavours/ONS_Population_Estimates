@@ -99,6 +99,54 @@ class VerifyGates(unittest.TestCase):
         ok, detail = v.real_period_keys(self.cur, ZZ)
         self.assertTrue(ok, detail)
 
+    def test_mixed_live_months_fail_gate_17_not_pending(self):
+        v.seed_live(self.cur, v.recs("202601") + v.recs("Apr-26"))
+        ok, detail, pending = v.period_key_status(self.cur, ZZ)
+        self.assertFalse(ok)
+        self.assertFalse(pending, detail)
+        self.assertIn("Apr-26", detail)
+
+    def test_malformed_month_fails_gate_17_not_pending(self):
+        v.seed_live(self.cur, v.recs("2026-04"))
+        ok, detail, pending = v.period_key_status(self.cur, ZZ)
+        self.assertFalse(ok)
+        self.assertFalse(pending, detail)
+
+    def test_all_labels_is_pending_for_gate_17(self):
+        v.seed_live(self.cur, v.recs("Sep-25") + v.recs("Apr-26"))
+        ok, detail, pending = v.period_key_status(self.cur, ZZ)
+        self.assertFalse(ok)
+        self.assertTrue(pending, detail)
+
+    def test_empty_existing_state_is_a_plain_fail_for_gate_17(self):
+        ok, detail, pending = v.period_key_status(self.cur, ZZ)
+        self.assertFalse(ok)
+        self.assertFalse(pending)
+
+    def test_enhanced_measure_alone_is_a_revision(self):
+        e = v.seeded_enhanced_only(self.cur)
+        self.assertEqual(e["kind"], "revised")
+        self.assertTrue(v.enhanced_only_ok(e), e)
+
+    def test_enhanced_null_zero_variants_are_revisions(self):
+        s = v.seeded_null_zero(self.cur)
+        for label, col, _a, want in v.VARIANTS:
+            kind, flagged, stored, cell = s[label]
+            self.assertEqual((kind, len(stored), cell), ("revised", 2, (want,)),
+                             label)
+            self.assertEqual(len(flagged), 1, label)
+        self.assertEqual(len(v.VARIANTS), 4)
+
+    def test_guard_halt_must_carry_the_guard_message(self):
+        def other():
+            raise SystemExit("some unrelated halt")
+
+        def guard():
+            raise SystemExit("schema discovery chose database 'x'")
+        self.assertFalse(v._guard_halts(other))
+        self.assertTrue(v._guard_halts(guard))
+        self.assertFalse(v._guard_halts(lambda: None))
+
     def test_period_key_mapping_round_trips(self):
         ok, detail = v.period_key_mapping()
         self.assertTrue(ok, detail)
