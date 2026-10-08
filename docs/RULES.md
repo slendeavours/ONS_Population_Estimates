@@ -21,7 +21,7 @@ A zero is a measured count. A blank is a count nobody gave us. They are never sw
 9. **Maps and reports:** NULL displays as "No data" or a dash. 0 displays as 0.
 10. **Every load reports** how many cells were NULL, flagged, and 0, per column. A load where zeros appear in cells the previous edition held as blank, or the reverse, is listed in the preview for review and is accepted only by a stated acknowledgement. Genuine publisher revisions do occur (for example RO4 2024-25), so this is a check for a person to decide, not an automatic stop. The acknowledgement mechanism is built when each loader adopts the check.
 
-Known breaches until corrected: S4 (care leavers) stores suppressed cells as 0 and builds totals from them; S22 (council taxbase) treats suppressed exemption classes as 0 in its total. S10 and S8b are unchecked. Detail: `DATA_DICTIONARY.md` (S1b `value_flag`), `docs/s1b_support_needs_source.md`, `docs/decisions/2026-10-06-s1-edition-history-design.md`.
+Known breaches until corrected: S4 (care leavers) stores suppressed cells as 0 and builds totals from them; S22 (council taxbase) treats suppressed exemption classes as 0 in its total. S10 is unchecked. Detail: `DATA_DICTIONARY.md` (S1b `value_flag`), `docs/s1b_support_needs_source.md`, `docs/decisions/2026-10-06-s1-edition-history-design.md`.
 
 ## 2. Revisions are data
 

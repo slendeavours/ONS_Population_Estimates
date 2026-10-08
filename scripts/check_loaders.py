@@ -44,7 +44,7 @@ LOADERS = {
     "S3": ["s3_mye_refresh.py"],
     "S4": ["verify/rebuild_care_leavers.py"],
     "S6": ["s6_asylum_build.py"],
-    "S8b": ["s8b_hb_accom_type_build.py"],
+    "S8b": ["s8b_hb_editions.py"],
     "S9a": ["s9a_drd_build.py"],
     "S9b": ["s9b_crfd_build.py"],
     "S11": ["s11_cqc_load.py"],

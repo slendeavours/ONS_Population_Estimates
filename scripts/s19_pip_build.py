@@ -28,7 +28,7 @@ API_ROOT = "https://stat-xplore.dwp.gov.uk/webapi/rest/v1"
 # Reads the variable that exists in .env. This previously read
 # "Stat-Xplore_Token", a name nothing defines, so S19 hard-stopped before it
 # reached the API. Same name and same fallback as
-# scripts/s8b_hb_accom_type_build.py — both hit the same Stat-Xplore account,
+# scripts/s8b_hb_editions.py — both hit the same Stat-Xplore account,
 # so one credential name serves both rather than an alias per script.
 API_KEY = (
     os.environ.get("StatXplore_API_Key", "")
