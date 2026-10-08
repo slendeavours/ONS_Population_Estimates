@@ -183,6 +183,15 @@ class Build(unittest.TestCase):
         self.assertIn("E06000001", str(cm.exception))
         self.assertIn("2022-02-01", str(cm.exception))
 
+    def test_repeated_out_of_scope_property_type_rows_do_not_raise(self):
+        a = [avg("E06000001", "2022-02-01")]
+        p = [pt("E06000001", "2022-02-01"),
+             pt("W06000001", "2022-02-01"), pt("W06000001", "2022-02-01"),
+             pt("E06000001", "2019-01-01"), pt("E06000001", "2019-01-01")]
+        recs, _, nopt = build(a, p)
+        self.assertEqual(nopt, 0)
+        self.assertEqual(len(recs["2022-02-01"]), 1)
+
     def test_rounding_half_up_on_float_repr(self):
         a = [avg("E06000001", "2022-02-01", price="0.285", sa="1234.565",
                  chg="-0.285")]

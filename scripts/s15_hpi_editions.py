@@ -83,6 +83,11 @@ def build_records(avg_rows, pt_rows, *, valid_lads, code_lookup,
     pt_lookup = {}
     for r in pt_rows:
         key = (r["Area_Code"], r["Date"])
+        # Only rows that could be used: same filters as the average-prices file.
+        if not r["Area_Code"].startswith(ENGLISH_LA_PREFIXES):
+            continue
+        if date.fromisoformat(r["Date"]) < min_period:
+            continue
         if key in pt_lookup:
             raise ValueError("property-type file repeats (Area_Code, Date) "
                              f"{key!r}; refusing to choose a row")
