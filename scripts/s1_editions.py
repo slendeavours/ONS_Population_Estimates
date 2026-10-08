@@ -149,8 +149,11 @@ REFRESH_COLS = LIVE_MEASURES + ("source_file", "extracted_at")
 
 # The editions core's description of S1. Every column of the editions table
 # is declared (all eleven measures, and source_url, which the live table
-# lacks), with the real types, so create_schema reproduces the table (the
-# trigger and function names follow from name 's1'). The refresh writes
+# lacks), with the real types, so create_schema reproduces the table's column
+# names, types and constraints (the trigger and function names follow from
+# name 's1'); a freshly created table differs from the existing one in column
+# order, primary-key column order and loaded_at NOT NULL (accepted; the
+# existing table is never re-created). The refresh writes
 # REFRESH_COLS: it compares live with an edition on the six live measures
 # (SPEC.compare_cols), writes a row when one of them or source_file differs
 # (SPEC.update_cols) and sets extracted_at from the edition's loaded_at. The
@@ -1026,7 +1029,7 @@ def period_hashes(cur, table, key_cols, exclude=("loaded_at",),
     ex = "ARRAY[" + ", ".join(f"'{c}'" for c in exclude) + "]::text[]"
     order = ", ".join(f"t.{c}" for c in key_cols)
     cur.execute(f"""SELECT {_ident(period_col)}, COUNT(*),
-        md5(string_agg((to_jsonb(t) - {ex})::text, E'\n' ORDER BY {order}))
+        md5(string_agg((to_jsonb(t) - {ex})::text, E'\\n' ORDER BY {order}))
         FROM public.{table} t GROUP BY 1""")
     return {p: (n, h) for p, n, h in cur.fetchall()}
 
