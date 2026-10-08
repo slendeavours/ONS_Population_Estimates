@@ -43,18 +43,20 @@ already in the July data, which is why this recheck finds nothing new.
 
 From `ONS_Population_Estimates`:
 
-1. `python scripts/s8b_hb_editions.py load` previews: it fetches any month the API now offers after the
-   latest held, plus the latest six held months as a revision check, and says for each month whether
+1. `python scripts/s8b_hb_editions.py load` previews: it fetches every month the API offers that is not
+   held and is later than the earliest held month (gaps are filled; nothing before the first held month;
+   with nothing held, `--months` must be given), plus the latest six held months as a revision check, and says for each month whether
    it is new, unchanged or revised. Nothing is written. `--recheck-all` rechecks every held month.
 2. Read the preview. A short month (fewer than 296 authorities or a type missing) is refused by the
    loader. Before committing, also stop and look if NULLs appear where there were numbers, if any value
    is negative, or if a revision is large on many authorities.
-3. `python scripts/s8b_hb_editions.py load --commit` stores new months as edition 1 and revised months as
-   the next edition. Unchanged months store nothing.
+3. `python scripts/s8b_hb_editions.py load --commit` stores new months as edition 1 and inserts their live
+   rows in the same transaction; revised months are stored as the next edition and reach live through
+   step 4. Unchanged months store nothing.
 4. `python scripts/s8b_hb_editions.py refresh-latest` previews the live rows that would change; then run it
    with `--commit`.
 5. `python scripts/s8b_hb_editions.py status` should say OK, and `python scripts/s8b_hb_editions_verify.py`
-   should pass all 15 gates.
+   should pass all 16 gates.
 
 The Stat-Xplore key is read from the environment and is never printed or stored.
 
@@ -62,4 +64,13 @@ The Stat-Xplore key is read from the environment and is never printed or stored.
 
 - The first `sync-new` needed `--expected-authorities 296`, because no month had editions yet and the
   count could not be derived. Later runs derive it.
-- `python scripts/s8b_hb_editions_verify.py`: all 15 gates pass on the real tables.
+- `python scripts/s8b_hb_editions_verify.py`: all 15 gates passed on the real tables at the first load;
+  gate 16 (a new month reaches live with edition 1, in one transaction) was added in the final review fix.
+
+## Follow-ups
+
+- The core's `refresh_latest` does not bump `loaded_at`, so `scripts/refresh_map.py` (which judges W1
+  staleness by the latest `loaded_at` of its input tables) cannot see a revision refreshed into live.
+  Until that is decided, the procedure says to run `scripts/w1_run.py` and then `refresh_map.py` after any
+  `refresh-latest --commit` that wrote rows. Whether the core should stamp `loaded_at`, or W1 should judge
+  staleness another way, is a design question for later.

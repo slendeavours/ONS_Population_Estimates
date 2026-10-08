@@ -145,11 +145,11 @@ Source: DWP STAT-Xplore Housing Benefit caseload data
 |---|---|
 | `edition` | Integer, 1 = first loaded. |
 | `supersedes` | The edition this one replaces; NULL for the first. |
-| `claimants` | HB claimants, integer. NULL where the API returns no value or a merged area has a part with no value; a returned 0 is stored as 0 (`docs/RULES.md`). Never negative. |
-| `release_label`, `published_date` | `stat-xplore fetch <date>` and the date of the fetch. Informational only; they do not decide which edition is latest. |
-| `source_file`, `source_sha256`, `loaded_at` | Provenance. `source_file` names the Stat-Xplore table query; `source_sha256` is the checksum of the fetched month's records. |
+| `claimants` | HB claimants, integer. NULL where the API returns no value or a merged area has a part with no value; a returned 0 is stored as 0 (`docs/RULES.md`). Never negative: checked by the verify gate, not by a constraint. |
+| `release_label`, `published_date` | For the edition 1 rows recorded from what was held (`sync-new`), `as loaded; published_date is the load date`, and `published_date` is the date the live rows were loaded; for fetched editions, `stat-xplore fetch <date>` and the date of the fetch. Informational only; they do not decide which edition is latest. |
+| `source_file`, `source_sha256`, `loaded_at` | Provenance. `source_file` names the Stat-Xplore table query; `source_sha256` is the checksum of the month's records, in two formats: edition 1 recorded by `sync-new` uses the editions core's row hash, fetched editions use the loader's content hash, so the two are not comparable. |
 
-**Live-layer rule.** `la_hb_accom_type_caseload` holds, for each authority, month and type, the latest edition (the one no other edition supersedes). It is refreshed with `python scripts/s8b_hb_editions.py refresh-latest --commit` and changes only `claimants`; `loaded_at` is never touched. DWP revises this caseload in place with no revision note, so every `load` rechecks the latest six held months against the API; a month whose content differs is stored as the next edition, and a return to earlier content is also a new edition. On 2026-10-08 all seven months were rechecked and none had been revised. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
+**Live-layer rule.** `la_hb_accom_type_caseload` holds, for each authority, month and type, the latest edition (the one no other edition supersedes). A new month's live rows are inserted by `load --commit` in the same transaction as its edition 1; a revised month reaches live through `python scripts/s8b_hb_editions.py refresh-latest --commit`, which changes only `claimants`; `loaded_at` is never touched. DWP revises this caseload in place with no revision note, so every `load` rechecks the latest six held months against the API; a month whose content differs is stored as the next edition, and a return to earlier content is also a new edition. On 2026-10-08 all seven months were rechecked and none had been revised. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
 
 ---
 

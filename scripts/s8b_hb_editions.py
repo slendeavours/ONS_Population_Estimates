@@ -651,7 +651,7 @@ def load_run_notes(stats: dict, available: list, held: list) -> str:
     if by[LIVE_MISSING]:
         head += (". Live rows inserted (no new edition) for editions months "
                  f"missing from live: {', '.join(by[LIVE_MISSING])}")
-    live_rows = stats.get("live_rows", 0)
+    live_rows = stats.get("live_rows", 0)  # not a source value
     return (f"{head}. Checked {len(stats['months'])} month(s) "
             f"({', '.join(stats['months']) or 'none'}); unchanged "
             f"{len(by['unchanged'])}. Held latest {max(held) if held else '-'}"
@@ -893,7 +893,7 @@ def cmd_load(args) -> int:
                     # Stored something, or rechecked and found nothing new:
                     # either way the check is the run, so it is logged.
                     log_run(cur, stats["stored_rows"]
-                            + stats.get("live_rows", 0),
+                            + stats.get("live_rows", 0),  # not a source value
                             load_run_notes(stats, available, held), started)
                     conn.commit()
                     print("pipeline_run_log row written")

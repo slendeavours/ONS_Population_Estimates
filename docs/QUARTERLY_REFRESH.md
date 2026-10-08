@@ -433,24 +433,36 @@ printed. Record:
 Run from `ONS_Population_Estimates`:
 
 1. `python scripts/s8b_hb_editions.py load` (preview). It asks the API which
-   months exist, fetches any month after the latest held plus the latest six
-   held months as a revision check, and says for each whether it is new,
-   unchanged or revised. Nothing is written. `status` is read-only.
+   months exist, fetches every available month that is not held and is
+   later than the earliest held month (so a gap is filled; nothing before the
+   first held month is fetched; with nothing held, `--months` must be given),
+   plus the latest six held months as a revision check, and says for each
+   whether it is new, unchanged or revised. Nothing is written. `status` is
+   read-only.
 2. Read the preview. A short month (fewer than 296 authorities, or a type
    missing) is refused. Before committing, also stop and look if NULLs appear
    where there were numbers, if any value is negative, or if a revision is
    large on many authorities.
 3. `python scripts/s8b_hb_editions.py load --commit` stores a new month as
-   edition 1 and a revised month as the next edition; an unchanged month
-   stores nothing. Each month is its own transaction. A run that succeeds,
+   edition 1 and inserts its live rows in the same transaction (checked equal
+   cell for cell, 296 authorities x 4 types, or the month is rolled back); a
+   revised month is stored as the next edition and reaches live only through
+   step 4; an unchanged month stores nothing. A month with editions but no
+   live rows (`status` reports it as "editions month missing from live") has
+   its live rows inserted, with no new edition, when its latest edition equals
+   the fetch. Each month is its own transaction. A run that succeeds,
    including one that finds nothing new, writes one `pipeline_run_log` row
    (source `8b`), which is what moves the due date in `vw_source_due`;
    `--simulate` rehearses everything and writes nothing.
 4. `python scripts/s8b_hb_editions.py refresh-latest` previews the live rows
    that would change; run it again with `--commit` (`--accept-drift MONTH`
-   as for S1).
+   as for S1). After any `refresh-latest --commit` that wrote rows, run
+   `python scripts/w1_run.py` (one run a day) and then
+   `python scripts/refresh_map.py`: `refresh-latest` leaves `loaded_at`
+   alone, so `refresh_map.py`, which judges staleness by the latest
+   `loaded_at`, cannot see a refreshed revision by itself.
 5. `python scripts/s8b_hb_editions.py status` should say OK, and
-   `python scripts/s8b_hb_editions_verify.py` should pass all 15 gates.
+   `python scripts/s8b_hb_editions_verify.py` should pass all 16 gates.
 
 **Full re-check.** `load --recheck-all` rechecks every held month, not just the
 latest six. Use it after a long gap, or when DWP is known to have restated a
