@@ -54,23 +54,31 @@ def summary(r):
             f"isArchived={r['isArchived']} nodes={len(nodes)}")
 
 
-def main():
+def main(argv=None, conn=None, backup_dir=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--commit", action="store_true")
-    args = ap.parse_args()
-    conn = n8n_conn()
+    args = ap.parse_args(argv)
+    backup_dir = Path(backup_dir) if backup_dir else BACKUP_DIR
+    conn = conn or n8n_conn()
     cur = conn.cursor()
     row = read_row(cur)
     stamp = f"{datetime.date.today():%Y-%m-%d}"
-    backup = BACKUP_DIR / f"W1_n8n_workflow_backup_{stamp}.json"
+    backup = backup_dir / f"W1_n8n_workflow_backup_{stamp}.json"
     print("current :", summary(row))
+    if row["isArchived"] and row["name"] == NEW_NAME:
+        print("already archived; nothing to do")
+        return 0
     print(f"would back up to {backup}")
     print(f"would set isArchived=true, active=false, name={NEW_NAME!r}")
     if not args.commit:
         print("PREVIEW only; nothing written. Re-run with --commit.")
-        return
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    backup.write_text(json.dumps(row, indent=2, default=str), encoding="utf-8")
+        return 0
+    if backup.exists():
+        print(f"ERROR: backup already exists, refusing to overwrite: {backup}")
+        return 1
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    with open(backup, "x", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, indent=2, default=str))
     print(f"backup written: {backup}")
     try:
         cur.execute('UPDATE workflow_entity SET "isArchived" = true, active = false, '
@@ -83,7 +91,8 @@ def main():
         conn.rollback()
         raise
     print("read-back:", summary(after))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
