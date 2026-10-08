@@ -27,6 +27,11 @@ Checks (see docs/RULES.md, sections 1 and 5):
      in scripts/verify.
   e. A source the registry marks `revises_back_series` must import
      `editions_core` (a NO_EDITIONS declaration does not excuse it).
+  f. No private Barnsley/Sheffield recode dict (docs/RULES.md rule 4): a
+     loader outside scripts/historical/ with a dict literal keyed by
+     E08000038 or E08000039 fails; it is to use scripts/geography.py
+     (resolve/canonical). A file listed in GEOGRAPHY_PENDING is reported as
+     a note, not a failure, until it is migrated.
 """
 import ast
 import re
@@ -51,7 +56,7 @@ LOADERS = {
     "S9b": ["s9b_crfd_build.py"],
     "S11": ["s11_cqc_load.py"],
     "S14": ["s14_lha_rates_build_v2.py"],
-    "S15": ["s15_hpi_build.py"],
+    "S15": ["s15_hpi_editions.py"],
     "S18": ["s18_pipr_load.py"],
     "S19": ["s19_pip_editions.py"],
     "S21": ["s21_statistical_neighbours_build.py"],
@@ -70,6 +75,15 @@ ZERO_PATTERNS = [
     (re.compile(r"(?<!\(0)(?<!, 0),\s*0\s*\)(?!\s*[+\-]\s*\w)"), ", 0)"),
 ]
 ALLOW = "# not a source value"
+RECODE_KEYS = {"E08000038", "E08000039"}
+# Loaders that conformed before check f existed and still carry a private
+# recode dict: reported as a note (no PASS changed when the check was added).
+# Remove the entry when the loader moves to geography.resolve.
+GEOGRAPHY_PENDING = {
+    "ro4_editions.py": "RAW_RENAMED in raw_cells (the independent raw "
+                       "re-read); move to geography.py when RO4 is next "
+                       "migrated",
+}
 WRITE_SQL = re.compile(r"\b(insert\s+into|update\s+\w+\s+set|delete\s+from|"
                        r"truncate|create\s+table|drop\s+table)\b", re.I)
 
@@ -125,6 +139,35 @@ def _unguarded_commits(tree):
     return bad
 
 
+def _recode_dicts(tree):
+    """Line numbers of dict literals keyed by E08000038 or E08000039."""
+    return sorted(node.lineno for node in ast.walk(tree)
+                  if isinstance(node, ast.Dict)
+                  and any(isinstance(k, ast.Constant) and k.value in RECODE_KEYS
+                          for k in node.keys))
+
+
+def _historical(path):
+    return "historical" in Path(path).parts
+
+
+def geography_notes(path):
+    """Notes (not failures) for a GEOGRAPHY_PENDING loader that still carries
+    a private recode dict."""
+    path = Path(path)
+    if path.name not in GEOGRAPHY_PENDING or _historical(path):
+        return []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
+    except SyntaxError:
+        return []
+    lines = _recode_dicts(tree)
+    if not lines:
+        return []
+    return [f"note: private Barnsley/Sheffield recode dict (line {lines[0]}) "
+            f"pending geography.py: {GEOGRAPHY_PENDING[path.name]}"]
+
+
 def _verify_exists(path):
     stem = path.stem
     base = re.sub(r"_(build_v2|build|load|editions|refresh)$", "", stem)
@@ -175,6 +218,14 @@ def check_loader(path, registry_row):
 
     if not _verify_exists(path):
         reasons.append("no verify script found beside it")
+
+    if not _historical(path) and path.name not in GEOGRAPHY_PENDING:
+        lines = _recode_dicts(tree)
+        if lines:
+            more = f" and {len(lines) - 1} more" if len(lines) > 1 else ""
+            reasons.append("carries its own Barnsley/Sheffield recode dict "
+                           f"(E08000038, line {lines[0]}{more}) instead of "
+                           "using scripts/geography.py (resolve/canonical)")
     return reasons
 
 
@@ -199,6 +250,7 @@ def registry_code(code):
 def main():
     reg = _registry()
     rows = []
+    notes = {}
     for code, files in LOADERS.items():
         row = reg.get(registry_code(code), {"revises_back_series": False, "build_script_path": ""})
         reasons = []
@@ -208,6 +260,7 @@ def main():
                 reasons.append(f"{f}: file not found")
             else:
                 reasons += check_loader(p, row)
+                notes.setdefault(code, []).extend(geography_notes(p))
         rows.append((code, files[0], row["build_script_path"], reasons))
     print(f"{'source':<6} {'loader':<40} {'registry path':<14} result")
     for code, f, bsp, reasons in rows:
@@ -215,6 +268,8 @@ def main():
         print(f"{code:<6} {f:<40} {blank:<14} {'PASS' if not reasons else 'FAIL'}")
         for r in reasons:
             print(f"{'':<6}   - {r}")
+        for n in notes.get(code, []):
+            print(f"{'':<6}   ({n})")
     passed = sum(1 for r in rows if not r[3])
     print(f"\n{passed} of {len(rows)} loaders conform. "
           f"{sum(1 for r in rows if not r[2])} have a blank registry build_script_path.")

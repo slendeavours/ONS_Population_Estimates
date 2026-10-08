@@ -323,6 +323,8 @@ This section previously read "December 2024 ... BUC". Both were wrong. Two indep
 
 **The boundary vintage predates the codes some publishers now use.** `la_boundaries` is May 2024 and carries E08000016 and E08000019 for Barnsley and Sheffield. The 1 April 2025 recode (SI 1328/2024) means any source published after that date will use E08000038 and E08000039 instead. See the standing rule below.
 
+**Which code each source publishes is declared per dataset** (2026-10-08): `scripts/geography.py` holds each source's form (old, new, mixed, none or unverified) with the evidence, loaders resolve the two areas through it, and a load stops if the file disagrees. See `RULES.md` rule 4.5 and `docs/decisions/2026-10-08-barnsley-sheffield-rule.md`.
+
 ---
 
 ## Refresh Schedule

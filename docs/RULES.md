@@ -28,7 +28,7 @@ Known breaches until corrected: S4 (care leavers) stores suppressed cells as 0 a
 1. A new release **and** a revision of a figure already held are both stored as new rows (a new edition). Nothing is overwritten.
 2. The live table is the latest-edition layer, refreshed from the editions table. The latest edition is the one no other edition supersedes.
 3. A sent or published deliverable is never overwritten. A new version is written and what changed is stated.
-4. Sources the registry marks `revises_back_series` must keep editions. Today only S1, S1b and RO4 do; the other revising sources are being brought across.
+4. Sources the registry marks `revises_back_series` must keep editions. Today S1, S1b, RO4, S8b, S19 and S15 do; the other revising sources are being brought across.
 
 Detail: `METHODOLOGY.md` (Revision Handling), `QUARTERLY_REFRESH.md`.
 
@@ -45,8 +45,26 @@ Why: a second release was once loaded and labelled as the third. See `docs/decis
 2. An unresolved code is **UNEXPLAINED** and a hard stop until it is explained against an authoritative source. It is never called harmless.
 3. A release's stated boundary vintage predicts its codes. Publication date is only the fallback.
 4. Financial-year quarters: 2025Q4 is January to March 2026.
+5. **Barnsley and Sheffield are handled per dataset.** On 1 April 2025 (SI 1328/2024) E08000016 became E08000038 and E08000019 became E08000039. Publishers differ: some use the earlier codes, some the new ones, some switch between periods, and one MHCLG release uses both on different sheets. So:
+   - The canonical key stays E08000016/E08000019 while `la_boundaries` is LAD May 2024.
+   - Every source declares its form in `scripts/geography.py` (`DATASET_FORM`), with the evidence: `old` (publishes E08000016/19), `new` (E08000038/39), `mixed` (either, but one period never carries both forms of one area), `none` (no area-level data for these two, or keyed by something else), or `unverified` (the evidence says what to check at the next load).
+   - Loaders resolve the two areas only through `geography.resolve` or `geography.canonical`, which read `la_code_lookup`. No loader keeps its own recode dictionary; `check_loaders.py` reports one.
+   - A load stops if the codes it sees disagree with the declaration. The declaration is corrected deliberately, with the evidence, never silently.
+   - Moving `la_boundaries` to a vintage carrying the new codes flips the canonical form in one place: the `la_code_lookup` recode rows.
 
-Detail: `METHODOLOGY.md` (Boundary Data), `docs/decisions/2026-08-14-barnsley-sheffield-code-split.md`, `docs/geography_dimension.md`.
+   Declared forms (2026-10-08):
+
+   | Form | Sources |
+   |---|---|
+   | old | 3, 5, 7, 9a, 13, 19, 23 |
+   | new | 10, 15, 18, 21 |
+   | mixed | 1, 1b, 2, 9b, 22 |
+   | none | 11, 12, 14, 17, 20, 24 |
+   | unverified | 3b, 4, 6, 8, 8b |
+
+   The evidence for each is in `python scripts/geography.py` and `docs/decisions/2026-10-08-barnsley-sheffield-rule.md`. Adoption: S15 uses it; S18 uses it from its migration; the other loaders adopt it as they are migrated.
+
+Detail: `METHODOLOGY.md` (Boundary Data), `docs/decisions/2026-10-08-barnsley-sheffield-rule.md`, `docs/decisions/2026-08-14-barnsley-sheffield-code-split.md`, `docs/geography_dimension.md`.
 
 ## 5. Loading
 
@@ -59,11 +77,11 @@ Detail: `METHODOLOGY.md` (Boundary Data), `docs/decisions/2026-08-14-barnsley-sh
 
 Loaders are to meet one standard, built from shared parts in `scripts/`. The parts below exist and are tested; adoption by the loaders is under way and not finished.
 
-- **Editions core** (`editions_core.py`): the append-only editions table, the supersedes chain, the latest-edition layer and the gates around them. A loader describes its table in a spec and supplies its own parser. S1, S1b and RO4 run on it today. Their commands are `status` (read-only health check), `load` (a revised or first edition of a period), `sync-new` (a newly published period) and `refresh-latest` (copy the latest edition into the live table).
+- **Editions core** (`editions_core.py`): the append-only editions table, the supersedes chain, the latest-edition layer and the gates around them. A loader describes its table in a spec and supplies its own parser. S1, S1b, RO4, S8b, S19 and S15 run on it today. Their commands are `status` (read-only health check), `load` (a revised or first edition of a period), `sync-new` (a newly published period) and `refresh-latest` (copy the latest edition into the live table).
 - **Blank reader** (`blank_reader.py`): turns the publisher's markers into NULL or a number as rule 1 requires. No loader uses it yet; loaders are to adopt it in place of their own conversion code.
 - **Shared checks** (`load_checks.py`): the per-column NULL, flagged and zero report, the check against the previous edition (rule 1.10), file identity (rule 3), geography resolution (rule 4), row counts, and the check that the live table equals the latest editions. Today only RO4 calls one of them (`check_latest_equals_live`); the per-column report and the previous-edition check are not yet called by any loader. Loaders are to adopt them.
-- **Preview by default:** in S1, S1b and RO4 every command that writes is a dry run unless given `--commit`, with one exception: `ddl` (create the editions table and its triggers if absent) writes when run. `status` is read-only. `--simulate` runs everything and rolls back.
-- **Conformance checker:** `python scripts/check_loaders.py` lists each loader as PASS or with the reasons it does not conform. 3 of 18 loaders conform today; the checker lists the rest. It reports only and does not yet gate a push. Its checks are heuristics and do not yet test use of the blank reader or the shared checks; the verify script remains the real test.
+- **Preview by default:** in the loaders on it every command that writes is a dry run unless given `--commit`, with one exception: `ddl` (create the editions table and its triggers if absent) writes when run. `status` is read-only. `--simulate` runs everything and rolls back.
+- **Conformance checker:** `python scripts/check_loaders.py` lists each loader as PASS or with the reasons it does not conform. 6 of 18 loaders conform today (S1, S1b, S2, S8b, S15, S19); the checker lists the rest. It reports only and does not yet gate a push. Its checks are heuristics and do not yet test use of the blank reader or the shared checks; the verify script remains the real test.
 
 The other loaders are to be brought across one at a time; the checker's FAIL list is that worklist. A source that is never revised may declare `NO_EDITIONS = "<reason>"` instead of using the core, but is still to use the blank reader and shared checks. Related: `docs/decisions/2026-10-07-editions-quarterly-refresh.md`.
 
