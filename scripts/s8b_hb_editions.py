@@ -19,7 +19,7 @@ ACCOM_MEMBER_IDS = {
     "UNKNOWN": "str:value:hb_new:V_F_HB_NEW:SATA:C_SATA:99",
 }
 
-_MONTH_RE = re.compile(r"^\d{6}$")
+_MONTH_RE = re.compile(r"(19|20)[0-9]{2}(0[1-9]|1[0-2])")
 
 
 def parse_cube(resp: dict) -> dict:
@@ -27,11 +27,16 @@ def parse_cube(resp: dict) -> dict:
     cubes = resp["cubes"]
     values = cubes[list(cubes.keys())[0]]["values"]
     items = resp["fields"][0]["items"]
+    if len(values) != len(items):
+        raise ValueError(
+            f"Cube has {len(values)} values but {len(items)} geography items")
     out = {}
     for i, item in enumerate(items):
         code = item["uris"][0].split(":")[-1]
         v = values[i]
         while isinstance(v, list):
+            if not v:
+                raise ValueError(f"Empty value list for geography {code}")
             v = v[0]
         if v is not None and (isinstance(v, bool) or not isinstance(v, int)):
             raise ValueError(
@@ -43,7 +48,7 @@ def parse_cube(resp: dict) -> dict:
 def build_records(raw, lad_to_uris, month, accom_type):
     """One record per canonical lad24cd; total is None unless every part is present."""
     records = []
-    for lad, uris in lad_to_uris.items():
+    for lad, uris in sorted(lad_to_uris.items()):
         parts = [raw.get(u.split(":")[-1]) for u in uris]
         if parts and all(p is not None for p in parts):
             total = sum(parts)
@@ -57,7 +62,7 @@ def build_records(raw, lad_to_uris, month, accom_type):
 def month_from_member(member_id):
     """Last colon segment as yyyymm (six digits), else None."""
     last = str(member_id).split(":")[-1]
-    return last if _MONTH_RE.match(last) else None
+    return last if _MONTH_RE.fullmatch(last) else None
 
 
 def available_months(date_members):
@@ -67,11 +72,19 @@ def available_months(date_members):
 
 
 def plan_months(held, available, recheck_n=6, recheck_all=False):
-    """Return (new, recheck), both ascending and never overlapping."""
+    """Return (new, recheck), both ascending and never overlapping.
+
+    new: every available month that is not held and is later than the
+    EARLIEST held month (gaps inside the held range are loaded; history before
+    the first held month is never auto-loaded). If nothing is held, new is
+    empty: the loader must require an explicit --months list.
+    recheck: the latest recheck_n held months that are still available (all of
+    them when recheck_all).
+    """
     avail = sorted(set(available))
-    latest = max(held) if held else None
-    new = [a for a in avail if latest is None or a > latest]
-    still = [a for a in avail if a in held and a not in new]
+    earliest = min(held) if held else None
+    new = [a for a in avail if earliest is not None and a > earliest and a not in held]
+    still = [a for a in avail if a in held]
     if recheck_all:
         recheck = still
     elif recheck_n > 0:
@@ -82,10 +95,15 @@ def plan_months(held, available, recheck_n=6, recheck_all=False):
 
 
 def content_sha256(records):
-    rows = sorted(records, key=lambda r: (r["lad24cd"], r["accom_type"]))
+    """SHA-256 of the records; meant for one month per call (month is still
+    part of the sort key and the serialisation, so mixed input stays stable)."""
+    rows = sorted(records, key=lambda r: (r["lad24cd"], r["accom_type"], r["month"]))
     lines = []
     for r in rows:
         c = r["claimants"]
-        lines.append("|".join([r["lad24cd"], r["accom_type"],
-                               "NULL" if c is None else str(int(c))]))
+        if c is not None and (isinstance(c, bool) or not isinstance(c, int)):
+            raise ValueError(
+                f"claimants must be an int or None, got {c!r} for {r['lad24cd']}")
+        lines.append("|".join([r["lad24cd"], r["accom_type"], r["month"],
+                               "NULL" if c is None else str(c)]))
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()

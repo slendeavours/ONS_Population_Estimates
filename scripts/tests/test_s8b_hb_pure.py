@@ -34,6 +34,20 @@ class ParseCube(unittest.TestCase):
                 m.parse_cube(resp_for(["E9"], [bad]))
 
 
+class ParseCubeShape(unittest.TestCase):
+    def test_parse_cube_length_mismatch(self):
+        for vals in ([1], [1, 2, 3]):
+            with self.assertRaises(ValueError) as ctx:
+                m.parse_cube(resp_for(["E1", "E2"], vals))
+            self.assertIn("2", str(ctx.exception))
+
+    def test_parse_cube_empty_list_names_code(self):
+        for vals in ([[]], [[[]]]):
+            with self.assertRaises(ValueError) as ctx:
+                m.parse_cube(resp_for(["E7"], vals))
+            self.assertIn("E7", str(ctx.exception))
+
+
 class BuildRecords(unittest.TestCase):
     URIS = {"L1": ["x:A", "x:B"]}
 
@@ -60,12 +74,32 @@ class BuildRecords(unittest.TestCase):
         self.assertIsNone(self.total({"A": 3}))
 
 
+class BuildRecordsEdges(unittest.TestCase):
+    def test_lad_absent_from_mapping_not_invented(self):
+        recs = m.build_records({"A": 1, "Z": 9}, {"L1": ["x:A"]}, "202509", "SA")
+        self.assertEqual([r["lad24cd"] for r in recs], ["L1"])
+
+    def test_empty_uri_list_gives_null(self):
+        recs = m.build_records({"A": 1}, {"L1": []}, "202509", "SA")
+        self.assertIsNone(recs[0]["claimants"])
+
+    def test_output_order_deterministic(self):
+        uris = {"L3": ["x:C"], "L1": ["x:A"], "L2": ["x:B"]}
+        recs = m.build_records({"A": 1, "B": 2, "C": 3}, uris, "202509", "SA")
+        self.assertEqual([r["lad24cd"] for r in recs], ["L1", "L2", "L3"])
+
+
 class Months(unittest.TestCase):
     def test_month_from_member(self):
         self.assertEqual(m.month_from_member("str:value:hb:V:DATE:C_DATE:202509"), "202509")
         self.assertIsNone(m.month_from_member("str:value:hb:V:SATA:C_SATA:99"))
         self.assertIsNone(m.month_from_member("abc"))
         self.assertIsNone(m.month_from_member("x:2025091"))
+
+    def test_month_from_member_strict(self):
+        arabic = "".join(chr(0x660 + int(d)) for d in "202509")
+        for bad in ("202613", "000000", "202509\n", arabic):
+            self.assertIsNone(m.month_from_member("a:" + bad), repr(bad))
 
     def test_available_months_sorted_valid_only(self):
         dm = [{"id": "a:202509"}, {"id": "a:202401"}, {"id": "a:99"}, {"id": "a:202412"}]
@@ -102,6 +136,23 @@ class Months(unittest.TestCase):
         self.assertEqual(rc, ["202402"])
 
 
+class PlanRuling(unittest.TestCase):
+    def test_gap_inside_held_range_is_new(self):
+        new, _ = m.plan_months({"202401", "202403"}, ["202401", "202402", "202403"])
+        self.assertEqual(new, ["202402"])
+
+    def test_empty_held(self):
+        self.assertEqual(m.plan_months(set(), ["202401", "202402"]), ([], []))
+
+    def test_recheck_larger_than_held_with_new(self):
+        self.assertEqual(m.plan_months({"202401"}, ["202401", "202402"], recheck_n=6),
+                         (["202402"], ["202401"]))
+
+    def test_months_before_earliest_held_never_new(self):
+        new, _ = m.plan_months({"202403"}, ["202401", "202402", "202403", "202404"])
+        self.assertEqual(new, ["202404"])
+
+
 class Hash(unittest.TestCase):
     def rec(self, lad, t, c):
         return {"lad24cd": lad, "month": "202509", "accom_type": t, "claimants": c}
@@ -112,6 +163,11 @@ class Hash(unittest.TestCase):
         b = [self.rec("L1", "SA", 1), self.rec("L2", "TA", 0)]
         self.assertNotEqual(m.content_sha256(a), m.content_sha256(b))
         self.assertEqual(len(m.content_sha256(a)), 64)
+
+    def test_content_sha256_rejects_float_and_bool(self):
+        for bad in (1.5, True):
+            with self.assertRaises(ValueError):
+                m.content_sha256([self.rec("L1", "SA", bad)])
 
 
 if __name__ == "__main__":
