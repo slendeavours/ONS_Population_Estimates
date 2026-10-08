@@ -297,6 +297,29 @@ class LoaderDB(unittest.TestCase):
         m.check_month_records(recs("202604", enh=lambda i: None if i % 7 == 0
                                    else i), "202604")
 
+    def test_negative_claimant_value_rejected_before_anything_stored(self):
+        for col in ("total", "enh"):
+            bad = recs("202604", **{col: lambda i: -1 if i == 3 else i})
+            with self.assertRaises(ValueError) as ctx:
+                m.check_month_records(bad, "202604")
+            msg = str(ctx.exception)
+            self.assertIn(CODES[3], msg)
+            self.assertIn("pip_total_claimants" if col == "total"
+                          else "pip_enhanced_daily_living", msg)
+            cur = mock.MagicMock()
+            with mock.patch.object(m, "apply_month") as apply,                     mock.patch.object(m, "compare_month") as cmp, quiet():
+                rc = m.load_months(cur, ZZ, ["202604"],
+                                   fetcher({"202604": bad}), FETCHED, True)
+            self.assertEqual(rc, 1)
+            apply.assert_not_called()
+            cmp.assert_not_called()
+            cur.connection.commit.assert_not_called()
+        # zero and None still pass
+        m.check_month_records(recs("202604", total=lambda i: 0 if i == 0
+                                   else None if i == 1 else i + 1,
+                                   enh=lambda i: None if i == 0 else 0),
+                              "202604")
+
     def test_default_is_preview_no_commit(self):
         with rolled_back(self.conn) as cur:
             out = io.StringIO()

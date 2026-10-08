@@ -539,8 +539,10 @@ the evidence.
 be derived; later runs derive it.
 
 **Is S19 current?** Yes when the API's latest month equals the latest month
-held (`status` reports both). `python scripts/check_sources.py 19 --dry-run`
-shows the same comparison against the registry's `latest_period_loaded`. The
+held. The API's latest month appears in the `load` preview and in
+`python scripts/check_sources.py 19 --dry-run` (which compares it with the
+registry's `latest_period_loaded`); `status` makes no API call and reports the
+held months and whether anything needs action. The
 registry's `overdue` flag reflects cadence, not a missed load.
 
 **Never run the old loader.** `scripts/historical/s19_pip_build.py` writes text

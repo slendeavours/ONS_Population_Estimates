@@ -745,6 +745,10 @@ def check_month_records(records: list, month: str) -> None:
             v = r[c]
             if v is not None and (isinstance(v, bool) or not isinstance(v, int)):
                 raise ValueError(f"{month}: {c} {v!r} for {lad}")
+            if v is not None and v < 0:
+                raise ValueError(f"{month}: negative {c} {v!r} for {lad}; "
+                                 "a month with a negative claimant count is "
+                                 "never loaded")
             if v is not None:
                 valued[c] += 1
         if lad in seen:

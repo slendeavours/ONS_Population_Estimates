@@ -840,6 +840,9 @@ def verify(conn, geo, discovery, rows_written, log_id):
 # ── Main ────────────────────────────────────────────────────────────────────
 
 def main():
+    sys.exit("RETIRED 2026-10-08: this loader is replaced by scripts/s19_pip_editions.py. "
+             "Running it would write text month labels into la_pip_claimants and break "
+             "Workflow 1's MAX(month). Use the edition loader instead.")
     conn = psycopg2.connect(**DB_CFG)
     conn.autocommit = False
 
