@@ -3,6 +3,7 @@ import datetime
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -12,9 +13,12 @@ import archive_n8n_w1 as a  # noqa: E402
 class Cur:
     def __init__(self, row):
         self.row, self.updates, self.rowcount = row, [], 1
+        self.backup_file = None
 
     def execute(self, sql, params=None):
         if sql.lstrip().upper().startswith("UPDATE"):
+            if self.backup_file is not None:
+                assert self.backup_file.exists() and self.backup_file.stat().st_size > 0,                     "UPDATE issued before a non-empty backup existed"
             self.updates.append((sql, params))
             self.row = (self.row[0], params[0], False, True, self.row[4], self.row[5])
 
@@ -66,10 +70,41 @@ class ArchiveTests(unittest.TestCase):
 
     def test_normal_archive_backs_up_then_updates_once(self):
         conn = Conn("Workflow 1 - Pre-Computation", False)
+        conn.c.backup_file = self.file
         self.assertEqual(a.main(["--commit"], conn, self.dir), 0)
         self.assertIn("Workflow 1 - Pre-Computation", self.file.read_text(encoding="utf-8"))
         self.assertEqual(len(conn.c.updates), 1)
         self.assertEqual(conn.commits, 1)
+
+    def test_serialisation_failure_leaves_no_file_and_no_update(self):
+        conn = Conn("Workflow 1 - Pre-Computation", False)
+        with mock.patch.object(a.json, "dumps", side_effect=TypeError("nope")):
+            with self.assertRaises(TypeError):
+                a.main(["--commit"], conn, self.dir)
+        self.assertFalse(self.file.exists())
+        self.assertEqual(conn.c.updates, [])
+        self.assertEqual(list(self.dir.iterdir()), [])
+
+    def test_write_failure_removes_partial_file(self):
+        conn = Conn("Workflow 1 - Pre-Computation", False)
+        real_open = open
+
+        def bad_open(path, mode="r", *args, **kw):
+            fh = real_open(path, mode, *args, **kw)
+            if "x" in mode:
+                class W:
+                    def __enter__(s): return s
+                    def __exit__(s, *e): fh.close()
+                    def write(s, t):
+                        fh.write(t[:5]); raise OSError("disk full")
+                return W()
+            return fh
+
+        with mock.patch("builtins.open", bad_open):
+            with self.assertRaises(OSError):
+                a.main(["--commit"], conn, self.dir)
+        self.assertFalse(self.file.exists())
+        self.assertEqual(conn.c.updates, [])
 
 
 if __name__ == "__main__":

@@ -76,9 +76,16 @@ def main(argv=None, conn=None, backup_dir=None):
     if backup.exists():
         print(f"ERROR: backup already exists, refusing to overwrite: {backup}")
         return 1
+    text = json.dumps(row, indent=2, default=str)
     backup_dir.mkdir(parents=True, exist_ok=True)
-    with open(backup, "x", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, indent=2, default=str))
+    try:
+        with open(backup, "x", encoding="utf-8") as fh:
+            fh.write(text)
+    except BaseException:
+        # a partial file would block a retry while looking like a backup
+        if backup.exists():
+            backup.unlink()
+        raise
     print(f"backup written: {backup}")
     try:
         cur.execute('UPDATE workflow_entity SET "isArchived" = true, active = false, '
