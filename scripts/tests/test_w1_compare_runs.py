@@ -103,6 +103,29 @@ class CompareRunsTest(unittest.TestCase):
         self.assertTrue(any("only in run 1" in d
                             for d in missing["zz_w1_cmp_nat"]), missing)
 
+    def test_both_runs_absent_is_a_difference(self):
+        with rolled_back(self.conn) as cur:
+            result = w1_compare_runs.compare_runs(cur, 98, 99, tables=TABLES)
+        for t in TABLES:
+            self.assertTrue(any("run 98 has no rows" in d
+                                for d in result[t]), result)
+            self.assertTrue(any("run 99 has no rows" in d
+                                for d in result[t]), result)
+
+    def test_one_run_absent_is_a_difference(self):
+        with rolled_back(self.conn) as cur:
+            result = w1_compare_runs.compare_runs(cur, 1, 99, tables=TABLES)
+        for t in TABLES:
+            self.assertTrue(any("run 99 has no rows" in d
+                                for d in result[t]), result)
+            self.assertFalse(any("run 1 has no rows" in d
+                                 for d in result[t]), result)
+
+    def test_two_populated_identical_runs_still_identical(self):
+        with rolled_back(self.conn) as cur:
+            result = self.compare(cur)
+        self.assertEqual(result, {t: [] for t in TABLES})
+
     def test_null_versus_zero_is_a_difference(self):
         with rolled_back(self.conn) as cur:
             cur.execute("UPDATE zz_w1_cmp_sig SET ta_yoy_pct = 0 "

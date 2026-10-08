@@ -6,6 +6,8 @@ compared with IS DISTINCT FROM, so NULL equals NULL and NULL differs from 0.
 As a second, stricter test the values' text forms are compared too, which
 catches a change of numeric scale (1.5 against 1.50) that = treats as equal.
 Row-count differences and keys present in one run only are reported as well.
+A run with no rows in a table is a difference in itself, whichever side is
+empty, so two absent runs never compare as identical.
 
 A table with no primary key is compared as a multiset of whole rows (all
 non-ignored columns, EXCEPT ALL both ways), and the differences say so.
@@ -138,6 +140,11 @@ def compare_runs(cur, run_a: int, run_b: int, *,
         compared = [c for c in cols if c not in ignore]
         diffs = []
         n_a, n_b = _count(cur, table, run_a), _count(cur, table, run_b)
+        # An empty run is a difference in itself, so two absent runs (a
+        # typo in both ids, or two rolled-back runs) never look identical.
+        for run, n in ((run_a, n_a), (run_b, n_b)):
+            if n == 0:
+                diffs.append(f"run {run} has no rows in {table}")
         if n_a != n_b:
             diffs.append(f"row count: run {run_a} has {n_a}, "
                          f"run {run_b} has {n_b}")
