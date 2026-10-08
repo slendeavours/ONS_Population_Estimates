@@ -92,6 +92,37 @@ class CheckLoader(unittest.TestCase):
         out = cl.check_loader(self.make(CLEAN, verify=False), ROW)
         self.assertTrue(any("verify" in r for r in out))
 
+    def test_private_barnsley_recode_dict_flagged(self):
+        for d in ('RECODES = {"E08000038": "E08000016"}',
+                  "X = {'E08000039': 'E08000019', 'a': 1}"):
+            out = cl.check_loader(self.make(CLEAN + "\n" + d + "\n"), ROW)
+            hits = [r for r in out if "geography.py" in r]
+            self.assertEqual(len(hits), 1, d)
+            self.assertIn("line", hits[0])
+
+    def test_recode_via_geography_not_flagged(self):
+        text = (CLEAN + "\nimport geography\n"
+                "R = dict(geography.RECODES_FALLBACK)\n"
+                "# mentions E08000038 in a comment\n"
+                "MSG = 'E08000038 -> E08000016'\n")
+        self.assertEqual(cl.check_loader(self.make(text), ROW), [])
+
+    def test_recode_dict_under_historical_not_flagged(self):
+        hist = self.dir / "historical"
+        hist.mkdir()
+        p = hist / "sx_load.py"
+        p.write_text(CLEAN + '\nR = {"E08000038": "E08000016"}\n',
+                     encoding="utf-8")
+        (hist / "sx_load_verify.py").write_text("#")
+        self.assertEqual(cl.check_loader(p, ROW), [])
+
+    def test_pending_exemption_is_a_note_not_a_failure(self):
+        p = self.make(CLEAN + '\nR = {"E08000038": "E08000016"}\n',
+                      stem="ro4_editions")
+        self.assertEqual(cl.check_loader(p, ROW), [])
+        self.assertIn("ro4_editions.py", cl.GEOGRAPHY_PENDING)
+        self.assertTrue(cl.geography_notes(p))
+
     def test_verify_prefix_form_accepted(self):
         p = self.make(CLEAN, verify=False)
         (self.dir / "verify_sx_load.py").write_text("#")

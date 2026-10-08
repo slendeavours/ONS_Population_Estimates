@@ -369,6 +369,37 @@ class LoaderDB(unittest.TestCase):
             lp.assert_not_called()
             self.assertEqual(editions(cur, P3), [])
 
+    def test_barnsley_sheffield_form_disagreement_halts(self):
+        # S15 is declared 'new' in geography.DATASET_FORM: a file carrying
+        # E08000016 stops the load before anything is compared or stored.
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)
+            f = write_files(self.dir(), "2026-07", [P1, P2, P3],
+                            extra=[("E08000016", P3)])
+            with mock.patch.object(pe, "load_periods") as lp:
+                rc, text, _, _ = self.run_main(cur, ["load", "--commit"],
+                                               files=f)
+            self.assertEqual(rc, "halt")
+            for part in ("declared 'new'", "E08000016", "geography.py"):
+                self.assertIn(part, text)
+            lp.assert_not_called()
+            self.assertEqual(editions(cur, P3), [])
+
+    def test_recode_map_comes_from_geography_resolve(self):
+        with rolled_back(self.conn) as cur:
+            f = write_files(self.dir(), "2026-07", [P3],
+                            extra=[("E08000038", P3)])
+            stub = (set(CODES) | {"E08000016"}, {})
+            with quiet(), mock.patch.object(m, "reference_codes",
+                                            return_value=stub), \
+                    mock.patch.object(m.geography, "resolve",
+                                      wraps=m.geography.resolve) as rs:
+                by_period = m.load_file_records(f[0], f[1], _Borrowed(cur))[0]
+            self.assertEqual(rs.call_args.args[1], "15")
+            self.assertIn("E08000038", rs.call_args.args[2])
+            self.assertIn("E08000016",
+                          [r["lad24cd"] for r in by_period[P3]])
+
     def test_file_identity_mismatch_halts_before_any_write(self):
         with rolled_back(self.conn) as cur:
             self.seed(cur)

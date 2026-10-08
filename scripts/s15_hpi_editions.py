@@ -84,6 +84,7 @@ from urllib.parse import urlsplit
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import editions_core as core  # noqa: E402
+import geography  # noqa: E402
 import load_checks  # noqa: E402
 import period_editions as pe  # noqa: E402
 from editions_core import halt  # noqa: E402
@@ -92,10 +93,11 @@ from statxplore_months import plan_months  # noqa: E402
 ENGLISH_LA_PREFIXES = ("E06", "E07", "E08", "E09")
 MIN_PERIOD = date(2022, 1, 1)
 
-HARD_RECODES = {
-    "E08000038": "E08000016",  # Barnsley
-    "E08000039": "E08000019",  # Sheffield
-}
+# Barnsley and Sheffield (docs/RULES.md rule 4): the loader takes its recode
+# map from geography.resolve (la_code_lookup) and stops if the files disagree
+# with S15's declared form ('new'). This copy of the fallback is only the
+# default for the pure build_records tests.
+HARD_RECODES = dict(geography.RECODES_FALLBACK)
 
 BASE_URL = "https://www.gov.uk"
 
@@ -560,7 +562,8 @@ def reference_codes(cur) -> tuple:
     """(valid lad24cd set from la_boundaries, {old_code: new_code} from
     la_code_lookup). Only a lookup with exactly one target in la_boundaries
     is used (an ambiguous or dangling one leaves the code unresolved, which
-    stops the load). Halts if a hard-recode target is not in la_boundaries."""
+    stops the load). Barnsley and Sheffield are resolved separately, through
+    geography.resolve (load_file_records)."""
     cur.execute("SELECT lad24cd FROM public.la_boundaries")
     valid = {r[0] for r in cur.fetchall()}
     cur.execute("SELECT old_code, new_code FROM public.la_code_lookup")
@@ -572,10 +575,20 @@ def reference_codes(cur) -> tuple:
         ok = ts & valid
         if len(ok) == 1:
             lookup[old] = next(iter(ok))
-    bad = sorted(t for t in HARD_RECODES.values() if t not in valid)
-    if bad:
-        halt(f"hard recode target(s) {bad} not in la_boundaries")
     return valid, lookup
+
+
+def geography_codes(avg_rows, pt_rows, min_period=MIN_PERIOD) -> dict:
+    """{ISO period: set of area codes} of the English, in-window rows of both
+    files: what geography.resolve checks against S15's declared form."""
+    out = {}
+    for r in list(avg_rows) + list(pt_rows):
+        if not r["Area_Code"].startswith(ENGLISH_LA_PREFIXES):
+            continue
+        d = date.fromisoformat(r["Date"])
+        if d >= min_period:
+            out.setdefault(d.isoformat(), set()).add(r["Area_Code"])
+    return out
 
 
 def load_file_records(avg_path, pt_path, conn, *,
@@ -585,6 +598,8 @@ def load_file_records(avg_path, pt_path, conn, *,
     the edition the latest Date in the data; the average-prices file is not
     the property-type one), records built (build_records: English areas from
     min_period, codes reconciled through la_boundaries and la_code_lookup),
+    a hard stop if Barnsley's or Sheffield's codes disagree with S15's form
+    in geography.DATASET_FORM (the recode map comes from geography.resolve),
     and a hard stop on any unresolved code (reported UNEXPLAINED through
     load_checks.check_codes). Lists the periods present in only one of the
     files. Writes nothing."""
@@ -601,9 +616,23 @@ def load_file_records(avg_path, pt_path, conn, *,
     pt_rows = read_csv(b, PT_COLUMNS)
     with conn.cursor() as cur:
         valid, lookup = reference_codes(cur)
+        seen = geography_codes(avg_rows, pt_rows, min_period)
+        try:
+            recode_map, problems = geography.resolve(
+                cur, RUN_SOURCE, set().union(*seen.values()) if seen else (),
+                by_period=seen)
+        except ValueError as e:
+            halt(f"Barnsley/Sheffield geography: {e}; nothing stored")
+        if problems:
+            halt("Barnsley/Sheffield geography check failed: "
+                 + "; ".join(problems))
+        note = geography.confirm_note(RUN_SOURCE)
+        if note:
+            print(note)
         try:
             by_period, unresolved, no_pt = build_records(
                 avg_rows, pt_rows, valid_lads=valid, code_lookup=lookup,
+                hard_recodes={k: v for k, v in recode_map.items() if k != v},
                 min_period=min_period)
         except ValueError as e:
             halt(f"{a.name} / {b.name}: {e}; nothing stored")
