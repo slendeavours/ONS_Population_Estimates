@@ -153,6 +153,24 @@ Source: DWP STAT-Xplore Housing Benefit caseload data
 
 ---
 
+### PIP claimants (S19)
+
+Source: DWP Stat-Xplore, Personal Independence Payment cases with entitlement, by local authority and month. `la_pip_claimants` holds the latest edition of each month; `la_pip_claimants_editions` holds every release.
+
+**Month key.** `month` is a sortable `YYYYMM` text key (`202607`), per `docs/RULES.md` rule 8. Until 2026-10-08 it held labels such as `Apr-26`, which sort by first letter. The one-off relabel mapped `Apr-26` to `202604` and `Jul-26` to `202607`; the rule is `Mon-yy` to `20yy` + month number. Anything that displays a month builds the label from the key. `v_la_pip_rates` now shows `yyyymm` months.
+
+| Column | Type | Description |
+|---|---|---|
+| `pip_total_claimants` | integer | PIP cases with entitlement. NULL where DWP publishes `..` (disclosure control); never zero-filled. |
+| `pip_enhanced_daily_living` | integer | Cases with the enhanced daily living component. Same NULL rule. |
+| `pip_rate_per_1000` | numeric | In `v_la_pip_rates` only: total claimants per 1,000 of the latest mid-year population, with `population_reference_year`. |
+
+`la_pip_claimants_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, month, edition)`; `month` must be six digits. 1,184 rows on 2026-10-08 (296 authorities x 4 months, 202604 to 202607, all edition 1). Columns as for the other editions tables: `edition` (1 = first loaded), `supersedes`, the two measures, `release_label` and `published_date` (informational), and `source_file`, `source_sha256`, `loaded_at` (provenance).
+
+**Live-layer rule.** The live table holds, for each authority and month, the latest edition. It is refreshed with `python scripts/s19_pip_editions.py refresh-latest --commit` and changes only the two measures; `loaded_at` is never touched. Every `load` rechecks the latest six held months; a differing month is stored as the next edition. Whether PIP is revised is not established: 202604 and 202607 were compared once, a week after their first load, and did not differ. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
+
+---
+
 ## Social Housing Register
 
 Source: DLUHC CORE / LA housing register returns

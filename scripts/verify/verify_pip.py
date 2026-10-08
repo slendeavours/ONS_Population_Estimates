@@ -48,7 +48,7 @@ for i in range(0,len(codes),B):
 
 json.dump(res,open('src/pip_statxplore_202604.json','w'))
 print('fetched',len(res),'LA values',flush=True)
-cur.execute("SELECT lad24cd,pip_total_claimants FROM la_pip_claimants WHERE month='Apr-26'")
+cur.execute("SELECT lad24cd,pip_total_claimants FROM la_pip_claimants WHERE month=%s",(MONTH.split(':')[-1],))
 db={r['lad24cd']:r['pip_total_claimants'] for r in cur.fetchall()}
 both=[k for k in res if k in db]
 mism=[(k,res[k],db[k]) for k in both if int(res[k])!=db[k]]

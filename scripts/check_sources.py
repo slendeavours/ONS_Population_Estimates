@@ -355,8 +355,9 @@ def statxplore_latest(date_field_id):
     """The newest period offered by a Stat-Xplore date field.
 
     Members come back in chronological order, so the newest is the last one.
-    That ordering is used deliberately instead of comparing labels: S19 stores
-    periods as 'Apr-26', and a string comparison would rank 'Mar-26' above it.
+    That ordering is used deliberately instead of comparing labels: a label
+    such as 'Apr-26' (S19 stored these until 2026-10-08) would rank 'Mar-26'
+    above it as a string.
     Position is the publisher's own ordering; string order is our assumption.
     """
     key = (os.environ.get("StatXplore_API_Key")
@@ -398,7 +399,7 @@ def check_statxplore(row, det, reg):
                                  "for this check to run."))
         return row
 
-    # '202602 (Feb-26)' -> '202602'; 'Apr-26' stays as it is.
+    # '202602 (Feb-26)' -> '202602'; a label such as 'Apr-26' stays as it is.
     m = re.match(r"^(\d{6})", newest)
     period = m.group(1) if m else newest
     row["detected_period"] = period
