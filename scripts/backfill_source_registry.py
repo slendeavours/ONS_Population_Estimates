@@ -781,17 +781,24 @@ SOURCES = [
     dict(
         source_code="19",
         revision_note=(
-            "Tested once, negative, not established. Apr-26 was re-probed "
-            "against the live API on 2026-08-14 and reproduced exactly, "
-            "296 of 296, delta 0.000%. That is not evidence PIP does not "
-            "revise: the S8b finding compared a four-month window and this "
-            "compared one, so the tests are not like-for-like. "
-            "revises_back_series stays NULL rather than false. "
-            "For any Stat-Xplore source the revision check has to be data "
-            "comparison, not metadata comparison. DWP moved 285 of 296 LAs "
-            "on the HB caseload with no revision note anywhere a check "
-            "looks, so periodic re-probe against stored values is the only "
-            "reliable signal."),
+            "Not established. Evidence is two months, 202604 and 202607, "
+            "compared once, a week after their first load (2026-10-08): 0 "
+            "areas changed. That is a short test and is not evidence PIP "
+            "does not revise; the S8b finding compared a longer window "
+            "and found a revision. revises_back_series stays NULL rather "
+            "than false. Since 2026-10-08 each month is held as numbered "
+            "editions in la_pip_claimants_editions, so a revision is stored "
+            "as a new edition rather than an overwrite, and the loader "
+            "(scripts/s19_pip_editions.py) rechecks the latest held months "
+            "on every load (load --recheck-all for all of them): a longer "
+            "run of monthly checks is what will settle it. Months are now "
+            "yyyymm keys; the old text labels were relabelled in the "
+            "2026-10-08 migration (Apr-26 became 202604, Jul-26 became "
+            "202607). For any Stat-Xplore source the revision check has to "
+            "be data comparison, not metadata comparison. DWP moved 285 of "
+            "296 LAs on the HB caseload with no revision note anywhere a "
+            "check looks, so periodic re-probe against stored values is the "
+            "only reliable signal."),
         source_name="DWP Stat-Xplore PIP",
         publisher="DWP",
         series_name=("PIP Cases with Entitlement from 2019 "
@@ -804,8 +811,13 @@ SOURCES = [
             "in the recodes object, with dimensions referencing field IDs "
             "only. Including valueset URIs in dimensions causes a "
             "DUPLICATE_RECODES error. Batched at 15 LAs per API call to avoid "
-            "504 timeouts. To force a full re-discovery, delete "
-            "s19_cache/discovery.json before running. Until 2026-08-14 this "
+            "504 timeouts. Months are yyyymm keys (202604, 202607), "
+            "not the old labels such as Apr-26; the old loader "
+            "scripts/s19_pip_build.py wrote labels, is archived in "
+            "scripts/historical/ and must not be run. The loader now shares "
+            "the Stat-Xplore client scripts/statxplore_client.py with S8b "
+            "and reads the months the API lists. A first sync-new needs "
+            "--expected-authorities 296. Until 2026-08-14 the old "
             "build read an environment variable named Stat-Xplore_Token, "
             "which nothing defines, so it hard-stopped before reaching the "
             "API; it now reads StatXplore_API_Key, the same name "
@@ -817,7 +829,7 @@ SOURCES = [
         join_path=("lad24cd direct match against Census 2021 MASTERGEOG21; no "
                    "historical-code summing is required for current "
                    "geography."),
-        build_script_path="scripts/s19_pip_build.py",
+        build_script_path="scripts/s19_pip_editions.py",
         node_docs_path="docs/nodes/s19_node1..s19_node6",
         source_doc_path="docs/s19_pip_source.md",
         n8n_workflow_name="Workflow 1",
@@ -832,7 +844,7 @@ SOURCES = [
             "pip_rate_per_1000. The rate is defined in v_la_pip_rates, which "
             "also exposes population_reference_year because the numerator "
             "refreshes monthly and the denominator annually."),
-        latest_period_loaded="Apr-26",
+        latest_period_loaded="202607",
         refresh_tier="A", status="active",
         publish_github=True, publish_map=False,
     ),

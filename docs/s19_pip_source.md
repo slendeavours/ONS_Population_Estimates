@@ -9,12 +9,12 @@
 | API root | `https://stat-xplore.dwp.gov.uk/webapi/rest/v1` |
 | Geography | Census 2021 MASTERGEOG21 — all 296 English local authorities (LAD24 codes including 2023 LGR) |
 | Join key | `lad24cd` (direct match; no historical-code summing required for current geography) |
-| Target table | `la_pip_claimants` (grain: lad24cd × month) |
-| Month loaded | Apr-26 |
-| Coverage | 296/296 (100.0%) |
-| Confidence | High |
-| First load | 16 July 2026 (Claude Code build, `pipeline_run_log` id 61) |
-| Refresh ID | To load a newer month, change only the latest-month member ID in `discovery.json` — the date valueset currently has 88 periods |
+| Target table | `la_pip_claimants` (latest edition; grain: lad24cd × month) and `la_pip_claimants_editions` (every release; key lad24cd × month × edition) |
+| Month key | `yyyymm` text (`202607`). Until 2026-10-08 text labels such as `Apr-26` (`Apr-26` became `202604`, `Jul-26` became `202607`) |
+| Months held | 202604 to 202607 (four months, 296/296 authorities each, edition 1) |
+| Latest month at the API | 202607 on 2026-10-08 (the API offered 201901 to 202607) |
+| First load | 16 July 2026 (Claude Code build, `pipeline_run_log` id 61); moved onto the editions loader 2026-10-08 |
+| Loader | `scripts/s19_pip_editions.py`; verify `scripts/s19_pip_editions_verify.py` |
 
 ## What it provides
 
@@ -23,7 +23,7 @@ Two demand-proxy columns per LA:
 1. **`pip_total_claimants`** — total PIP cases with entitlement. Broad disability-related benefit caseload.
 2. **`pip_enhanced_daily_living`** — cases with the Enhanced daily living component. A sharper signal: claimants with substantial daily living needs are the primary HSS-lens demand pool for supported living placements.
 
-National total (Apr-26): 3,710,753 total; enhanced daily living is a subset of this.
+National totals held (England, 296 authorities): 202604 3,708,965 total and 1,944,596 enhanced daily living; 202607 3,788,643 and 1,985,494. Enhanced daily living is a subset of the total. (The first-load note recorded 3,710,753 for April; the held April sum is 3,708,965 and the difference has not been investigated.)
 
 ## Acquisition pattern
 
@@ -35,11 +35,17 @@ DWP applies statistical disclosure control. Values below a rounding threshold ar
 
 ## Refresh procedure
 
-1. Re-run `scripts/s19_pip_build.py` — if `s19_cache/discovery.json` exists, Phase 1 is skipped
-2. The script automatically selects the latest available month from the date valueset
-3. Upsert is idempotent: same month re-loaded updates `loaded_at`, does not duplicate rows
+Monthly, with `scripts/s19_pip_editions.py` (full steps in `docs/QUARTERLY_REFRESH.md`, section "S19 PIP claimants"):
 
-To force a full re-discovery (e.g. if DWP restructures the database), delete `s19_cache/discovery.json` before running.
+1. `python scripts/s19_pip_editions.py load` previews. The loader asks the API which months exist, fetches new months and rechecks the latest six held ones. `--recheck-all` rechecks every held month.
+2. `load --commit` stores a new month as edition 1 and its live rows in one transaction; a revised month becomes the next edition and reaches the live table through `refresh-latest --commit`.
+3. A first `sync-new` needs `--expected-authorities 296`.
+
+The old loader `scripts/s19_pip_build.py` (cached discovery, upsert in place, text month labels) is archived in `scripts/historical/` and must not be run.
+
+## Revision status
+
+Not established. 202604 and 202607 were rechecked once, a week after their first load (2026-10-08), and no authority differed. That is a short test: it does not show that PIP is never revised (HB, from the same Stat-Xplore account, was revised on 285 of 296 authorities with no note). The loader rechecks the latest six months on every load, so a longer run of monthly checks will settle it.
 
 ## Dual-lens note
 

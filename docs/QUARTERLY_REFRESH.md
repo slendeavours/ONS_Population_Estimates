@@ -486,10 +486,71 @@ loader stores it as a new, later edition (A, B, A becomes editions 1, 2, 3);
 the chain records what was fetched and when, not which edition DWP now
 considers right.
 
+## S19 PIP claimants: the monthly check
+
+`la_pip_claimants` (S19, DWP Stat-Xplore, Personal Independence Payment cases
+with entitlement) has an append-only editions table,
+`la_pip_claimants_editions` (key `lad24cd, month, edition`), and the live table
+holds the latest edition of each month. It is monthly, independent of the
+other sources, and reads the Stat-Xplore API through the shared
+`scripts/statxplore_client.py`, so no file is downloaded. The API key is read
+from the environment and is never printed. **Months are `yyyymm` keys**
+(`202607`), not the old labels such as `Apr-26`. Record:
+[decisions/2026-10-08-s19-month-keys.md](decisions/2026-10-08-s19-month-keys.md).
+
+Run from `ONS_Population_Estimates`:
+
+1. `python scripts/s19_pip_editions.py load` (preview). It asks the API which
+   months exist, fetches every available month that is not held and is later
+   than the earliest held month (so a gap is filled; nothing before the first
+   held month is fetched), plus the latest six held months as a revision check,
+   and says for each whether it is new, unchanged or revised. Nothing is
+   written. API calls are throttled: rechecking four months took about 9
+   minutes, and a run over many months takes longer. `status` is read-only.
+2. Read the preview. A short month (fewer than 296 authorities, or a measure
+   missing) is refused. Before committing, also stop and look if NULLs appear
+   where there were numbers, if any value is negative, or if a revision is
+   large on many authorities.
+3. `python scripts/s19_pip_editions.py load --commit` stores a new month as
+   edition 1 and inserts its live rows in the same transaction; a revised month
+   is stored as the next edition and reaches live only through step 4; an
+   unchanged month stores nothing. Each month is its own transaction. A run
+   that succeeds, including one that finds nothing new, writes one
+   `pipeline_run_log` row (source `19`), which is what moves the due date in
+   `vw_source_due`; `--simulate` rehearses everything and writes nothing.
+4. `python scripts/s19_pip_editions.py refresh-latest` previews the live rows
+   that would change; run it again with `--commit`. After any
+   `refresh-latest --commit` that wrote rows, run `python scripts/w1_run.py`
+   (one run a day) and then `python scripts/refresh_map.py`: `refresh-latest`
+   leaves `loaded_at` alone, so `refresh_map.py` cannot see a refreshed
+   revision by itself.
+5. `python scripts/s19_pip_editions.py status` should say OK, and
+   `python scripts/s19_pip_editions_verify.py` should pass all 19 gates.
+
+**Full re-check.** `python scripts/s19_pip_editions.py load --recheck-all`
+rechecks every held month, not just the latest six. Use it after a long gap,
+or when DWP is known to have restated a back series. Whether PIP is ever
+revised is **not established** (two months were compared once, a week after
+their first load, and did not differ); the recheck on every load is what builds
+the evidence.
+
+**First time on a table with no editions.** The first `sync-new` needs
+`--expected-authorities 296`, because with no month recorded the count cannot
+be derived; later runs derive it.
+
+**Is S19 current?** Yes when the API's latest month equals the latest month
+held (`status` reports both). `python scripts/check_sources.py 19 --dry-run`
+shows the same comparison against the registry's `latest_period_loaded`. The
+registry's `overdue` flag reflects cadence, not a missed load.
+
+**Never run the old loader.** `scripts/historical/s19_pip_build.py` writes text
+month labels and would undo the `yyyymm` keys.
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
 - **Running the S8b monthly check.** `check_sources.py 8b` detects a newer month but nothing runs `load` for you; see the S8b section.
+- **Running the S19 monthly check.** Nothing runs `s19_pip_editions.py load` for you; see the S19 section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

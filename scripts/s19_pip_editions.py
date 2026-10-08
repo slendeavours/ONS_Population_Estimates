@@ -17,7 +17,7 @@ stops (it never guesses which form a month is in) and `status` says so.
 Blanks and zeros (docs/RULES.md rule 1): a value is the sum of its parts only
 if every part is present (a part absent from the response counts as
 missing), otherwise None. The DWP '..' disclosure marker arrives from the
-API as null and is stored as NULL; a returned 0 stays 0. Never `or 0`.
+API as null and is stored as NULL; a returned 0 stays 0. A blank is never coerced to zero.
 
 Run log: `sync-new --commit` and `load --commit` write one pipeline_run_log
 row (agent 'Source 19 - PIP Claimants', source_number and source_code '19',

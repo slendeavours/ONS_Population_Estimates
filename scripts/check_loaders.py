@@ -36,7 +36,9 @@ from pathlib import Path
 SCRIPTS = Path(__file__).resolve().parent
 
 # source code -> loader file(s), relative to scripts/. Explicit because the
-# registry build_script_path is blank for S1, S2 and others.
+# registry build_script_path is blank for S1, S2 and others. The key is the
+# display code ('S8b'); the registry's own source_code is 'S' removed and
+# lower-cased ('8b'), see registry_code().
 LOADERS = {
     "S1": ["s1_editions.py"],
     "S1b": ["s1b_editions.py"],
@@ -51,7 +53,7 @@ LOADERS = {
     "S14": ["s14_lha_rates_build_v2.py"],
     "S15": ["s15_hpi_build.py"],
     "S18": ["s18_pipr_load.py"],
-    "S19": ["s19_pip_build.py"],
+    "S19": ["s19_pip_editions.py"],
     "S21": ["s21_statistical_neighbours_build.py"],
     "S22": ["s22_ctb_empties_build.py"],
     "S23": ["s23_rsh_stock_build.py"],
@@ -189,11 +191,16 @@ def _registry():
         conn.close()
 
 
+def registry_code(code):
+    """Display code 'S8b' -> the registry's own source_code '8b'."""
+    return code[1:].lower() if code[:1] in ("S", "s") else code.lower()
+
+
 def main():
     reg = _registry()
     rows = []
     for code, files in LOADERS.items():
-        row = reg.get(code, {"revises_back_series": False, "build_script_path": ""})
+        row = reg.get(registry_code(code), {"revises_back_series": False, "build_script_path": ""})
         reasons = []
         for f in files:
             p = SCRIPTS / f
