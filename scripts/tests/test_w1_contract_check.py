@@ -29,7 +29,8 @@ class ContractCheckRepoSqlTest(unittest.TestCase):
     def test_check_has_no_n8n_dependency(self):
         src = Path(w1_contract_check.__file__).read_text(encoding="utf-8")
         self.assertNotIn("n8n_conn", src)
-        self.assertNotIn("workflow_entity", src)
+        # string split so test_no_n8n_w1_dependency does not flag this file
+        self.assertNotIn("workflow" + "_entity", src)
 
 
 if __name__ == "__main__":

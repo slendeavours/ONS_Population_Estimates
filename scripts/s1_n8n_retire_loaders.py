@@ -12,7 +12,7 @@ says why and points to `python scripts/s1_editions.py load-new`. Nothing else in
 the workflow changes (asserted by comparing the nodes list with the two jsCode
 values blanked, before and after). The workflow is never run.
 
-Follows scripts/w1_national_ta_like_for_like.py: dry run by default; the backup
+Follows scripts/historical/w1_national_ta_like_for_like.py: dry run by default; the backup
 of both old codes is written only on --apply; the UPDATE is read back;
 idempotent (a second --apply says already retired and writes nothing).
 
@@ -29,11 +29,26 @@ import sys
 import tempfile
 from pathlib import Path
 
+import psycopg2
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from w1_apply_period_fix import BACKUP_DIR, REPO, log, n8n_conn  # noqa: E402
+from _db import ENV  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+REPO = Path(__file__).resolve().parent.parent
+BACKUP_DIR = REPO / "build_reports" / "w1_node_backups"
+
+
+def log(m):
+    print(f"{datetime.datetime.now():%H:%M:%S} {m}", flush=True)
+
+
+def n8n_conn():
+    return psycopg2.connect(
+        host="localhost", port=int(ENV.get("PG_PORT", "5432")),
+        dbname="n8ndb", user=ENV.get("PG_USER"), password=ENV.get("PG_PASSWORD"))
 
 WF_ID = "r8QRpmOGaBBvkpmg"
 WF_NAME = "MHCLG Statutory Homelessness (S1)"
