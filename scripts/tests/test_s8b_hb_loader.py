@@ -330,6 +330,199 @@ class LoaderDB(unittest.TestCase):
             self.assertIn("E99999999", str(ctx.exception.code))
 
 
+def live(cur, month):
+    """{(lad24cd, accom_type): claimants} of the throwaway live table."""
+    cur.execute("SELECT lad24cd, accom_type, claimants FROM public.zz_s8b_live "
+                "WHERE month = %s", (month,))
+    return {(a, b): c for a, b, c in cur.fetchall()}
+
+
+class NewMonthReachesLive(unittest.TestCase):
+    """B1: a new month is stored as edition 1 AND inserted into live in the
+    same per-month transaction; a revision reaches live only through
+    refresh_latest; a month stranded with editions but no live rows is
+    repaired by load. Throwaway tables only, always rolled back."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = get_conn()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.conn.rollback()
+        cls.conn.close()
+
+    def _seed_live(self, cur, records):
+        for x in records:
+            cur.execute("INSERT INTO public.zz_s8b_live (lad24cd, month, "
+                        "accom_type, claimants) VALUES (%s, %s, %s, %s)",
+                        (x["lad24cd"], x["month"], x["accom_type"],
+                         x["claimants"]))
+
+    def test_new_month_stores_edition_1_and_live_rows_equal(self):
+        with rolled_back(self.conn) as cur:
+            r = recs("202604", value=lambda i, t: None if i == 0 else (
+                0 if i == 1 else i))
+            self.assertEqual(m.apply_month(cur, ZZ, "202604", r,
+                                           fetched_on=FETCHED), "new")
+            self.assertEqual(editions(cur), [(1, None, 4 * m.EXPECTED_AREAS)])
+            self.assertEqual(live(cur, "202604"),
+                             {(x["lad24cd"], x["accom_type"]): x["claimants"]
+                              for x in r})
+            self.assertEqual(core.rows_differing(cur, ZZ, "202604", 1), 0)
+            self.assertEqual(m.check_live_equals_edition(cur, ZZ, "202604", 1),
+                             [])
+            cur.execute("SELECT COUNT(*) FROM public.zz_s8b_live "
+                        "WHERE loaded_at IS NULL")
+            self.assertEqual(cur.fetchone()[0], 0)
+            st = m.status(cur, ZZ)
+            self.assertEqual(st["live_missing"], [])
+            self.assertTrue(st["ok"], st)
+
+    def test_failure_inserting_live_rolls_the_whole_month_back(self):
+        seen = {}
+        real_insert = m.insert_live
+
+        def boom(cur, spec, month, records):
+            cur.execute("SELECT COUNT(*) FROM public.zz_s8b_editions")
+            seen["editions_before_failure"] = cur.fetchone()[0]
+            real_insert(cur, spec, month, records[:10])  # part-way, then fail
+            raise RuntimeError("live insert failed")
+
+        with rolled_back(self.conn) as cur:
+            with mock.patch.object(m, "insert_live", side_effect=boom), quiet():
+                rc = m.load_months(cur, ZZ, ["202604"],
+                                   fetcher({"202604": recs("202604")}),
+                                   FETCHED, False, simulate=True)
+            self.assertEqual(rc, 1)
+            self.assertEqual(seen["editions_before_failure"],
+                             4 * m.EXPECTED_AREAS)
+            self.assertEqual(editions(cur), [])
+            self.assertEqual(live(cur, "202604"), {})
+
+    def test_live_rows_differing_from_edition_halt_the_month(self):
+        def wrong(cur, spec, month, records):
+            bad = [dict(x, claimants=(x["claimants"] or 0) + 1)
+                   if i == 0 else x for i, x in enumerate(records)]
+            real_insert(cur, spec, month, bad)
+
+        real_insert = m.insert_live
+        with rolled_back(self.conn) as cur:
+            cur.execute("SAVEPOINT t")
+            with mock.patch.object(m, "insert_live", side_effect=wrong), \
+                    self.assertRaises(SystemExit) as ctx:
+                m.apply_month(cur, ZZ, "202604", recs("202604"),
+                              fetched_on=FETCHED)
+            self.assertIn("live rows differ from edition 1",
+                          str(ctx.exception.code))
+            cur.execute("ROLLBACK TO SAVEPOINT t")
+            self.assertEqual(editions(cur), [])
+            self.assertEqual(live(cur, "202604"), {})
+
+    def test_preview_and_simulate_write_nothing(self):
+        for flags in ({}, {"simulate": True}):
+            with rolled_back(self.conn) as cur:
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    rc = m.load_months(cur, ZZ, ["202604"],
+                                       fetcher({"202604": recs("202604")}),
+                                       FETCHED, False, **flags)
+                self.assertEqual(rc, 0)
+                self.assertEqual(editions(cur), [])
+                self.assertEqual(live(cur, "202604"), {})
+                if not flags:
+                    self.assertIn("would store edition 1 and insert 1,184 "
+                                  "live rows", out.getvalue())
+
+    def test_status_flags_an_editions_month_with_no_live_rows(self):
+        with rolled_back(self.conn) as cur:
+            r = recs("202604")
+            self._seed_live(cur, r)
+            m.apply_month(cur, ZZ, "202604", r, fetched_on=FETCHED)
+            self.assertTrue(m.status(cur, ZZ)["ok"])
+            # the old behaviour: edition 1 only, no live rows
+            core.insert_edition(cur, ZZ, recs("202605"), "202605",
+                                release_label="t", published_date=FETCHED,
+                                source_file="t", source_sha256="h",
+                                supersedes=None)
+            st = m.status(cur, ZZ)
+            self.assertEqual(st["live_missing"], ["202605"])
+            self.assertFalse(st["ok"])
+            self.assertIn("editions month missing from live: 202605",
+                          m.format_status(st))
+            self.assertIn("ACTION NEEDED", m.format_status(st))
+
+    def test_repair_inserts_live_rows_without_a_new_edition(self):
+        with rolled_back(self.conn) as cur:
+            r = recs("202605")
+            core.insert_edition(cur, ZZ, r, "202605", release_label="t",
+                                published_date=FETCHED, source_file="t",
+                                source_sha256=m.content_sha256(r),
+                                supersedes=None)
+            self.assertEqual(m.classify_month(cur, ZZ, "202605", r),
+                             m.LIVE_MISSING)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):   # preview: nothing written
+                m.load_months(cur, ZZ, ["202605"], fetcher({"202605": r}),
+                              FETCHED, False)
+            self.assertIn("would insert 1,184 live rows", out.getvalue())
+            self.assertEqual(live(cur, "202605"), {})
+            stats = {}
+            cur.execute("SAVEPOINT t")
+            self.assertEqual(m.apply_month(cur, ZZ, "202605", r,
+                                           fetched_on=FETCHED), m.LIVE_MISSING)
+            self.assertEqual(editions(cur), [(1, None, 4 * m.EXPECTED_AREAS)])
+            self.assertEqual(core.rows_differing(cur, ZZ, "202605", 1), 0)
+            self.assertEqual(m.status(cur, ZZ)["live_missing"], [])
+            self.assertTrue(m.status(cur, ZZ)["ok"])
+            cur.execute("ROLLBACK TO SAVEPOINT t")
+            # the run-log words name the repaired month
+            with quiet():
+                m.load_months(cur, ZZ, ["202605"], fetcher({"202605": r}),
+                              FETCHED, False, simulate=True, stats=stats)
+            self.assertEqual(stats["live_rows"], 4 * m.EXPECTED_AREAS)
+            self.assertEqual(stats["stored_rows"], 0)
+            self.assertIn("missing from live: 202605",
+                          m.load_run_notes(stats, ["202605"], ["202605"]))
+            # a stranded month whose fetch differs from its tip: normal
+            # classification (revised), live still untouched
+            rev = recs("202605", value=lambda i, t: i + 1)
+            self.assertEqual(m.classify_month(cur, ZZ, "202605", rev),
+                             "revised")
+
+    def test_unchanged_month_inserts_nothing(self):
+        with rolled_back(self.conn) as cur:
+            r = recs("202604")
+            m.apply_month(cur, ZZ, "202604", r, fetched_on=FETCHED)
+            cur.execute("SELECT COUNT(*), MAX(loaded_at) FROM public.zz_s8b_live")
+            before = cur.fetchone()
+            with mock.patch.object(m, "insert_live") as ins:
+                self.assertEqual(m.apply_month(cur, ZZ, "202604", recs("202604"),
+                                               fetched_on=FETCHED), "unchanged")
+            ins.assert_not_called()
+            cur.execute("SELECT COUNT(*), MAX(loaded_at) FROM public.zz_s8b_live")
+            self.assertEqual(cur.fetchone(), before)
+            self.assertEqual(len(editions(cur)), 1)
+
+    def test_revised_month_reaches_live_only_through_refresh_latest(self):
+        with rolled_back(self.conn) as cur:
+            r = recs("202604")
+            m.apply_month(cur, ZZ, "202604", r, fetched_on=FETCHED)
+            rev = recs("202604", value=lambda i, t: i + (9 if i == 3 else 0))
+            with mock.patch.object(m, "insert_live") as ins:
+                self.assertEqual(m.apply_month(cur, ZZ, "202604", rev,
+                                               fetched_on=FETCHED), "revised")
+            ins.assert_not_called()
+            old = {(x["lad24cd"], x["accom_type"]): x["claimants"] for x in r}
+            self.assertEqual(live(cur, "202604"), old)
+            self.assertEqual(m.status(cur, ZZ)["pending_refresh"], ["202604"])
+            res = core.refresh_latest(cur, ZZ)
+            self.assertEqual(res["rows"], 4)
+            self.assertEqual(live(cur, "202604"),
+                             {(x["lad24cd"], x["accom_type"]): x["claimants"]
+                              for x in rev})
+
+
 class FetchMonth(unittest.TestCase):
     """fetch_month through a patched client: never a short month."""
 

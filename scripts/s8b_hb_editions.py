@@ -29,8 +29,9 @@ always rolls back):
     python scripts/s8b_hb_editions.py ddl [--commit | --simulate]
         # create the editions table and its append-only triggers; idempotent
     python scripts/s8b_hb_editions.py status
-        # what needs action; exit 1 if anything (or if the editions table
-        # does not exist yet; it is never created here)
+        # what needs action, including any editions month missing from
+        # live; exit 1 if anything (or if the editions table does not exist
+        # yet; it is never created here)
     python scripts/s8b_hb_editions.py sync-new [--expected-authorities N]
                                                [--commit | --simulate]
         # edition 1 'as loaded' for every live month with no editions
@@ -43,8 +44,12 @@ always rolls back):
         # If nothing is held, --months must be given. Each month is fetched
         # (read-only API calls, also in preview), checked (296 areas x 4
         # types, never a short month) and compared with the month's latest
-        # stored edition: new (edition 1), unchanged (nothing stored) or
-        # revised (next edition, superseding the tip). Each month is its own
+        # stored edition: new (edition 1 AND the month's live rows, in one
+        # transaction, checked equal cell for cell), unchanged (nothing
+        # stored) or revised (next edition, superseding the tip; live is
+        # changed only by refresh-latest). A month with editions but no live
+        # rows is always fetched; if its tip equals the fetch only its live
+        # rows are inserted (no new edition). Each month is its own
         # transaction; a failure leaves earlier months committed, stops, and
         # exits non-zero. If the editions table does not exist yet the
         # preview compares with the LIVE table and says so; --commit and
@@ -396,12 +401,61 @@ def _stored(cur, spec, month: str, against: str):
     return {(a, b): c for a, b, c in cur.fetchall()}, f"edition {tip}"
 
 
+LIVE_MISSING = "live-missing"
+
+
+def live_row_count(cur, spec, month: str) -> int:
+    cur.execute(f"SELECT COUNT(*) FROM public.{spec.live_table} "
+                "WHERE month = %s", (month,))
+    return cur.fetchone()[0]
+
+
+def live_missing_months(cur, spec) -> list:
+    """Months with editions but no live rows (stranded: before the fix of
+    2026-10-08 a new month was stored as edition 1 only and never reached the
+    live table). Ascending."""
+    cur.execute(f"SELECT DISTINCT e.month FROM public.{spec.editions_table} e "
+                f"WHERE NOT EXISTS (SELECT 1 FROM public.{spec.live_table} l "
+                "WHERE l.month = e.month) ORDER BY 1")
+    return [r[0] for r in cur.fetchall()]
+
+
+def insert_live(cur, spec, month: str, records: list) -> None:
+    """The month's live rows (loaded_at takes its default, now())."""
+    from psycopg2.extras import execute_values
+    execute_values(cur, f"INSERT INTO public.{spec.live_table} "
+                   "(lad24cd, month, accom_type, claimants) VALUES %s",
+                   [(r["lad24cd"], month, r["accom_type"], r["claimants"])
+                    for r in records], page_size=1000)
+
+
+def check_live_equals_edition(cur, spec, month: str, edition: int) -> list:
+    """Problems unless the month's live rows equal the edition cell for cell
+    (EXCEPT ALL both ways, NULL equals NULL, NULL differs from 0) and hold
+    EXPECTED_AREAS areas in each of the four accommodation types."""
+    bad = []
+    n = core.rows_differing(cur, spec, month, edition)
+    if n:
+        bad.append(f"{month}: {n} live rows differ from edition {edition}")
+    cur.execute(f"SELECT accom_type, COUNT(DISTINCT lad24cd), COUNT(*) "
+                f"FROM public.{spec.live_table} WHERE month = %s GROUP BY 1",
+                (month,))
+    got = {t: (a, r) for t, a, r in cur.fetchall()}
+    want = {t: (EXPECTED_AREAS, EXPECTED_AREAS) for t in ACCOM_TYPES}
+    if got != want:
+        bad.append(f"{month}: live (areas, rows) per type {got}, expected "
+                   f"{EXPECTED_AREAS} x {len(ACCOM_TYPES)} types")
+    return bad
+
+
 def compare_month(cur, spec, month: str, records: list,
                   against: str = "editions") -> dict:
     """{kind, changed, examples, against}: kind 'new' (nothing stored),
     'unchanged' or 'revised'; changed counts cells that differ (a key on one
     side only counts; NULL equals NULL, NULL differs from 0); up to three
-    examples."""
+    examples. Against the editions, an unchanged month with no live rows is
+    LIVE_MISSING: its tip equals the fetch but it never reached the live
+    table, so load inserts the live rows (no new edition)."""
     old, label = _stored(cur, spec, month, against)
     new = {(r["lad24cd"], r["accom_type"]): r["claimants"] for r in records}
     if not old:
@@ -411,26 +465,53 @@ def compare_month(cur, spec, month: str, records: list,
             if k not in old or k not in new or old[k] != new[k]]
     ex = [f"{k[0]} {k[1]}: {old.get(k, 'absent')} -> {new.get(k, 'absent')}"
           for k in diff[:3]]
-    return {"kind": "revised" if diff else "unchanged", "changed": len(diff),
-            "examples": ex, "against": label}
+    kind = "revised" if diff else "unchanged"
+    if (kind == "unchanged" and against == "editions"
+            and live_row_count(cur, spec, month) == 0):
+        kind = LIVE_MISSING
+    return {"kind": kind, "changed": len(diff), "examples": ex,
+            "against": label}
 
 
 def classify_month(cur, spec, month: str, records: list) -> str:
-    """'new', 'unchanged' or 'revised' against the month's latest stored
-    edition."""
+    """'new', 'unchanged', 'revised' or LIVE_MISSING against the month's
+    latest stored edition."""
     return compare_month(cur, spec, month, records)["kind"]
+
+
+def _live_into(cur, spec, month: str, records: list, edition: int) -> None:
+    """Insert the month's live rows unless live already holds the month,
+    then halt unless live equals `edition` and is 296 areas x 4 types."""
+    if live_row_count(cur, spec, month) == 0:
+        insert_live(cur, spec, month, records)
+    bad = check_live_equals_edition(cur, spec, month, edition)
+    if bad:
+        halt(f"{month}: the live rows failed their checks against edition "
+             f"{edition}, month rolled back: " + "; ".join(bad))
 
 
 def apply_month(cur, spec, month: str, records: list, *,
                 fetched_on: date) -> str:
-    """Classify, then store: edition 1 (supersedes None) when new, the next
-    edition superseding the tip when revised, nothing when unchanged. Checks
-    the stored edition (tip, row count, distinct keys) before returning; never
-    commits. A return to the content of an older, non-tip edition (DWP
-    publishes A, then B, then A again) is a revision against the tip (RULES
-    2.1) and is stored as a new edition: insert_edition(allow_revert=True)."""
+    """Classify, then store: edition 1 (supersedes None) AND the month's
+    live rows when new; the next edition superseding the tip when revised
+    (live is left alone: a revision reaches live only through
+    refresh-latest); the live rows only (no edition) when LIVE_MISSING;
+    nothing when unchanged. Checks the stored edition (tip, row count,
+    distinct keys) and, for new and LIVE_MISSING, that live equals the
+    edition cell for cell with 296 areas x 4 types, before returning; any
+    failure halts so the caller's per-month savepoint rolls the whole month
+    back. Never commits. A return to the content of an older, non-tip
+    edition (DWP publishes A, then B, then A again) is a revision against
+    the tip (RULES 2.1) and is stored as a new edition:
+    insert_edition(allow_revert=True). For a new month whose live rows
+    already exist (not reachable from `load --commit`, which requires
+    sync-new first) nothing is inserted into live, but live must still equal
+    edition 1."""
     kind = classify_month(cur, spec, month, records)
     if kind == "unchanged":
+        return kind
+    if kind == LIVE_MISSING:
+        _live_into(cur, spec, month, records, core.chain_tip(cur, spec, month))
         return kind
     sha = content_sha256(records)
     tip = None if kind == "new" else core.chain_tip(cur, spec, month)
@@ -444,6 +525,8 @@ def apply_month(cur, spec, month: str, records: list, *,
         bad.append(f"{month}: edition {ed} is not the chain tip")
     if bad:
         halt(f"{month} edition {ed} failed its checks: " + "; ".join(bad))
+    if kind == "new":
+        _live_into(cur, spec, month, records, ed)
     return kind
 
 
@@ -458,15 +541,18 @@ def load_months(cur, spec, months, fetch, fetched_on: date, commit: bool, *,
     returns 1; earlier committed months stay. Returns 0 when every month
     went through. fetch(month) -> records is injected (no network in tests).
     If stats is given it is filled for the run log: months (those gone
-    through), kinds ({month: kind}) and stored_rows (rows in the editions
-    stored, 0 for unchanged months)."""
+    through), kinds ({month: kind}), stored_rows (rows in the editions
+    stored, 0 for unchanged months) and live_rows (live rows inserted: a new
+    month's, in the same savepoint as its edition 1, and a LIVE_MISSING
+    month's)."""
     if commit and simulate:
         raise ValueError("commit and simulate are mutually exclusive")
     write = commit or simulate
     conn = cur.connection
-    tally = {"new": [0, 0], "unchanged": [0, 0], "revised": [0, 0]}
+    tally = {"new": [0, 0], "unchanged": [0, 0], "revised": [0, 0],
+             LIVE_MISSING: [0, 0]}
     if stats is not None:
-        stats.update(months=[], kinds={}, stored_rows=0)
+        stats.update(months=[], kinds={}, stored_rows=0, live_rows=0)
     for i, month in enumerate(months):
         in_sp = False
         try:
@@ -503,17 +589,29 @@ def load_months(cur, spec, months, fetch, fetched_on: date, commit: bool, *,
         if stats is not None:
             stats["months"].append(month)
             stats["kinds"][month] = kind
-            if kind != "unchanged":
+            if kind in ("new", "revised"):
                 stats["stored_rows"] += len(records)
+            if kind in ("new", LIVE_MISSING):
+                stats["live_rows"] += len(records)
         tally[kind][0] += 1
         # a count of changed cells for the summary line, not a source value
-        tally[kind][1] += (cmp["changed"] if kind != "unchanged"
+        tally[kind][1] += (cmp["changed"] if kind in ("new", "revised")
                            else 0)  # not a source value
+        n_live = f"{len(records):,}"
+        if kind == "new":
+            action = ("; stored edition 1 and inserted " if write else
+                      "; would store edition 1 and insert ") + f"{n_live} live rows"
+        elif kind == LIVE_MISSING:
+            action = ("; editions month missing from live: "
+                      + ("inserted " if write else "would insert ")
+                      + f"{n_live} live rows (no new edition)")
+        else:
+            action = ""
         print(f"  {month}: {kind}, {cmp['changed']} cells "
               f"{'new' if kind == 'new' else 'changed'} (compared with "
               f"{cmp['against']})"
               + ("; " + "; ".join(cmp["examples"]) if cmp["examples"] else "")
-              + (" COMMITTED" if commit else ""))
+              + action + (" COMMITTED" if commit else ""))
     _print_tally(tally)
     return 0
 
@@ -545,17 +643,22 @@ def load_run_notes(stats: dict, available: list, held: list) -> str:
     """Words for the run log: what was checked, what was stored."""
     kinds = stats["kinds"]
     by = {k: [mo for mo in stats["months"] if kinds[mo] == k]
-          for k in ("new", "revised", "unchanged")}
+          for k in ("new", "revised", "unchanged", LIVE_MISSING)}
     stored = by["new"] + by["revised"]
     head = ("Stored: " + "; ".join(f"{k} {', '.join(by[k])}"
                                    for k in ("new", "revised") if by[k])
             if stored else "Nothing new: no new month and no revision")
+    if by[LIVE_MISSING]:
+        head += (". Live rows inserted (no new edition) for editions months "
+                 f"missing from live: {', '.join(by[LIVE_MISSING])}")
+    live_rows = stats.get("live_rows", 0)
     return (f"{head}. Checked {len(stats['months'])} month(s) "
             f"({', '.join(stats['months']) or 'none'}); unchanged "
             f"{len(by['unchanged'])}. Held latest {max(held) if held else '-'}"
             f"; API latest {max(available) if available else '-'}. "
             f"Categories: SA, TA, OTHER, UNKNOWN. Rows stored: "
-            f"{stats['stored_rows']}. A run that finds nothing new is logged "
+            f"{stats['stored_rows']} edition rows, {live_rows} live rows "
+            "inserted. A run that finds nothing new is logged "
             "because the check is the run.")
 
 
@@ -573,20 +676,32 @@ def held_months(cur, spec, editions_exist: bool) -> list:
 # CLI
 # ---------------------------------------------------------------------------
 
-def status(cur) -> dict:
+def status(cur, spec=SPEC) -> dict:
     """editions_core.status with SPEC under the key names the S1b and RO4
-    wrappers use: 'drift' is 'drift_periods', 'forked' is 'chain_errors'."""
-    st = core.status(cur, SPEC)
+    wrappers use: 'drift' is 'drift_periods', 'forked' is 'chain_errors'.
+    The core looks only at live months, so 'live_missing' adds the months
+    with editions but no live rows (live_missing_months); any makes ok
+    false."""
+    st = core.status(cur, spec)
+    missing = live_missing_months(cur, spec)
     return {"new_periods": st["new_periods"], "drift_periods": st["drift"],
             "pending_refresh": st["pending_refresh"],
             "chain_errors": st["forked"], "bad_counts": st["bad_counts"],
-            "periods": st["periods"], "ok": st["ok"]}
+            "live_missing": missing,
+            "periods": st["periods"], "ok": st["ok"] and not missing}
 
 
 def format_status(st: dict) -> str:
     from s1_editions import format_status as _format_status
-    return _format_status(st, "S8b HB caseload by accommodation type").replace(
+    text = _format_status(st, "S8b HB caseload by accommodation type").replace(
         "periods in the live table", "months in the live table")
+    missing = st.get("live_missing") or []
+    if not missing:
+        return text
+    head, tail = text.rsplit("\n", 1)
+    lines = [f"  editions month missing from live: {mo} (run load --commit "
+             "to insert its live rows)" for mo in missing]
+    return "\n".join([head] + lines + [tail])
 
 
 def _no_table():
@@ -753,9 +868,15 @@ def cmd_load(args) -> int:
                          "--months M [M ...]")
                 new_m, recheck = plan_months(held, available, args.recheck_n,
                                              args.recheck_all)
+                # editions months with no live rows are always fetched, so
+                # load can insert their live rows (the repair path)
+                stranded = ([mo for mo in live_missing_months(cur, SPEC)
+                             if mo in available] if has_ed else [])
                 print(f"planned: new {', '.join(new_m) or 'none'}; recheck "
-                      f"{', '.join(recheck) or 'none'}")
-                months = sorted(set(new_m) | set(recheck))
+                      f"{', '.join(recheck) or 'none'}"
+                      + (f"; editions month missing from live "
+                         f"{', '.join(stranded)}" if stranded else ""))
+                months = sorted(set(new_m) | set(recheck) | set(stranded))
             if not months:
                 print("nothing to fetch")
                 return 0
@@ -771,7 +892,8 @@ def cmd_load(args) -> int:
                 if rc == 0:
                     # Stored something, or rechecked and found nothing new:
                     # either way the check is the run, so it is logged.
-                    log_run(cur, stats["stored_rows"],
+                    log_run(cur, stats["stored_rows"]
+                            + stats.get("live_rows", 0),
                             load_run_notes(stats, available, held), started)
                     conn.commit()
                     print("pipeline_run_log row written")

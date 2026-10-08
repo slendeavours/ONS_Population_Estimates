@@ -6,7 +6,7 @@ on any FAIL. Gates 2 to 7 read the real tables
 (la_hb_accom_type_caseload and la_hb_accom_type_caseload_editions). Until the
 editions table exists (Task 4 loads it) they print `FAIL (pending load)`, so the
 script exits non-zero until then, like the S1 and S1b verifiers. The seeded
-gates (1 and 6's scenario, 8 to 15) never need the real editions table: they run
+gates (1 and 6's scenario, 8 to 16) never need the real editions table: they run
 on throwaway tables zz_s8b_live and zz_s8b_editions (a copy of the loader's SPEC
 named zz_s8b), created inside the transaction, and call the loader's own
 writers (apply_month, load_months, refresh_latest, chain_tip) rather than a
@@ -29,6 +29,8 @@ Gates:
   13 the API key is not in the source files or any gate output
   14 revert stored as a new edition (A, B, A -> edition 3; A again stores nothing)
   15 no network and no key in output (stubs only; a socket attempt fails the gate)
+  16 new month reaches live (edition 1 and live rows in one transaction; a
+     planted live-insert failure leaves neither; preview writes nothing)
 
 Usage:
     python scripts/s8b_hb_editions_verify.py
@@ -701,6 +703,68 @@ def gate_14_revert_new_edition(cur):
            f"editions still {[e for e, _, _ in after_abaa]}, tip {tip}")
 
 
+def gate_16_new_month_reaches_live(cur):
+    name = ("new month reaches live (edition 1 and live rows in one "
+            "transaction)")
+    month = "202604"
+    r = recs(month, value=lambda i, t: None if i == 0 else (0 if i == 1 else i))
+    n = m.EXPECTED_AREAS * len(m.ACCOM_TYPES)
+
+    def stored(cur):
+        kind = m.apply_month(cur, ZZ, month, r, fetched_on=FETCHED)
+        cur.execute(f"SELECT COUNT(*), COUNT(loaded_at) FROM public.{ZL} "
+                    "WHERE month = %s", (month,))
+        live_n, stamped = cur.fetchone()
+        return (kind, editions_of(cur, month), live_n, stamped,
+                core.rows_differing(cur, ZZ, month, 1),
+                m.check_live_equals_edition(cur, ZZ, month, 1),
+                m.status(cur, ZZ))
+
+    def failed(cur):
+        """A failure while inserting live rolls the whole month back."""
+        seen = {}
+        real_insert = m.insert_live
+
+        def boom(c, spec, mo, records):
+            seen["editions_when_live_failed"] = len(editions_of(c, mo))
+            real_insert(c, spec, mo, records[:10])
+            raise RuntimeError("live insert failed (planted)")
+        with mock.patch.object(m, "insert_live", side_effect=boom), _quiet():
+            rc = m.load_months(cur, ZZ, [month], lambda mo: r, FETCHED, False,
+                               simulate=True)
+        cur.execute(f"SELECT COUNT(*) FROM public.{ZL} WHERE month = %s",
+                    (month,))
+        live_left = cur.fetchone()[0]
+        return rc, seen, editions_of(cur, month), live_left
+
+    def preview(cur):
+        with _quiet() as buf:
+            rc = m.load_months(cur, ZZ, [month], lambda mo: r, FETCHED, False)
+        cur.execute(f"SELECT COUNT(*) FROM public.{ZL} WHERE month = %s",
+                    (month,))
+        live_left = cur.fetchone()[0]
+        return rc, buf.getvalue(), editions_of(cur, month), live_left
+    try:
+        kind, eds, live_n, stamped, diff, chk, st = _in_savepoint(cur, stored)
+        f_rc, f_seen, f_eds, f_live = _in_savepoint(cur, failed)
+        p_rc, p_out, p_eds, p_live = _in_savepoint(cur, preview)
+    except (psycopg2.Error, SystemExit) as e:
+        return report(16, name, False, str(e).splitlines()[0])
+    ok = (kind == "new" and eds == [(1, None, n)] and live_n == n
+          and stamped == n and diff == 0 and chk == [] and st["ok"]
+          and st["live_missing"] == []
+          and f_rc == 1 and f_seen.get("editions_when_live_failed") == 1
+          and f_eds == [] and f_live == 0
+          and p_rc == 0 and p_eds == [] and p_live == 0
+          and "would store edition 1 and insert 1,184 live rows" in p_out)
+    report(16, name, ok, f"{kind}: editions {[(e, s) for e, s, _ in eds]}, "
+           f"live rows {live_n} (loaded_at set {stamped}), cells differing "
+           f"{diff}, status ok={st['ok']}; planted live failure: rc {f_rc}, "
+           f"edition 1 written first={f_seen.get('editions_when_live_failed') == 1}"
+           f", afterwards editions {f_eds} live {f_live}; preview writes "
+           f"editions {p_eds} live {p_live}")
+
+
 # ------------------------------------------------------- key-leak gates
 
 def api_key():
@@ -796,6 +860,7 @@ def main():
             gate_13_key_not_in_source_or_output(cur)
             gate_14_revert_new_edition(cur)
             gate_15_no_network_no_key(cur)
+            gate_16_new_month_reaches_live(cur)
     finally:
         conn.rollback()
         conn.close()
