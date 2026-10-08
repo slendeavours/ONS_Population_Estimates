@@ -3,6 +3,7 @@
 No real table is read or written. Cursors are stubs; w1_run.main,
 export_map_data.main and subprocess.run are patched.
 """
+import contextlib
 import datetime
 import io
 import json
@@ -23,8 +24,10 @@ RUN_DATE = datetime.datetime(2026, 10, 8, 8, 49, tzinfo=UTC)
 class StubCur:
     """Answers the kinds of query refresh_map makes, by SQL text."""
 
-    def __init__(self, run=(25, RUN_DATE), inputs=None, loaded=None):
+    def __init__(self, run=(25, RUN_DATE), inputs=None, loaded=None,
+                 export_inputs=None):
         self.run = run
+        self.export_inputs = export_inputs or []
         self.inputs = inputs if inputs is not None else ["la_population"]
         self.loaded = loaded or {}
         self.sql = []
@@ -39,7 +42,7 @@ class StubCur:
         if "from staging_runs" in s:
             self._rows = [self.run] if self.run else []
         elif "max(loaded_at)" in s:
-            t = next(t for t in self.inputs if t in s)
+            t = next(t for t in self.inputs + self.export_inputs if t in s)
             self._rows = [(self.loaded.get(t),)]
         else:
             raise AssertionError(f"unexpected query: {sql}")
@@ -52,15 +55,21 @@ class StubCur:
 
 
 def patch_inputs():
-    return mock.patch.object(refresh_map, "input_tables",
-                             lambda cur: [(t, True) for t in cur.inputs])
+    stack = contextlib.ExitStack()
+    stack.enter_context(mock.patch.object(
+        refresh_map, "input_tables",
+        lambda cur: [(t, True) for t in cur.inputs]))
+    stack.enter_context(mock.patch.object(
+        refresh_map, "export_only_tables",
+        lambda cur: [(t, True) for t in cur.export_inputs]))
+    return stack
 
 
 class Staleness(unittest.TestCase):
     def setUp(self):
         p = patch_inputs()
-        p.start()
-        self.addCleanup(p.stop)
+        p.__enter__()
+        self.addCleanup(p.close)
 
     def test_fresh_when_published_equals_latest(self):
         self.assertEqual(refresh_map.staleness(StubCur(), 25), [])
@@ -119,8 +128,11 @@ class Modes(unittest.TestCase):
             conn.cursor.return_value = cur
             with mock.patch.object(refresh_map, "get_readonly_conn",
                                    return_value=conn), \
-                 mock.patch.object(refresh_map, "published_run",
-                                   return_value=published), \
+                 mock.patch.object(
+                     refresh_map, "head_published",
+                     return_value=((published, RUN_DATE), None)), \
+                 mock.patch.object(refresh_map, "local_exported",
+                                   return_value=None), \
                  patch_inputs(), \
                  mock.patch.object(refresh_map.w1_run, "main", _boom), \
                  mock.patch.object(refresh_map.export_map_data, "main", _boom), \
@@ -194,13 +206,126 @@ class Summary(unittest.TestCase):
         self.assertEqual(refresh_map.changed_cells(old, new), {})
 
 
+GEN = datetime.datetime(2026, 10, 7, 17, 44, tzinfo=UTC)
+
+
 class Published(unittest.TestCase):
-    def test_published_run_reads_string_run_id(self):
+    def test_local_exported_reads_string_run_id(self):
         with tempfile.TemporaryDirectory() as d:
             p = Path(d) / "latest.json"
-            p.write_text(json.dumps({"run_id": "23"}))
-            self.assertEqual(refresh_map.published_run(p), 23)
-            self.assertIsNone(refresh_map.published_run(Path(d) / "no.json"))
+            p.write_text(json.dumps({"run_id": "23",
+                                     "generated_at": GEN.isoformat()}))
+            self.assertEqual(refresh_map.local_exported(p), (23, GEN))
+            self.assertIsNone(refresh_map.local_exported(Path(d) / "no.json"))
+
+    def test_head_published_parses_git_show(self):
+        out = json.dumps({"run_id": "23", "generated_at": GEN.isoformat()})
+        with mock.patch("subprocess.run", return_value=mock.Mock(
+                returncode=0, stdout=out)) as sp:
+            self.assertEqual(refresh_map.head_published(), ((23, GEN), None))
+        self.assertEqual(sp.call_args[0][0][:2], ["git", "show"])
+
+    def test_git_missing_is_an_error(self):
+        with mock.patch("subprocess.run", side_effect=FileNotFoundError("git")):
+            info, err = refresh_map.head_published()
+        self.assertIsNone(info)
+        self.assertIn("git is unavailable", err)
+
+    def test_head_file_missing_is_an_error(self):
+        with mock.patch("subprocess.run", return_value=mock.Mock(
+                returncode=128, stdout="")):
+            info, err = refresh_map.head_published()
+        self.assertIsNone(info)
+        self.assertIn("not readable at git HEAD", err)
+
+
+class ExportOnlyAndPushState(unittest.TestCase):
+    def setUp(self):
+        p = patch_inputs()
+        p.__enter__()
+        self.addCleanup(p.close)
+
+    def test_export_only_table_loaded_after_published_is_behind(self):
+        cur = StubCur(export_inputs=["la_house_prices"],
+                      loaded={"la_house_prices": GEN + datetime.timedelta(days=1)})
+        msgs = refresh_map.staleness(cur, 25, None, GEN)
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("la_house_prices", msgs[0])
+
+    def test_export_only_table_loaded_before_published_is_fresh(self):
+        cur = StubCur(export_inputs=["la_house_prices"],
+                      loaded={"la_house_prices": GEN - datetime.timedelta(days=1)})
+        self.assertEqual(refresh_map.staleness(cur, 25, None, GEN), [])
+
+    def test_head_fresh_and_nothing_newer_is_fresh(self):
+        cur = StubCur(export_inputs=["la_house_prices"])
+        self.assertEqual(refresh_map.staleness(cur, 25, (25, GEN), GEN), [])
+
+    def test_local_ahead_of_head_is_exported_but_not_pushed(self):
+        msgs = refresh_map.staleness(StubCur(), 23, (25, GEN), GEN)
+        self.assertTrue(any("exported but not pushed: run 25 is exported "
+                            "locally; the live map still shows run 23" in m
+                            for m in msgs))
+
+    def _check(self, head, local=None):
+        cur = StubCur()
+        conn = mock.Mock()
+        conn.cursor.return_value = cur
+        out = io.StringIO()
+        with mock.patch.object(refresh_map, "get_readonly_conn",
+                               return_value=conn), \
+             mock.patch.object(refresh_map, "head_published",
+                               return_value=head), \
+             mock.patch.object(refresh_map, "local_exported",
+                               return_value=local), \
+             redirect_stdout(out):
+            return refresh_map.main(["--check"]), out.getvalue()
+
+    def test_check_exit_1_when_local_ahead_of_head(self):
+        rc, out = self._check(((25, GEN), None),
+                              (25, GEN + datetime.timedelta(hours=1)))
+        self.assertEqual(rc, 1)
+        self.assertIn("exported but not pushed", out)
+
+    def test_check_exit_1_when_git_missing(self):
+        rc, out = self._check((None, "git is unavailable (x); cannot read"))
+        self.assertEqual(rc, 1)
+        self.assertIn("git is unavailable", out)
+
+    def test_check_exit_0_when_head_fresh(self):
+        rc, out = self._check(((25, GEN), None), (25, GEN))
+        self.assertEqual(rc, 0)
+
+    def test_export_only_load_does_not_trigger_w1_in_default_mode(self):
+        cur = StubCur(export_inputs=["la_house_prices"],
+                      loaded={"la_house_prices": RUN_DATE
+                              + datetime.timedelta(days=5)})
+        conn = mock.Mock()
+        conn.cursor.return_value = cur
+        w1 = mock.Mock(return_value=0)
+        with mock.patch.object(refresh_map, "get_readonly_conn",
+                               return_value=conn), \
+             mock.patch.object(refresh_map.w1_run, "main", w1), \
+             mock.patch.object(refresh_map.export_map_data, "main"), \
+             mock.patch.object(refresh_map, "export_summary", return_value=[]), \
+             redirect_stdout(io.StringIO()):
+            self.assertEqual(refresh_map.main([]), 0)
+        w1.assert_not_called()
+
+
+class ExportDiscovery(unittest.TestCase):
+    def test_export_tables_discovered_from_export_source(self):
+        # The real export source and real W1 SQL, over a stubbed table list.
+        cur = mock.Mock()
+        cur.fetchall.return_value = [("la_house_prices", True),
+                                     ("la_population", True),
+                                     ("staging_la_signals", False),
+                                     ("la_boundaries", True)]
+        names = [t for t, _ in refresh_map.export_only_tables(cur)]
+        self.assertIn("la_house_prices", names)
+        self.assertNotIn("la_population", names)   # a W1 input
+        self.assertNotIn("staging_la_signals", names)
+        self.assertNotIn("la_boundaries", names)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,10 @@
 """Refresh the map data: run Workflow 1 if its inputs have moved, then export.
 
 Usage:
-    python scripts/refresh_map.py --check   read-only: is the published map
-                                            behind? Exit 0 fresh, 1 behind.
-                                            Writes nothing at all.
+    python scripts/refresh_map.py --check   read-only: is the live map (the
+                                            latest.json at git HEAD) behind?
+                                            Exit 0 fresh, 1 behind. Writes
+                                            nothing at all.
     python scripts/refresh_map.py           the refresh (see below)
 
 Default mode:
@@ -25,6 +26,7 @@ table has one (checked 2026-10-08); a table without one is reported as not
 checkable rather than silently ignored.
 """
 import argparse
+import datetime
 import json
 import re
 import subprocess
@@ -43,6 +45,7 @@ if hasattr(sys.stdout, "reconfigure"):
 
 REPO = Path(__file__).resolve().parent.parent
 LATEST_JSON = REPO / "data" / "signals" / "latest.json"
+LATEST_REL = "data/signals/latest.json"
 SIGNALS_REL = "data/signals/staging_la_signals_latest.json"
 SIGNALS_JSON = REPO / SIGNALS_REL
 PUSH_LINE = "Not pushed. Review, then: python scripts/push.py"
@@ -61,8 +64,8 @@ def table_tokens(sql, names):
             if w in names}
 
 
-def input_tables(cur):
-    """(table, has_loaded_at) for each W1 input base table, read-only."""
+def _real_tables(cur):
+    """{base table: has a loaded_at column} for schema public, read-only."""
     cur.execute("""
         SELECT t.table_name,
                EXISTS (SELECT 1 FROM information_schema.columns c
@@ -72,11 +75,32 @@ def input_tables(cur):
           FROM information_schema.tables t
          WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
     """)
-    real = dict(cur.fetchall())
+    return dict(cur.fetchall())
+
+
+def _w1_tables(real):
     used = set()
     for step in STEPS:
         used |= table_tokens(read_step(step), set(real))
-    return sorted((t, real[t]) for t in used if not is_excluded(t))
+    return {t for t in used if not is_excluded(t)}
+
+
+def input_tables(cur):
+    """(table, has_loaded_at) for each W1 input base table, read-only."""
+    real = _real_tables(cur)
+    return sorted((t, real[t]) for t in _w1_tables(real))
+
+
+def export_only_tables(cur):
+    """(table, has_loaded_at) for tables the export reads that W1 does not.
+
+    Found by the same token match over export_map_data.py. They never make W1
+    stale (the export re-reads them live); they only make the map behind.
+    """
+    real = _real_tables(cur)
+    src = Path(export_map_data.__file__).read_text(encoding="utf-8")
+    used = {t for t in table_tokens(src, set(real)) if not is_excluded(t)}
+    return sorted((t, real[t]) for t in used - _w1_tables(real))
 
 
 def latest_complete_run(cur):
@@ -86,17 +110,10 @@ def latest_complete_run(cur):
     return (row[0], row[1]) if row else None
 
 
-def published_run(path=LATEST_JSON):
-    try:
-        return int(json.loads(Path(path).read_text(encoding="utf-8"))["run_id"])
-    except FileNotFoundError:
-        return None
-
-
-def stale_inputs(cur, run_date):
+def stale_inputs(cur, run_date, tables=None):
     """One line per input table loaded after run_date, with its latest date."""
     out = []
-    for table, has_col in input_tables(cur):
+    for table, has_col in (input_tables(cur) if tables is None else tables):
         if not has_col:
             out.append(f"{table}: no loaded_at column, cannot be checked")
             continue
@@ -107,8 +124,43 @@ def stale_inputs(cur, run_date):
     return out
 
 
-def staleness(cur, published):
-    """Reasons the published map is behind. Empty means fresh."""
+def head_published():
+    """(info, error): the latest.json committed at git HEAD, which is what the
+    live map reads. info is (run_id, generated_at) or None; error is a message
+    when git or the file is unavailable."""
+    try:
+        r = subprocess.run(["git", "show", f"HEAD:{LATEST_REL}"], cwd=REPO,
+                           capture_output=True, text=True, encoding="utf-8")
+    except (FileNotFoundError, OSError) as e:
+        return None, f"git is unavailable ({e}); cannot read the published map"
+    if r.returncode != 0:
+        return None, (f"{LATEST_REL} is not readable at git HEAD; cannot "
+                      "tell what the live map shows")
+    try:
+        d = json.loads(r.stdout)
+        return (int(d["run_id"]),
+                datetime.datetime.fromisoformat(d["generated_at"])), None
+    except (ValueError, KeyError, TypeError) as e:
+        return None, f"{LATEST_REL} at git HEAD is malformed ({e})"
+
+
+def local_exported(path=LATEST_JSON):
+    """(run_id, generated_at) of the local working latest.json, or None."""
+    try:
+        d = json.loads(Path(path).read_text(encoding="utf-8"))
+        return (int(d["run_id"]),
+                datetime.datetime.fromisoformat(d["generated_at"]))
+    except (FileNotFoundError, ValueError, KeyError, TypeError):
+        return None
+
+
+def staleness(cur, published, local=None, published_at=None):
+    """Reasons the live map is behind. Empty means fresh.
+
+    published: run_id in latest.json at git HEAD (None if there is none).
+    published_at: its generated_at; export-only tables loaded after it count.
+    local: (run_id, generated_at) of the local working file, if any.
+    """
     run = latest_complete_run(cur)
     if run is None:
         return ["no completed W1 run exists"]
@@ -119,8 +171,17 @@ def staleness(cur, published):
     elif published < run_id:
         msgs.append(f"published run {published} is older than the latest "
                     f"complete run {run_id}")
+    if local is not None and published is not None and (
+            local[0] > published
+            or (published_at is not None and local[1] > published_at)):
+        msgs.append(f"exported but not pushed: run {local[0]} is exported "
+                    f"locally; the live map still shows run {published}")
     msgs += [m for m in stale_inputs(cur, run_date)
              if "cannot be checked" not in m]
+    if published_at is not None:
+        msgs += [m + " (export-only input)" for m in
+                 stale_inputs(cur, published_at, export_only_tables(cur))
+                 if "cannot be checked" not in m]
     return msgs
 
 
@@ -166,11 +227,17 @@ def _check():
     conn = get_readonly_conn()
     try:
         cur = conn.cursor()
-        msgs = staleness(cur, published_run())
+        head, err = head_published()
+        if err:
+            print(f"Behind: {err}")
+            return 1
+        msgs = staleness(cur, head[0], local_exported(), head[1])
         run = latest_complete_run(cur)
-        unchecked = [t for t, has in input_tables(cur) if not has]
+        unchecked = [t for t, has in input_tables(cur) + export_only_tables(cur)
+                     if not has]
     finally:
         conn.close()
+    print(f"Published (git HEAD): run {head[0]} ({head[1]:%Y-%m-%d %H:%M})")
     if run:
         print(f"Latest complete run: {run[0]} ({run[1]:%Y-%m-%d %H:%M})")
     if unchecked:
