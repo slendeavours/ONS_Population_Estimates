@@ -4,7 +4,7 @@
 status: active
 last-reviewed: 2026-10-05
 type: tool
-consumed-by: map.slendeavours.org, n8n exempt_pipeline workflows
+consumed-by: map.slendeavours.org
 -->
 
 **SL Endeavours Ltd** | [slendeavours.org](https://slendeavours.org)
@@ -103,7 +103,7 @@ CHANGELOG.md                                Dated record of pipeline changes
   QUARTERLY_REFRESH.md                      Quarterly procedure for the S1 and S1b homelessness tables (editions)
   s15_hpi_source.md                         Source 15 register entry
   s18_pipr_source.md                        Source 18 (ONS PIPR private rents) register entry
-  s18_pipr_workbook_structure.md            PIPR workbook spec (n8n S18 build reference)
+  s18_pipr_workbook_structure.md            PIPR workbook spec (S18 build reference)
   s19_pip_source.md                         Source 19 (DWP PIP claimants) register entry
   s19_pip_w1_integration.md                 S19 PIP W1 integration summary (run 11)
   s6_asylum_source.md                       Source 6 (Home Office asylum support) register entry
@@ -114,7 +114,7 @@ CHANGELOG.md                                Dated record of pipeline changes
   S22_BUILD_SUMMARY.md                      S22 Council Taxbase empty homes build summary
   s22_source_structure.md                   Source 22 register entry: file structure, dates, release-page figures
   s22_verification.md                       S22 verification suite results
-  s22_w1_node5_revised.md                   W1 node 5 SQL as stored in the workflow
+  s22_w1_node5_revised.md                   W1 node 5 SQL as stored in the n8n workflow (historical; live SQL is in sql/w1/)
   /nodes/                                   Pipeline node documentation
   /decisions/                               Decision records (dated, one per non-obvious decision)
   /prompts/                                 Build prompts: how each source and the map were specified
@@ -122,9 +122,12 @@ CHANGELOG.md                                Dated record of pipeline changes
   _db.py                                    Shared connection helper; resolves .env, never guesses a credential
   push.py                                   The only sanctioned push: scan, verify, then push
   verify_source_registry.py                 The gate suite (17 gates)
-  w1_contract_check.py                      Node 5 to staging_la_signals column contract, both directions
+  w1_contract_check.py                      W1 SQL (sql/w1/) to staging_la_signals column contract, both directions
   register_lib.py                           Shared register helpers (names no tables, safe to publish)
-  w1_add_preflight_node.py                  Installs the in-workflow pre-flight node
+  w1_run.py                                 Runs Workflow 1 (sql/w1/) in one transaction
+  refresh_map.py                            Runs W1 if needed, then the export; --check reports staleness
+  w1_compare_runs.py                        Compares two W1 runs cell for cell
+  /historical/                              Retired n8n-era patch scripts, kept for provenance
   sync_readme_sources.py                    Regenerates the README source table (--check fails if stale)
   export_map_data.py                        Builds the three published data files from the pipeline database
   s6_asylum_build.py / s6_asylum_verify.py  Source 6 ETL and its 13 halting checks - standalone, not in W1
@@ -132,10 +135,11 @@ CHANGELOG.md                                Dated record of pipeline changes
   s15_hpi_build.py                          Source 15 (Land Registry UK HPI) ETL
   /verify/                                  Source reconciliation against publication (2026-08 assurance)
 /sql/                                       Table definitions
+  /w1/                                      Workflow 1: eight numbered SQL steps
 /viewers/                                   Legacy Kepler.gl viewers (retained, unmaintained)
 /build_reports/                             Point-in-time backups of workflow nodes - provenance, never executed
 /outputs/node_docs/                         Generated node documentation
-/n8n/                                       n8n workflow exports
+/n8n/                                       n8n-era material (historical)
 ```
 
 Raw source downloads (`data/raw/`) are kept local and gitignored — they are re-fetchable via `scripts/s18_pipr_fetch.py` (ONS PIPR) and `scripts/s11_cqc_fetch.py` (CQC directory).
@@ -144,7 +148,7 @@ Raw source downloads (`data/raw/`) are kept local and gitignored — they are re
 
 - **Map renderer**: Mapbox GL JS (URL-restricted public token)
 - **Data format**: GeoJSON RFC 7946, WGS84; LAD24CD as the universal join key
-- **Backend pipeline**: n8n + PostgreSQL 16 (Docker)
+- **Backend pipeline**: Python scripts + PostgreSQL 16 (Docker); n8n-era material is historical
 - **Data hosting**: GitHub Pages (public repository)
 
 ## Support

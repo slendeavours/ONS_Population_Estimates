@@ -22,12 +22,16 @@ Those joins are each field's only provenance, which is why a naive export
 dropped them. Both S15 fields were missing entirely until 2026-08-20: the
 map's "Avg House Price" layer reads avg_price_all, so that layer had been
 rendering nothing, and the popup's "Annual Change" row always showed a dash.
-Both are named in the hard-stop check at the end of main() so a future export
+Both are named in the expected-columns hard stop in main() so a future export
 cannot drop them silently.
+
+Every hard stop fires before any file is written: a failed stop leaves the
+three files exactly as they were.
 
 Writes files only. Adds no map layer; index.html decides what renders.
 """
 
+import collections
 import datetime
 import json
 import os
@@ -64,6 +68,73 @@ DB_CFG = dict(
 
 # Not signal data; excluded from the exported properties.
 NON_SIGNAL = {"run_id"}
+
+EXPECTED_FEATURES = 296          # English local authorities, la_boundaries 2024
+NAME_PROP = "la_name"            # the area name property in both files
+GEOMETRY_TYPES = ("Polygon", "MultiPolygon")
+EXPECTED_COLUMNS = ("drd_bed_days_lost", "drd_pct_delayed_1plus_days",
+                    "crfd_days", "pip_total_claimants",
+                    "pip_enhanced_daily_living", "pip_rate_per_1000",
+                    "hb_sa_claimants_latest", "avg_price_all",
+                    "annual_change_pct",
+                    "ctb_total_dwellings", "ctb_empty_6m_plus",
+                    "ctb_empty_homes_premium", "ctb_second_homes",
+                    "ctb_lte_rate_pct")
+
+
+def _few(codes, n=5):
+    codes = sorted(str(c) for c in codes)
+    return ", ".join(codes[:n]) + (f" and {len(codes) - n} more"
+                                   if len(codes) > n else "")
+
+
+def validate_export(signals_rows, features, expected=EXPECTED_FEATURES):
+    """Problems with an export about to be written; empty means it may be.
+
+    Requires exactly `expected` features, each with a non-null lad24cd, a
+    non-null la_name and a non-null Polygon or MultiPolygon geometry; lad24cd
+    unique; and one signals row per feature with the same set of lad24cd.
+    "No NULLs" means the key, the name and the geometry only. A NULL signal
+    value is legitimate (docs/RULES.md rule 1: a blank is unknown, not zero)
+    and is not checked here.
+    """
+    problems = []
+    if len(features) != expected:
+        problems.append(f"{len(features)} features, {expected} expected")
+    codes = []
+    for i, f in enumerate(features):
+        props = f.get("properties") or {}
+        code = props.get("lad24cd")
+        where = code if code is not None else f"feature {i}"
+        if code is None:
+            problems.append(f"feature {i}: lad24cd is NULL")
+        else:
+            codes.append(code)
+        if props.get(NAME_PROP) is None:
+            problems.append(f"{where}: {NAME_PROP} is NULL")
+        geom = f.get("geometry")
+        if geom is None:
+            problems.append(f"{where}: geometry is NULL")
+        elif not isinstance(geom, dict) or geom.get("type") not in GEOMETRY_TYPES:
+            kind = (geom.get("type") if isinstance(geom, dict)
+                    else type(geom).__name__)
+            problems.append(f"{where}: geometry type {kind!r}, only "
+                            f"{' or '.join(GEOMETRY_TYPES)} allowed")
+    dups = [c for c, n in collections.Counter(codes).items() if n > 1]
+    if dups:
+        problems.append(f"lad24cd repeated in the features: {_few(dups)}")
+    if len(signals_rows) != len(features):
+        problems.append(f"{len(signals_rows)} signals rows but "
+                        f"{len(features)} features")
+    sig = {r.get("lad24cd") for r in signals_rows}
+    feat = set(codes)
+    if sig - feat:
+        problems.append(f"in the signals but not the features: "
+                        f"{_few(sig - feat)}")
+    if feat - sig:
+        problems.append(f"in the features but not the signals: "
+                        f"{_few(feat - sig)}")
+    return problems
 
 
 def _contract_backstop():
@@ -217,25 +288,40 @@ def main():
             "feature_count": str(len(rows)), "source": "exempt_pipeline",
             "hpi_period": hpi_period, "periods": periods}
 
-    signals_path = REPO / "data" / "signals" / "staging_la_signals_latest.json"
-    signals_path.write_text(json.dumps(
-        {"metadata": meta, "signals": [props(r) for r in rows]},
-        ensure_ascii=False, indent=None), encoding="utf-8")
+    signals = [props(r) for r in rows]
 
     cur.execute("""
         SELECT lad24cd, geojson FROM la_boundaries
          WHERE geojson IS NOT NULL ORDER BY lad24cd
     """)
     geom = {r["lad24cd"]: r["geojson"] for r in cur.fetchall()}
-    by_code = {r["lad24cd"]: r for r in rows}
+    by_code = {r["lad24cd"]: p for r, p in zip(rows, signals)}
 
     features = []
     for code in sorted(geom):
-        r = by_code.get(code)
-        if r is None:
+        p = by_code.get(code)
+        if p is None:
             continue
         features.append({"type": "Feature", "geometry": geom[code],
-                         "properties": props(r)})
+                         "properties": p})
+
+    # Hard stops, all before any file is written.
+    problems = validate_export(signals, features)
+    if not problems:
+        missing = [c for c in EXPECTED_COLUMNS
+                   if c not in features[0]["properties"]]
+        if missing:
+            problems.append(f"expected columns absent from export: {missing}")
+    if problems:
+        for p in problems:
+            print(f"  STOP {p}")
+        sys.exit(f"HARD STOP: the export failed {len(problems)} check(s); "
+                 "no file was written.")
+
+    signals_path = REPO / "data" / "signals" / "staging_la_signals_latest.json"
+    signals_path.write_text(json.dumps(
+        {"metadata": meta, "signals": signals},
+        ensure_ascii=False, indent=None), encoding="utf-8")
 
     gj_meta = dict(meta, projection="WGS84")
     gj_path = REPO / "data" / "boundaries" / "la_boundaries.geojson"
@@ -257,19 +343,9 @@ def main():
     for p in (signals_path, gj_path, latest_path):
         print(f"  {p.relative_to(REPO)}  {p.stat().st_size:,} bytes")
 
-    missing = [c for c in ("drd_bed_days_lost", "drd_pct_delayed_1plus_days",
-                           "crfd_days", "pip_total_claimants",
-                           "pip_enhanced_daily_living", "pip_rate_per_1000",
-                           "hb_sa_claimants_latest", "avg_price_all",
-                           "annual_change_pct",
-                           "ctb_total_dwellings", "ctb_empty_6m_plus",
-                           "ctb_empty_homes_premium", "ctb_second_homes",
-                           "ctb_lte_rate_pct")
-               if c not in features[0]["properties"]]
-    if missing:
-        sys.exit(f"HARD STOP: expected columns absent from export: {missing}")
-    print("\nAll S9, PIP, HB and S22 Council Taxbase columns present in "
-          "both files.")
+    print("\nChecks passed before writing: 296 features with key, name and "
+          "geometry; all S9, PIP, HB, S15 and S22 Council Taxbase columns "
+          "present in both files.")
 
     cur.close()
     conn.close()

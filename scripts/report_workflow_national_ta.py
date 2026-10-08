@@ -1,6 +1,6 @@
 """Make the LLM Report Generation workflow quote the like-for-like national TA.
 
-Follows scripts/w1_national_ta_like_for_like.py. staging_national now carries
+Follows scripts/historical/w1_national_ta_like_for_like.py. staging_national now carries
 the matched-set TA figures; the report workflow still handed the model the two
 all-reporting totals (130,775 and 115,431) next to a +3.14% year-on-year, so a
 section could have written "up from 115,431 to 130,775" beside +3.14%. Those
@@ -31,12 +31,26 @@ import sys
 import tempfile
 from pathlib import Path
 
+import psycopg2
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _db import get_readonly_conn  # noqa: E402
-from w1_apply_period_fix import BACKUP_DIR, REPO, log, n8n_conn  # noqa: E402
+from _db import ENV, get_readonly_conn  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+REPO = Path(__file__).resolve().parent.parent
+BACKUP_DIR = REPO / "build_reports" / "w1_node_backups"
+
+
+def log(m):
+    print(f"{datetime.datetime.now():%H:%M:%S} {m}", flush=True)
+
+
+def n8n_conn():
+    return psycopg2.connect(
+        host="localhost", port=int(ENV.get("PG_PORT", "5432")),
+        dbname="n8ndb", user=ENV.get("PG_USER"), password=ENV.get("PG_PASSWORD"))
 
 WORKFLOW = "LLM Report Generation"
 

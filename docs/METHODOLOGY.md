@@ -111,27 +111,27 @@ See `docs/decisions/2026-08-20-s3b-tenure-rebasing-error.md`,
 `docs/decisions/2026-08-20-s12-efs-misattribution.md` and
 `docs/decisions/2026-08-20-demand-map-assurance.md`.
 
-**Standing rule — direct SQL against `staging_la_signals` updates the stored node in the same session, or it is not applied.** Any change to the columns of `staging_la_signals` must be written back to W1 node 5 in `n8ndb` before the session ends. Applying it to the data alone leaves the stored node behind, and the next genuine workflow run silently drops every column the node does not know about. This is not hypothetical: runs 10 and 11 added the S9 and S19 columns by direct SQL and never wrote them back, so the stored node was two builds stale until the S22 build in August 2026 found it. The same rule covers anything that creates a `staging_runs` row outside the workflow — the row must be created through the Create Run node's query so the sequence stays ahead of the data. Runs 10 and 11 skipped that too, leaving the sequence trailing by two and the next `nextval()` set to collide with an existing run.
+**Standing rule — Workflow 1's SQL lives in `sql/w1/`, and a change to the columns of `staging_la_signals` is made there.** The eight numbered steps in `sql/w1/` are the only definition of W1; `scripts/w1_run.py` runs them in one transaction. A column added to the table by direct SQL and not to the step that fills it would be dropped by the next run, so the change is made in the SQL file and `python scripts/w1_contract_check.py` is run afterwards. This is not hypothetical: runs 10 and 11 added the S9 and S19 columns by direct SQL and never wrote them back to the stored workflow node, which was then two builds stale until the S22 build in August 2026 found it. The same applies to anything that creates a `staging_runs` row: it is created by the runner's Create Run step (which also allows one W1 run per day), so the sequence stays ahead of the data. Runs 10 and 11 skipped that too, leaving the sequence trailing by two and the next `nextval()` set to collide with an existing run.
 
 **The rule is enforced, not just stated.** A rule that relies on remembering is what failed twice, so the check runs in three places:
 
 | Where | What it catches | Fires on |
 |---|---|---|
-| `Signal Column Pre-flight` node inside W1, between Create Staging Tables and Create Run | a table column the node does not write, or a node column absent from the table, compared against `staging_signal_contract` | **every workflow run**, before a run id is issued |
-| `scripts/w1_contract_check.py` | the same, plus positional misalignment between the INSERT column list and the SELECT list, plus columns with no `EXCLUDED` refresh. Refreshes the contract from the stored node | the scripted path, called by `scripts/s22_w1_wire.py` before any run |
+| `scripts/w1_run.py`, before any run id is issued | a table column the step does not write, or a step column absent from the table, compared against `staging_signal_contract` | **every W1 run** |
+| `scripts/w1_contract_check.py` | the same, plus positional misalignment between the INSERT column list and the SELECT list, plus columns with no `EXCLUDED` refresh. Reads the SQL in `sql/w1/` and refreshes the contract; the stored `node_query_sha256` is the normalised hash of that repo file | called by `scripts/w1_run.py` before every run, and by `scripts/export_map_data.py` as a backstop; it can also be run alone |
 | `scripts/export_map_data.py` | backstop copy | every export |
 
-The pre-flight lives inside W1 rather than only in the export path because W1 has been run without exporting; an export-time check alone would let a divergence sit undetected until the next publish. It fails in **both** directions. A column in the table and absent from the node is the failure that actually happened; a node naming a column that does not exist would throw on its own, but a node naming a column that exists and populating it from the wrong expression would not — that is what the positional check is for. Verified against a deliberately corrupted copy of the node: swapping two same-type expressions was reported as "position 37: inserts into `ctb_second_homes` but expression resolves to `ctb_empty_homes_premium`".
+The check runs inside the runner rather than only in the export path because W1 has been run without exporting; an export-time check alone would let a divergence sit undetected until the next publish. It fails in **both** directions. A column in the table and absent from the SQL is the failure that actually happened; SQL naming a column that exists and populating it from the wrong expression would not throw on its own, which is what the positional check is for. Verified against a deliberately corrupted copy of the node: swapping two same-type expressions was reported as "position 37: inserts into `ctb_second_homes` but expression resolves to `ctb_empty_homes_premium`".
 
-Only one path is uncovered: editing node 5 by hand in the n8n editor without re-running `w1_contract_check.py`. The contract then holds a stale `node_query_sha256` and the pre-flight compares the table against the old contract. Re-run the checker after any manual node edit.
+Every run through `scripts/w1_run.py` refreshes the contract from `sql/w1/` and checks it before a run id is issued. Two paths are still caught only on the next run (or the next export, through the backstop): running a step file outside `w1_run.py`, and a direct `ALTER TABLE` on `staging_la_signals`. (Before 2026-10-08 the stored n8n node could be edited by hand without re-running the checker, leaving a stale hash.)
 
 **Standing rule — resolve geography before the orphan gate, not after it fails.** Every build resolves published codes through `la_code_lookup` as part of extraction, and only then checks for orphans against `la_boundaries`. Running the gate first wastes a gate on a known, predictable condition.
 
 **Where a release declares its boundary vintage, that is the predictor — not the publication date.** Otherwise, assume any source published **after 1 April 2025** uses the recoded Barnsley and Sheffield codes E08000038 and E08000039, because `la_boundaries` is May 2024 and carries E08000016 and E08000019. This pair has appeared in S9b, S18, S21 and S22 and is predictable, not surprising. But the S3 mid-2025 refresh on 2026-08-13 published on **2023 local authority boundaries** despite postdating the recode by sixteen months, and so used the *old* codes. Verify against the file in either direction; do not infer from the date alone when a vintage is stated. Resolution is `change_type = 'recode'` only: a recode renumbers the same area and resolves, while `new_unitary` and `merger` are abolitions and must stay unmapped, because folding predecessor districts onto a successor makes every downstream sum count that successor once per predecessor.
 
-**Standing rule — derived rates live in views, and `staging_la_signals` is the one documented exception.** Source tables never store a rate. `staging_la_signals` is a point-in-time snapshot, so it does carry derived columns, but every one of them must take its definition from a view rather than from an expression written inline in node 5. Otherwise the definition exists only in the node and cannot be audited or reused. `ctb_lte_rate_pct` comes from `v_la_empty_homes_rates`; `pip_rate_per_1000` was inline in node 5 until 2026-08-13 and now comes from `v_la_pip_rates`.
+**Standing rule — derived rates live in views, and `staging_la_signals` is the one documented exception.** Source tables never store a rate. `staging_la_signals` is a point-in-time snapshot, so it does carry derived columns, but every one of them must take its definition from a view rather than from an expression written inline in step 05 (`sql/w1/05_la_signals.sql`, formerly node 5). Otherwise the definition exists only in that step and cannot be audited or reused. `ctb_lte_rate_pct` comes from `v_la_empty_homes_rates`; `pip_rate_per_1000` was inline in that step until 2026-08-13 and now comes from `v_la_pip_rates`.
 
-`v_la_pip_rates` also exposes `population_reference_year` next to the rate, because the numerator refreshes monthly and the denominator annually. A rate whose inputs refresh on different cadences can go stale against its own denominator without any row-level check noticing, so the denominator's vintage is published as data rather than left to documentation. The remaining inline derivations in node 5 — `ta_yoy_pct`, `ta_trend_label`, `data_quality` — are per-row transformations of columns already in the same SELECT, not cross-source rates, and are left as they are.
+`v_la_pip_rates` also exposes `population_reference_year` next to the rate, because the numerator refreshes monthly and the denominator annually. A rate whose inputs refresh on different cadences can go stale against its own denominator without any row-level check noticing, so the denominator's vintage is published as data rather than left to documentation. The remaining inline derivations in step 05 — `ta_yoy_pct`, `ta_trend_label`, `data_quality` — are per-row transformations of columns already in the same SELECT, not cross-source rates, and are left as they are.
 
 **Closed 2026-08-13 — the S3 refresh landed.** `pip_rate_per_1000` was Apr-26 claimants over a mid-2024 base; it is now over **mid-2025**. See the S3 section below. The three-layer HSS package (S11 supply, S19 PIP demand, S9 flow — 296/296 on all three at run 12) no longer carries a two-year denominator lag.
 
@@ -158,8 +158,9 @@ The publishable half of the audit's logic was split into `scripts/register_lib.p
 Raw Sources (CSV / API)
         │
         ▼
-  n8n Workflow 1
-  (17 ingestion nodes)
+  Loader scripts (Python, one per source),
+  then Workflow 1: sql/w1/ run by
+  scripts/w1_run.py
         │
         ▼
   PostgreSQL 16
@@ -188,16 +189,22 @@ Raw Sources (CSV / API)
   └─────────────────────────┘
         │
         ▼
-  Node 9: Export Query
-  (SQL Query 2 — full combined GeoJSON)
+  scripts/export_map_data.py
+  (via scripts/refresh_map.py; runs the column-
+  contract check first; stops (non-zero exit,
+  before any file is written) if a layer period
+  is missing, if there are not exactly 296
+  features, if any feature lacks lad24cd,
+  la_name or geometry, if lad24cd repeats, if a
+  geometry is not Polygon/MultiPolygon, if the
+  signals rows and features do not match, or if
+  one of the 14 expected columns is missing;
+  refresh_map.py then exits non-zero. A NULL
+  signal value is exported, not a stop)
         │
         ▼
-  Node 10: Validate
-  (296 features, no NULLs, RFC 7946)
-        │
-        ▼
-  Node 11: Publish to GitHub
-  (git push via HTTPS token)
+  Review, then python scripts/push.py
+  (a separate approved step)
         │
         ▼
   GitHub raw URLs
@@ -322,12 +329,12 @@ This section previously read "December 2024 ... BUC". Both were wrong. Two indep
 
 | Trigger | Action |
 |---|---|
-| Workflow 1 completes | n8n Node 9 exports GeoJSON + signals JSON |
-| Export validated (296 features, no NULLs) | n8n Node 11 pushes to GitHub via git |
+| A W1 input is loaded after the latest complete run, or no complete run exists | `python scripts/refresh_map.py` runs W1, then `scripts/export_map_data.py` exports GeoJSON + signals JSON, then stops (`--check` only reports staleness) |
+| Export reviewed and approved | `python scripts/push.py` pushes to GitHub (scan, verify, push); a separate approved step |
 | GitHub receives push | Raw URLs update immediately |
 | Browser opens viewer | Fetches latest GeoJSON from GitHub raw URL |
 
-**Total latency from pipeline run to map update**: typically < 2 minutes.
+**Total latency from push to map update**: typically < 2 minutes. Nothing is pushed automatically.
 
 ---
 
