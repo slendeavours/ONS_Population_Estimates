@@ -18,7 +18,9 @@ class Cur:
     def execute(self, sql, params=None):
         if sql.lstrip().upper().startswith("UPDATE"):
             if self.backup_file is not None:
-                assert self.backup_file.exists() and self.backup_file.stat().st_size > 0,                     "UPDATE issued before a non-empty backup existed"
+                ok = (self.backup_file.exists()
+                      and self.backup_file.stat().st_size > 0)
+                assert ok, "UPDATE issued before a non-empty backup existed"
             self.updates.append((sql, params))
             self.row = (self.row[0], params[0], False, True, self.row[4], self.row[5])
 
@@ -59,6 +61,24 @@ class ArchiveTests(unittest.TestCase):
         self.file.write_text("ORIGINAL", encoding="utf-8")
         conn = Conn("Workflow 1 - Pre-Computation", False)
         self.assertNotEqual(a.main(["--commit"], conn, self.dir), 0)
+        self.assertEqual(self.file.read_text(encoding="utf-8"), "ORIGINAL")
+        self.assertEqual(conn.c.updates, [])
+
+    def test_backup_appearing_after_precheck_is_not_deleted(self):
+        self.file.write_text("ORIGINAL", encoding="utf-8")
+        conn = Conn("Workflow 1 - Pre-Computation", False)
+        real_exists = Path.exists
+        calls = []
+
+        def exists_once_false(path):
+            if path == self.file and not calls:
+                calls.append(1)
+                return False
+            return real_exists(path)
+
+        with mock.patch.object(Path, "exists", exists_once_false):
+            self.assertEqual(a.main(["--commit"], conn, self.dir), 1)
+        self.assertEqual(calls, [1])
         self.assertEqual(self.file.read_text(encoding="utf-8"), "ORIGINAL")
         self.assertEqual(conn.c.updates, [])
 

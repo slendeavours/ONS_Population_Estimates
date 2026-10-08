@@ -79,12 +79,16 @@ def main(argv=None, conn=None, backup_dir=None):
     text = json.dumps(row, indent=2, default=str)
     backup_dir.mkdir(parents=True, exist_ok=True)
     try:
-        with open(backup, "x", encoding="utf-8") as fh:
+        fh = open(backup, "x", encoding="utf-8")
+    except FileExistsError:
+        print(f"ERROR: backup already exists, refusing to overwrite: {backup}")
+        return 1
+    try:
+        with fh:
             fh.write(text)
     except BaseException:
-        # a partial file would block a retry while looking like a backup
-        if backup.exists():
-            backup.unlink()
+        # remove only the partial file this run created
+        backup.unlink(missing_ok=True)
         raise
     print(f"backup written: {backup}")
     try:
