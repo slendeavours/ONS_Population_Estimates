@@ -420,9 +420,64 @@ cannot place an earlier release before an existing edition. What guards
 against a mislabelled file is the manifest and the cover-sheet check, not the
 chain.
 
+## S8b Housing Benefit by accommodation type: the monthly check
+
+`la_hb_accom_type_caseload` (S8b, DWP Stat-Xplore) has an append-only editions
+table, `la_hb_accom_type_caseload_editions` (key `lad24cd, month, accom_type,
+edition`), and the live table holds the latest edition of each month. It is
+monthly, independent of S1, S1b and RO4, and reads the Stat-Xplore API, so no
+file is downloaded. The API key is read from the environment and is never
+printed. Record:
+[decisions/2026-10-08-s8b-editions-first-load.md](decisions/2026-10-08-s8b-editions-first-load.md).
+
+Run from `ONS_Population_Estimates`:
+
+1. `python scripts/s8b_hb_editions.py load` (preview). It asks the API which
+   months exist, fetches any month after the latest held plus the latest six
+   held months as a revision check, and says for each whether it is new,
+   unchanged or revised. Nothing is written. `status` is read-only.
+2. Read the preview. A short month (fewer than 296 authorities, or a type
+   missing) is refused. Before committing, also stop and look if NULLs appear
+   where there were numbers, if any value is negative, or if a revision is
+   large on many authorities.
+3. `python scripts/s8b_hb_editions.py load --commit` stores a new month as
+   edition 1 and a revised month as the next edition; an unchanged month
+   stores nothing. Each month is its own transaction. A run that succeeds,
+   including one that finds nothing new, writes one `pipeline_run_log` row
+   (source `8b`), which is what moves the due date in `vw_source_due`;
+   `--simulate` rehearses everything and writes nothing.
+4. `python scripts/s8b_hb_editions.py refresh-latest` previews the live rows
+   that would change; run it again with `--commit` (`--accept-drift MONTH`
+   as for S1).
+5. `python scripts/s8b_hb_editions.py status` should say OK, and
+   `python scripts/s8b_hb_editions_verify.py` should pass all 15 gates.
+
+**Full re-check.** `load --recheck-all` rechecks every held month, not just the
+latest six. Use it after a long gap, or when DWP is known to have restated a
+back series.
+
+**First time on a table with no editions.** The first `sync-new` needs
+`--expected-authorities 296`, because with no month recorded the count cannot
+be derived; later runs derive it.
+
+**Is S8b current?** Yes when the API's latest month equals the latest month
+held. `python scripts/check_sources.py 8b --dry-run` shows the API's newest
+month against the registry's `latest_period_loaded` (`no_change` means equal);
+without `--dry-run` it records the check in `source_check_log` and sets
+`last_check_at`. The registry's `overdue` flag reflects cadence (a month since
+the last logged run), not a missed load: the source can be fully current and
+still read overdue until a run is logged. Running `load --commit` after the
+monthly check logs it.
+
+**A revert.** If DWP restores figures to an earlier edition's content, the
+loader stores it as a new, later edition (A, B, A becomes editions 1, 2, 3);
+the chain records what was fetched and when, not which edition DWP now
+considers right.
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
+- **Running the S8b monthly check.** `check_sources.py 8b` detects a newer month but nothing runs `load` for you; see the S8b section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

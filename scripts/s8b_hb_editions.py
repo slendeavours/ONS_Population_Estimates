@@ -16,6 +16,13 @@ for that (an int or None, anything else refused). Nothing needs the
 database, the network or the API key at import; the Stat-Xplore client is
 imported only when a fetch is made.
 
+Run log: `sync-new --commit` and `load --commit` write one pipeline_run_log
+row (agent 'Source 8b - HB Accommodation Type', source_number and source_code
+'8b', status 'success') when the run succeeds, including a `load` that
+rechecked and found nothing new, because the check is the run and the
+registry's due date is computed from the last logged success. Previews and
+--simulate persist nothing; a failed `load` logs nothing.
+
 Subcommands (every writing command previews by default; --commit and
 --simulate are mutually exclusive; --simulate runs the --commit path and
 always rolls back):
@@ -53,7 +60,7 @@ import hashlib
 import re
 import sys
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -441,19 +448,25 @@ def apply_month(cur, spec, month: str, records: list, *,
 
 
 def load_months(cur, spec, months, fetch, fetched_on: date, commit: bool, *,
-                simulate: bool = False, against: str = "editions") -> int:
+                simulate: bool = False, against: str = "editions",
+                stats: dict | None = None) -> int:
     """Fetch, check and compare each month; store it when commit or
     simulate. Each month runs in its own savepoint: on commit the month is
     committed on its own; on simulate, and in preview (neither flag: compare
     only, nothing applied), the savepoint is always rolled back. A failure
     (fetch, short month, check, halt) rolls that month back, stops, and
     returns 1; earlier committed months stay. Returns 0 when every month
-    went through. fetch(month) -> records is injected (no network in tests)."""
+    went through. fetch(month) -> records is injected (no network in tests).
+    If stats is given it is filled for the run log: months (those gone
+    through), kinds ({month: kind}) and stored_rows (rows in the editions
+    stored, 0 for unchanged months)."""
     if commit and simulate:
         raise ValueError("commit and simulate are mutually exclusive")
     write = commit or simulate
     conn = cur.connection
     tally = {"new": [0, 0], "unchanged": [0, 0], "revised": [0, 0]}
+    if stats is not None:
+        stats.update(months=[], kinds={}, stored_rows=0)
     for i, month in enumerate(months):
         in_sp = False
         try:
@@ -487,8 +500,15 @@ def load_months(cur, spec, months, fetch, fetched_on: date, commit: bool, *,
                 print(f"  not attempted: {', '.join(rest)}")
             _print_tally(tally)
             return 1
+        if stats is not None:
+            stats["months"].append(month)
+            stats["kinds"][month] = kind
+            if kind != "unchanged":
+                stats["stored_rows"] += len(records)
         tally[kind][0] += 1
-        tally[kind][1] += cmp["changed"] if kind != "unchanged" else 0
+        # a count of changed cells for the summary line, not a source value
+        tally[kind][1] += (cmp["changed"] if kind != "unchanged"
+                           else 0)  # not a source value
         print(f"  {month}: {kind}, {cmp['changed']} cells "
               f"{'new' if kind == 'new' else 'changed'} (compared with "
               f"{cmp['against']})"
@@ -501,6 +521,42 @@ def load_months(cur, spec, months, fetch, fetched_on: date, commit: bool, *,
 def _print_tally(tally):
     print("  summary: " + ", ".join(
         f"{k} {n} month(s)/{c} cells" for k, (n, c) in tally.items()))
+
+
+RUN_AGENT = "Source 8b - HB Accommodation Type"
+RUN_SOURCE = "8b"
+
+
+def log_run(cur, rows_written: int, notes: str, started_at=None) -> None:
+    """Write the pipeline_run_log row for a committed run (status 'success'
+    is the only value the table accepts for new rows). source_number and
+    source_code are both '8b', so vw_source_due attributes the run to S8b.
+    Called only on `sync-new --commit` and `load --commit`; previews and
+    --simulate never reach it."""
+    cur.execute("""
+        INSERT INTO pipeline_run_log
+            (agent_name, source_number, source_code, rows_written, status,
+             started_at, completed_at, notes)
+        VALUES (%s, %s, %s, %s, 'success', COALESCE(%s, now()), now(), %s)
+    """, (RUN_AGENT, RUN_SOURCE, RUN_SOURCE, rows_written, started_at, notes))
+
+
+def load_run_notes(stats: dict, available: list, held: list) -> str:
+    """Words for the run log: what was checked, what was stored."""
+    kinds = stats["kinds"]
+    by = {k: [mo for mo in stats["months"] if kinds[mo] == k]
+          for k in ("new", "revised", "unchanged")}
+    stored = by["new"] + by["revised"]
+    head = ("Stored: " + "; ".join(f"{k} {', '.join(by[k])}"
+                                   for k in ("new", "revised") if by[k])
+            if stored else "Nothing new: no new month and no revision")
+    return (f"{head}. Checked {len(stats['months'])} month(s) "
+            f"({', '.join(stats['months']) or 'none'}); unchanged "
+            f"{len(by['unchanged'])}. Held latest {max(held) if held else '-'}"
+            f"; API latest {max(available) if available else '-'}. "
+            f"Categories: SA, TA, OTHER, UNKNOWN. Rows stored: "
+            f"{stats['stored_rows']}. A run that finds nothing new is logged "
+            "because the check is the run.")
 
 
 def held_months(cur, spec, editions_exist: bool) -> list:
@@ -612,6 +668,13 @@ def cmd_sync_new(args) -> int:
             if bad:
                 halt("sync-new failed its checks, rolled back: "
                      + "; ".join(bad[:6]))
+            if done:
+                cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} "
+                            "WHERE month = ANY(%s) AND edition = 1", (done,))
+                n = cur.fetchone()[0]
+                log_run(cur, n, f"sync-new: edition 1 recorded 'as loaded' "
+                        f"for {', '.join(done)} ({n} rows) from the live "
+                        "table; nothing fetched from the API.")
         _finish(conn, args, f"{len(done)} month(s) recorded as edition 1")
         return 0
     except BaseException:
@@ -698,10 +761,24 @@ def cmd_load(args) -> int:
                 return 0
             members = get_english_la_members()
             lad_to_uris, query_uris = resolve_geography(members, conn)
+            stats = {}
+            started = datetime.now(timezone.utc)
             rc = load_months(cur, SPEC, months,
                              lambda mo: fetch_month(mo, lad_to_uris, query_uris),
                              date.today(), args.commit, simulate=args.simulate,
-                             against=against)
+                             against=against, stats=stats)
+            if args.commit:
+                if rc == 0:
+                    # Stored something, or rechecked and found nothing new:
+                    # either way the check is the run, so it is logged.
+                    log_run(cur, stats["stored_rows"],
+                            load_run_notes(stats, available, held), started)
+                    conn.commit()
+                    print("pipeline_run_log row written")
+                else:
+                    print("pipeline_run_log: no row written (the run failed; "
+                          "months committed before the failure are in the "
+                          "editions table)")
         conn.rollback()  # commit mode has committed month by month already
         if not writing:
             print("PREVIEW: nothing written (use --commit or --simulate)")

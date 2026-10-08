@@ -656,15 +656,19 @@ def gate_12_preview_default(cur):
         sql = [str(c.args[0]) for c in mcur.execute.call_args_list]
         return rc, conn.commit.call_count, ap.call_count, sql
     rc0, commits0, applied0, sql0 = run(["load", "--months", month])
-    rcs, commits_s, applied_s, _ = run(["load", "--months", month,
+    rcs, commits_s, applied_s, sql_s = run(["load", "--months", month,
                                         "--simulate"])
     rcc, commits_c, applied_c, sql_c = run(["load", "--months", month,
                                             "--commit"])
     ok = (rc0 == 0 and commits0 == 0 and applied0 == 0
           and "ROLLBACK TO SAVEPOINT s8b_month" in sql0
           and commits_s == 0 and applied_s == 1
-          and commits_c == 1 and applied_c == 1  # the mock does see a commit
-          and "RELEASE SAVEPOINT s8b_month" in sql_c)
+          # --commit sees two commits: the month, then the run-log row
+          and commits_c == 2 and applied_c == 1
+          and "RELEASE SAVEPOINT s8b_month" in sql_c
+          # the run log is written on --commit only
+          and any("INSERT INTO pipeline_run_log" in x for x in sql_c)
+          and not any("pipeline_run_log" in x for x in sql0 + sql_s))
     report(12, name, ok, f"no flag: commits {commits0}, apply_month calls "
            f"{applied0}, savepoint rolled back; --simulate: commits "
            f"{commits_s}; control --commit: commits {commits_c}")

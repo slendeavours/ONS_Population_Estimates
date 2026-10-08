@@ -394,7 +394,12 @@ SOURCES = [
             "296 of 296, delta 0.000%. The two tests are not "
             "like-for-like, though - HB was compared over four months "
             "and PIP over one - so PIP is left unflagged rather than "
-            "asserted not to revise."),
+            "asserted not to revise. Since 2026-10-08 each month is held "
+            "as numbered editions in la_hb_accom_type_caseload_editions, "
+            "and a revision is stored as a new edition rather than an "
+            "overwrite. The recheck of all seven held months (202509 to "
+            "202603) against the API on 2026-10-08 found no revision "
+            "since the July load."),
         source_name="DWP Stat-Xplore HB (accommodation type)",
         publisher="DWP",
         series_name=("Housing Benefit caseload (str:database:hb_new), "
@@ -412,10 +417,15 @@ SOURCES = [
             "unresolvable; both now resolve after the 2026-07-26 "
             "la_code_lookup correction, and both were verified on "
             "2026-08-14 to carry zero claimants in every month loaded, "
-            "so nothing was lost to them."),
+            "so nothing was lost to them. The live table holds the latest "
+            "edition of each month from la_hb_accom_type_caseload_editions; the "
+            "API's latest month was 202603 on 2026-10-08, equal to the "
+            "latest held, so the source is current. The overdue flag in "
+            "vw_source_due reflects cadence against the last logged run, "
+            "not a missed load."),
         cadence="monthly", cadence_months=1,
         target_table="la_hb_accom_type_caseload", geography_level="LAD24",
-        build_script_path="scripts/s8b_hb_accom_type_build.py",
+        build_script_path="scripts/s8b_hb_editions.py",
         source_doc_path="outputs/s8b_source_summary.md",
         caveats=["Birmingham differs by 9.6% from la_hb_sa_caseload for "
                  "Nov-25, attributable to retrospective revisions applied by "
@@ -799,7 +809,7 @@ SOURCES = [
             "build read an environment variable named Stat-Xplore_Token, "
             "which nothing defines, so it hard-stopped before reaching the "
             "API; it now reads StatXplore_API_Key, the same name "
-            "scripts/s8b_hb_accom_type_build.py uses against the same "
+            "scripts/s8b_hb_editions.py uses against the same "
             "Stat-Xplore account."),
         cadence="monthly", cadence_months=1, expected_lag_days=60,
         publication_window="Caseload snapshot, ~2 months lag",

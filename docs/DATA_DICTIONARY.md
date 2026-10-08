@@ -137,6 +137,20 @@ Source: DWP STAT-Xplore Housing Benefit caseload data
 | `hb_sa_caseload` | integer | 0 – 5,000+ | Housing Benefit claimants who are asylum seekers (proxy for exempt accommodation pressure) |
 | `hb_sa_claimants_latest` | integer | 0 – 36,000+ | HB claimants in Specified Accommodation, latest month (S8b accommodation type breakdown) |
 
+### Housing Benefit accommodation-type editions (S8b)
+
+`la_hb_accom_type_caseload_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, month, accom_type, edition)`; 8,288 rows on 2026-10-08 (296 authorities x 4 accommodation types x 7 months, 202509 to 202603, all edition 1). `month` is `YYYYMM`; `accom_type` is `SA` (supported accommodation), `TA` (temporary accommodation), `OTHER` or `UNKNOWN`.
+
+| Column | Description |
+|---|---|
+| `edition` | Integer, 1 = first loaded. |
+| `supersedes` | The edition this one replaces; NULL for the first. |
+| `claimants` | HB claimants, integer. NULL where the API returns no value or a merged area has a part with no value; a returned 0 is stored as 0 (`docs/RULES.md`). Never negative. |
+| `release_label`, `published_date` | `stat-xplore fetch <date>` and the date of the fetch. Informational only; they do not decide which edition is latest. |
+| `source_file`, `source_sha256`, `loaded_at` | Provenance. `source_file` names the Stat-Xplore table query; `source_sha256` is the checksum of the fetched month's records. |
+
+**Live-layer rule.** `la_hb_accom_type_caseload` holds, for each authority, month and type, the latest edition (the one no other edition supersedes). It is refreshed with `python scripts/s8b_hb_editions.py refresh-latest --commit` and changes only `claimants`; `loaded_at` is never touched. DWP revises this caseload in place with no revision note, so every `load` rechecks the latest six held months against the API; a month whose content differs is stored as the next edition, and a return to earlier content is also a new edition. On 2026-10-08 all seven months were rechecked and none had been revised. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
+
 ---
 
 ## Social Housing Register

@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import psycopg2  # noqa: E402
 
 import editions_core as core  # noqa: E402
+import load_checks  # noqa: E402
 import s8b_hb_editions as m  # noqa: E402
 from _db import get_conn  # noqa: E402
 
@@ -358,6 +359,81 @@ class FetchMonth(unittest.TestCase):
     def test_area_missing_from_response_rejected(self):
         with self.assertRaises(ValueError):
             self._run(m.EXPECTED_AREAS, drop=1)
+
+
+class RunLog(unittest.TestCase):
+    """pipeline_run_log: written by sync-new/load --commit only, on a stub
+    connection (no database, no network)."""
+
+    def _conn(self):
+        conn = mock.MagicMock()
+        return conn, conn.cursor.return_value.__enter__.return_value
+
+    def _inserts(self, cur):
+        return [c for c in cur.execute.call_args_list
+                if "INSERT INTO pipeline_run_log" in str(c.args[0])]
+
+    def _load(self, flags, kinds, rc=0):
+        conn, cur = self._conn()
+
+        def fake_load(cur_, spec, months, fetch, fetched_on, commit, **kw):
+            kw["stats"].update(months=list(kinds), kinds=dict(kinds),
+                               stored_rows=sum(1184 for k in kinds.values()
+                                               if k != "unchanged"))
+            return rc
+
+        with mock.patch.object(m, "_conn", return_value=conn),                 mock.patch.object(m, "table_exists", return_value=True),                 mock.patch.object(core, "latest_map",
+                                  return_value=(None, [], [])),                 mock.patch.object(m, "held_months", return_value=["202603"]),                 mock.patch.object(m, "get_available_months",
+                                  return_value=["202603"]),                 mock.patch.object(m, "get_english_la_members", return_value=[]),                 mock.patch.object(m, "resolve_geography",
+                                  return_value=({}, [])),                 mock.patch.object(m, "load_months", side_effect=fake_load),                 quiet():
+            got = m.main(["load", "--months", "202603"] + flags)
+        return got, conn, cur
+
+    def test_commit_with_nothing_new_still_logs_the_recheck(self):
+        rc, conn, cur = self._load(["--commit"], {"202603": "unchanged"})
+        self.assertEqual(rc, 0)
+        (ins,) = self._inserts(cur)
+        sql, args = ins.args
+        self.assertIn("'success'", sql)
+        agent, number, code, rows, started, notes = args
+        self.assertEqual((agent, number, code, rows),
+                         ("Source 8b - HB Accommodation Type", "8b", "8b", 0))
+        self.assertIn("Nothing new", notes)
+        self.assertIn("API latest 202603", notes)
+        conn.commit.assert_called()
+
+    def test_commit_with_a_new_month_logs_rows_stored(self):
+        rc, conn, cur = self._load(["--commit"], {"202603": "unchanged",
+                                                  "202604": "new"})
+        (ins,) = self._inserts(cur)
+        self.assertEqual(ins.args[1][3], 1184)
+        self.assertIn("new 202604", ins.args[1][5])
+
+    def test_preview_and_simulate_log_nothing(self):
+        for flags in ([], ["--simulate"]):
+            rc, conn, cur = self._load(flags, {"202603": "unchanged"})
+            self.assertEqual(self._inserts(cur), [], flags)
+
+    def test_failed_load_logs_nothing(self):
+        rc, conn, cur = self._load(["--commit"], {"202603": "new"}, rc=1)
+        self.assertNotEqual(rc, 0)
+        self.assertEqual(self._inserts(cur), [])
+
+    def test_sync_new_commit_logs_and_simulate_rolls_it_back(self):
+        for flag, committed in (("--commit", True), ("--simulate", False)):
+            conn, cur = self._conn()
+            cur.fetchone.return_value = (1184,)
+            with mock.patch.object(m, "_conn", return_value=conn),                     mock.patch.object(m, "table_exists", return_value=True),                     mock.patch.object(core, "latest_map",
+                                      return_value=(None, ["202603"], [])),                     mock.patch.object(core, "sync_new",
+                                      return_value=["202603"]),                     mock.patch.object(load_checks, "check_latest_equals_live",
+                                      return_value=[]),                     mock.patch.object(m, "status", return_value={
+                        "new_periods": [], "chain_errors": []}),                     quiet():
+                rc = m.main(["sync-new", flag])
+            self.assertEqual(rc, 0)
+            (ins,) = self._inserts(cur)
+            self.assertEqual(ins.args[1][:3],
+                             ("Source 8b - HB Accommodation Type", "8b", "8b"))
+            self.assertEqual(conn.commit.called, committed, flag)
 
 
 if __name__ == "__main__":

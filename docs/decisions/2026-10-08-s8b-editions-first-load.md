@@ -34,6 +34,8 @@ the 1 October load). Nothing was stored beyond edition 1, and `refresh-latest` h
 The live table `la_hb_accom_type_caseload` was not changed: 8,288 rows before and after, with the same
 content hash. The API's latest month is still 202603, so no new month was loaded.
 
+S8b is therefore current with the source; the source registry's overdue flag reflects cadence against the last logged run, not a missed load.
+
 The 2026-08-14 revision finding compared the April S8 load with the July S8b load. That revision was
 already in the July data, which is why this recheck finds nothing new.
 
