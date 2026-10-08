@@ -290,6 +290,23 @@ python scripts/push.py". `python scripts/refresh_map.py --check` reports
 whether the map at git HEAD is behind the database, without changing
 anything. Review the export; the push is a separate approved step.
 
+The export checks before it writes: exactly 296 features, each with
+`lad24cd`, `la_name` and a Polygon or MultiPolygon geometry, `lad24cd`
+unique, and one signals row per feature. If any check fails it writes no
+file and `refresh_map.py` exits non-zero. A NULL signal value is not a
+failure (RULES.md rule 1).
+
+After changing anything in `sql/w1/`, run `python scripts/w1_run.py`
+directly: `refresh_map.py` only looks at when source tables were loaded, so
+it treats the latest run as current if no source table changed. W1 runs once
+per day, so a source loaded on the same day after that day's W1 run waits
+until tomorrow (`w1_run.py` stops with "A completed run already exists for
+today", and `refresh_map.py` stops before the export).
+
+Rebuilding W1 on a fresh, empty database is not supported: step 01's
+`CREATE TABLE IF NOT EXISTS` for the staging tables is older than the live
+`staging_la_signals` and lacks the columns added since, so step 02 would stop.
+
 ## A change in the number of authorities
 
 Counts are derived from the data, so a quarter with a different number of

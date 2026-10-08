@@ -123,7 +123,7 @@ See `docs/decisions/2026-08-20-s3b-tenure-rebasing-error.md`,
 
 The check runs inside the runner rather than only in the export path because W1 has been run without exporting; an export-time check alone would let a divergence sit undetected until the next publish. It fails in **both** directions. A column in the table and absent from the SQL is the failure that actually happened; SQL naming a column that exists and populating it from the wrong expression would not throw on its own, which is what the positional check is for. Verified against a deliberately corrupted copy of the node: swapping two same-type expressions was reported as "position 37: inserts into `ctb_second_homes` but expression resolves to `ctb_empty_homes_premium`".
 
-No path is uncovered now that the SQL is read from the repository: the contract is refreshed from `sql/w1/` and checked on every run. (Before 2026-10-08 the stored n8n node could be edited by hand without re-running the checker, leaving a stale hash.)
+Every run through `scripts/w1_run.py` refreshes the contract from `sql/w1/` and checks it before a run id is issued. Two paths are still caught only on the next run (or the next export, through the backstop): running a step file outside `w1_run.py`, and a direct `ALTER TABLE` on `staging_la_signals`. (Before 2026-10-08 the stored n8n node could be edited by hand without re-running the checker, leaving a stale hash.)
 
 **Standing rule — resolve geography before the orphan gate, not after it fails.** Every build resolves published codes through `la_code_lookup` as part of extraction, and only then checks for orphans against `la_boundaries`. Running the gate first wastes a gate on a known, predictable condition.
 
@@ -192,11 +192,15 @@ Raw Sources (CSV / API)
   scripts/export_map_data.py
   (via scripts/refresh_map.py; runs the column-
   contract check first; stops (non-zero exit,
-  after the local files are written) if a layer
-  period is missing or one of the 14 expected
-  columns is missing from the output;
-  refresh_map.py warns if the exported area
-  count is not 296)
+  before any file is written) if a layer period
+  is missing, if there are not exactly 296
+  features, if any feature lacks lad24cd,
+  la_name or geometry, if lad24cd repeats, if a
+  geometry is not Polygon/MultiPolygon, if the
+  signals rows and features do not match, or if
+  one of the 14 expected columns is missing;
+  refresh_map.py then exits non-zero. A NULL
+  signal value is exported, not a stop)
         │
         ▼
   Review, then python scripts/push.py
