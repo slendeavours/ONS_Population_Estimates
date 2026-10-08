@@ -1,0 +1,10 @@
+{
+  "01_create_staging_tables.sql": "6801e6bf4cdf34e9319cc0e3e7efd6d2441abc338ada7c2b1b736ce0662eed2e",
+  "02_signal_column_preflight.sql": "3a9a8efc175b353b3b0fbc8295f4115cfe3a45c88999acfea33a8b44e9a10565",
+  "03_create_run.sql": "a77501aad29323787289c42885d6df06ce9350003d7ff8ab9ddf8faec199bdf9",
+  "04_national_aggregates.sql": "b74c892db690d1b942556a2895ea70f446786baa955f490877fb2e1930b426ee",
+  "05_la_signals.sql": "153b07974c35a5dc3147f5483c24045cbada90b9c6cc5a7119c46daf4d3f88cf",
+  "06_tenant_type_rankings.sql": "3d2f1e85d7e63c1d05517ea7af55de7c59d12f0d2512be4a29a1a20fc34032c4",
+  "07_section_3_top_3_las.sql": "669e9e516853fa749a64fdc4fc982ccc2f58f5b836cb47f43549456fd2d8dfe5",
+  "08_mark_run_complete.sql": "82f7c8b2ea019f891bf7d46194295a9c9e532753d5877a647c4f3cf8cb054dbf"
+}
