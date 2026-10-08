@@ -77,6 +77,6 @@ The other loaders are to be brought across one at a time; the checker's FAIL lis
 ## 7. Derived values and the map data
 
 1. Source tables never store a rate. Rates live in views. `staging_la_signals` is the one documented exception and takes each definition from a view.
-2. The map data is exported from the latest Workflow 1 run. The published run and the latest run should match; a gap means the map is out of date.
+2. The map data is refreshed with `python scripts/refresh_map.py`, which runs Workflow 1 if a W1 input was loaded after the latest complete run, then exports the map data. `python scripts/refresh_map.py --check` says whether the map at git HEAD is behind the database. The published run should match the latest run; a gap means the map is out of date.
 
-Until Workflow 1 moves into this repository, a direct SQL change to the columns of `staging_la_signals` must also be written to the stored workflow node in the same session. Detail: `METHODOLOGY.md`.
+Workflow 1's SQL lives in `sql/w1/`. A change to the columns of `staging_la_signals` is made there and checked by `scripts/w1_contract_check.py`. Detail: `METHODOLOGY.md`.

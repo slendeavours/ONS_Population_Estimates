@@ -276,6 +276,20 @@ and `s1b_support_needs_verify.py` leave the tables unchanged (they finish by
 rolling back). **`verify_source_registry.py` is different: its gate 9
 regenerates the registry notes and commits them.**
 
+## Step 6. Refresh the map data
+
+After the loads (and the verification above), run:
+
+```
+python scripts/refresh_map.py
+```
+
+It runs Workflow 1 only if a W1 input was loaded after the latest complete
+run, then exports the map data, then stops with "Not pushed. Review, then:
+python scripts/push.py". `python scripts/refresh_map.py --check` reports
+whether the map at git HEAD is behind the database, without changing
+anything. Review the export; the push is a separate approved step.
+
 ## A change in the number of authorities
 
 Counts are derived from the data, so a quarter with a different number of

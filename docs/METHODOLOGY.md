@@ -111,19 +111,19 @@ See `docs/decisions/2026-08-20-s3b-tenure-rebasing-error.md`,
 `docs/decisions/2026-08-20-s12-efs-misattribution.md` and
 `docs/decisions/2026-08-20-demand-map-assurance.md`.
 
-**Standing rule — direct SQL against `staging_la_signals` updates the stored node in the same session, or it is not applied.** Any change to the columns of `staging_la_signals` must be written back to W1 node 5 in `n8ndb` before the session ends. Applying it to the data alone leaves the stored node behind, and the next genuine workflow run silently drops every column the node does not know about. This is not hypothetical: runs 10 and 11 added the S9 and S19 columns by direct SQL and never wrote them back, so the stored node was two builds stale until the S22 build in August 2026 found it. The same rule covers anything that creates a `staging_runs` row outside the workflow — the row must be created through the Create Run node's query so the sequence stays ahead of the data. Runs 10 and 11 skipped that too, leaving the sequence trailing by two and the next `nextval()` set to collide with an existing run.
+**Standing rule — Workflow 1's SQL lives in `sql/w1/`, and a change to the columns of `staging_la_signals` is made there.** The eight numbered steps in `sql/w1/` are the only definition of W1; `scripts/w1_run.py` runs them in one transaction. A column added to the table by direct SQL and not to the step that fills it would be dropped by the next run, so the change is made in the SQL file and `python scripts/w1_contract_check.py` is run afterwards. This is not hypothetical: runs 10 and 11 added the S9 and S19 columns by direct SQL and never wrote them back to the stored workflow node, which was then two builds stale until the S22 build in August 2026 found it. The same applies to anything that creates a `staging_runs` row: it is created by the runner's Create Run step (which also allows one W1 run per day), so the sequence stays ahead of the data. Runs 10 and 11 skipped that too, leaving the sequence trailing by two and the next `nextval()` set to collide with an existing run.
 
 **The rule is enforced, not just stated.** A rule that relies on remembering is what failed twice, so the check runs in three places:
 
 | Where | What it catches | Fires on |
 |---|---|---|
-| `Signal Column Pre-flight` node inside W1, between Create Staging Tables and Create Run | a table column the node does not write, or a node column absent from the table, compared against `staging_signal_contract` | **every workflow run**, before a run id is issued |
-| `scripts/w1_contract_check.py` | the same, plus positional misalignment between the INSERT column list and the SELECT list, plus columns with no `EXCLUDED` refresh. Refreshes the contract from the stored node | the scripted path, called by `scripts/s22_w1_wire.py` before any run |
+| `scripts/w1_run.py`, before any run id is issued | a table column the step does not write, or a step column absent from the table, compared against `staging_signal_contract` | **every W1 run** |
+| `scripts/w1_contract_check.py` | the same, plus positional misalignment between the INSERT column list and the SELECT list, plus columns with no `EXCLUDED` refresh. Reads the SQL in `sql/w1/` and refreshes the contract; the stored `node_query_sha256` is the normalised hash of that repo file | the scripted path, called by `scripts/s22_w1_wire.py` before any run |
 | `scripts/export_map_data.py` | backstop copy | every export |
 
-The pre-flight lives inside W1 rather than only in the export path because W1 has been run without exporting; an export-time check alone would let a divergence sit undetected until the next publish. It fails in **both** directions. A column in the table and absent from the node is the failure that actually happened; a node naming a column that does not exist would throw on its own, but a node naming a column that exists and populating it from the wrong expression would not — that is what the positional check is for. Verified against a deliberately corrupted copy of the node: swapping two same-type expressions was reported as "position 37: inserts into `ctb_second_homes` but expression resolves to `ctb_empty_homes_premium`".
+The check runs inside the runner rather than only in the export path because W1 has been run without exporting; an export-time check alone would let a divergence sit undetected until the next publish. It fails in **both** directions. A column in the table and absent from the SQL is the failure that actually happened; SQL naming a column that exists and populating it from the wrong expression would not throw on its own, which is what the positional check is for. Verified against a deliberately corrupted copy of the node: swapping two same-type expressions was reported as "position 37: inserts into `ctb_second_homes` but expression resolves to `ctb_empty_homes_premium`".
 
-Only one path is uncovered: editing node 5 by hand in the n8n editor without re-running `w1_contract_check.py`. The contract then holds a stale `node_query_sha256` and the pre-flight compares the table against the old contract. Re-run the checker after any manual node edit.
+No path is uncovered now that the SQL is read from the repository: the contract is refreshed from `sql/w1/` and checked on every run. (Before 2026-10-08 the stored n8n node could be edited by hand without re-running the checker, leaving a stale hash.)
 
 **Standing rule — resolve geography before the orphan gate, not after it fails.** Every build resolves published codes through `la_code_lookup` as part of extraction, and only then checks for orphans against `la_boundaries`. Running the gate first wastes a gate on a known, predictable condition.
 
@@ -158,8 +158,9 @@ The publishable half of the audit's logic was split into `scripts/register_lib.p
 Raw Sources (CSV / API)
         │
         ▼
-  n8n Workflow 1
-  (17 ingestion nodes)
+  Loader scripts (Python, one per source),
+  then Workflow 1: sql/w1/ run by
+  scripts/w1_run.py
         │
         ▼
   PostgreSQL 16
@@ -188,16 +189,13 @@ Raw Sources (CSV / API)
   └─────────────────────────┘
         │
         ▼
-  Node 9: Export Query
-  (SQL Query 2 — full combined GeoJSON)
+  scripts/export_map_data.py
+  (via scripts/refresh_map.py; validates
+  296 features, no NULLs, RFC 7946)
         │
         ▼
-  Node 10: Validate
-  (296 features, no NULLs, RFC 7946)
-        │
-        ▼
-  Node 11: Publish to GitHub
-  (git push via HTTPS token)
+  Review, then python scripts/push.py
+  (a separate approved step)
         │
         ▼
   GitHub raw URLs
@@ -322,12 +320,12 @@ This section previously read "December 2024 ... BUC". Both were wrong. Two indep
 
 | Trigger | Action |
 |---|---|
-| Workflow 1 completes | n8n Node 9 exports GeoJSON + signals JSON |
-| Export validated (296 features, no NULLs) | n8n Node 11 pushes to GitHub via git |
+| A W1 input is loaded after the latest complete run | `python scripts/refresh_map.py` runs W1, then `scripts/export_map_data.py` exports GeoJSON + signals JSON, then stops (`--check` only reports staleness) |
+| Export reviewed and approved | `python scripts/push.py` pushes to GitHub (scan, verify, push); a separate approved step |
 | GitHub receives push | Raw URLs update immediately |
 | Browser opens viewer | Fetches latest GeoJSON from GitHub raw URL |
 
-**Total latency from pipeline run to map update**: typically < 2 minutes.
+**Total latency from push to map update**: typically < 2 minutes. Nothing is pushed automatically.
 
 ---
 
