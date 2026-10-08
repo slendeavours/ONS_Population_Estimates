@@ -322,6 +322,120 @@ class EngineDB(unittest.TestCase):
             self.assertEqual((old, label), (as_live(r), "edition 1"))
 
 
+class _Borrowed:
+    """A connection stand-in for the run_* commands that hands out the test's
+    own cursor (inside rolled_back) and never commits, rolls back or closes
+    the real connection: the throwaway tables and everything written to them
+    go with rolled_back's rollback."""
+
+    def __init__(self, cur):
+        self.cur = cur
+        self.rollbacks = 0
+
+    @contextmanager
+    def cursor(self):
+        yield self.cur
+
+    def commit(self):
+        raise AssertionError("a test must never commit")
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        pass
+
+
+class EngineDateCommands(unittest.TestCase):
+    """refresh-latest and sync-new on a DATE period column: CLI periods are
+    ISO strings, messages name ISO strings, never datetime.date(...)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = get_conn()
+        cls.pd = make_profile(period_type="date NOT NULL")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.conn.rollback()
+        cls.conn.close()
+
+    def _refresh(self, cur, accept=None):
+        args = mock.Mock(commit=False, simulate=True, accept_drift=accept)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            try:
+                rc = pe.run_refresh_latest(self.pd, args,
+                                           connect=lambda w: _Borrowed(cur),
+                                           table_exists=lambda c, t: True)
+            except SystemExit as e:
+                return "halt", str(e.code), out.getvalue()
+        return rc, None, out.getvalue()
+
+    def _drifted(self, cur):
+        for p in ("2026-04-01", "2026-05-01"):
+            pe.apply_period(cur, self.pd, p, recs(p), fetched_on=FETCHED)
+        cur.execute("UPDATE public.zz_pe_live SET v1 = 999 "
+                    "WHERE period = '2026-04-01' AND lad24cd = %s", (CODES[0],))
+
+    def test_refresh_latest_accept_drift_with_iso_date(self):
+        with rolled_back(self.conn, period_type="date") as cur:
+            self._drifted(cur)
+            cur.execute("SAVEPOINT t")
+            rc, msg, out = self._refresh(cur)
+            cur.execute("ROLLBACK TO SAVEPOINT t")
+            self.assertEqual(rc, "halt")
+            self.assertIn("matches no stored edition for ['2026-04-01']", msg)
+            self.assertNotIn("datetime.date(", msg + out)
+            rc, msg, out = self._refresh(cur, ["2026-04-01"])
+            self.assertEqual(rc, 0, msg)
+            self.assertIn("rows refresh-latest would write: 2026-04-01=1", out)
+            self.assertIn("1 live rows refreshed in ['2026-04-01']", out)
+            self.assertNotIn("datetime.date(", out)
+            self.assertEqual(live(cur, "2026-04-01"),
+                             as_live(recs("2026-04-01")))
+
+    def test_accept_of_a_period_not_drifted_halts_naming_iso(self):
+        with rolled_back(self.conn, period_type="date") as cur:
+            self._drifted(cur)
+            for accept, named in ((["2026-05-01"], "['2026-05-01']"),
+                                  (["2026-04-01", "2026-09-01"],
+                                   "['2026-09-01']")):
+                cur.execute("SAVEPOINT t")
+                rc, msg, out = self._refresh(cur, accept)
+                cur.execute("ROLLBACK TO SAVEPOINT t")
+                self.assertEqual(rc, "halt", accept)
+                self.assertIn(f"--accept-drift {named}: not drifted periods",
+                              msg)
+                self.assertNotIn("datetime.date(", msg + out)
+
+    def test_sync_new_records_edition_1_for_date_periods(self):
+        with rolled_back(self.conn, period_type="date") as cur:
+            for p in ("2026-04-01", "2026-05-01"):
+                pe.insert_live(cur, self.pd, p, recs(p))
+            args = mock.Mock(commit=False, simulate=True,
+                             expected_authorities=N)
+            out = io.StringIO()
+            # log_run would write pipeline_run_log, a real table: stubbed
+            with mock.patch.object(pe, "log_run") as logged, \
+                    contextlib.redirect_stdout(out):
+                rc = pe.run_sync_new(self.pd, args,
+                                     connect=lambda w: _Borrowed(cur),
+                                     table_exists=lambda c, t: True)
+            self.assertEqual(rc, 0)
+            self.assertEqual(editions(cur), [(1, None, 2 * N)])
+            text = out.getvalue()
+            self.assertIn("months with no editions: 2026-04-01, 2026-05-01",
+                          text)
+            self.assertIn(f"  2026-04-01: edition 1 recorded, {N} rows", text)
+            self.assertIn("2 month(s) recorded as edition 1", text)
+            (c, prof, n, notes), _ = logged.call_args
+            self.assertEqual(n, 2 * N)   # the = ANY(%s) count over dates
+            self.assertIn("for 2026-04-01, 2026-05-01", notes)
+            self.assertNotIn("datetime.date(", text + notes)
+            self.assertTrue(pe.status(cur, self.pd)["ok"])
+
+
 class EngineControl(unittest.TestCase):
     """Transaction control and commands on a mock connection."""
 

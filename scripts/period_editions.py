@@ -58,7 +58,7 @@ class Profile:
     example_label: the label of the values in compare examples (default the
     value columns, '(v1, v2)')."""
     spec: core.EditionSpec
-    value_cols: tuple
+    value_cols: tuple[str, ...]
     run_agent: str
     run_source: str
     heading: str
@@ -589,6 +589,45 @@ def run_sync_new(profile: Profile, args, *, connect=connect,
         conn.close()
 
 
+def _accept_periods(cur, spec, accept) -> tuple:
+    """The --accept-drift strings as the database's own period values (a
+    DATE column's '2026-04-01' becomes its date, which is what
+    editions_core compares them with). Makes editions_core._plan's halts
+    first, with the same wording but periods as strings: live periods with
+    no editions, an invalid chain, and an accepted period that is not
+    drifted (one matching no period included)."""
+    tips, new, errors = core.latest_map(cur, spec)
+    if new:
+        halt(f"periods with no editions {[_p(x) for x in new]}; run sync-new "
+             "first")
+    if errors:
+        halt("invalid edition chain: " + "; ".join(
+            f"{p}: {m}" for p, m in errors.items()))
+    drifted = {_p(p): p for p, tip in tips.items()
+               if core.classify_period(cur, spec, p, tip)[0] == "drift"}
+    stray = sorted(set(accept) - set(drifted))
+    if stray:
+        halt(f"--accept-drift {stray}: not drifted periods, nothing to accept")
+    return tuple(drifted[a] for a in accept)
+
+
+def _refresh_guard(cur, spec, accept) -> None:
+    """editions_core.refresh_latest's two refusals before it writes
+    (unaccepted drift; rows only on one side), made here first so the
+    message names periods as strings; the wording is the core's."""
+    plan, drift = core._plan(cur, spec, accept)
+    if drift:
+        halt("live differs from the latest edition and matches no stored "
+             f"edition for {[_p(x) for x in drift]}: changed outside the "
+             "editions tables. Load it as an edition, or re-run with "
+             "--accept-drift PERIOD to overwrite it with the latest edition")
+    stuck = core._unrepairable(plan)
+    if stuck:
+        halt(f"{[_p(x) for x in stuck]} differ from the latest edition in rows "
+             "present in only one of them; an update of the refresh columns "
+             "cannot repair that")
+
+
 def run_refresh_latest(profile: Profile, args, *, connect=connect,
                        table_exists=table_exists, preflight=None) -> int:
     """refresh-latest [--commit | --simulate] [--accept-drift PERIOD]: copy
@@ -604,6 +643,7 @@ def run_refresh_latest(profile: Profile, args, *, connect=connect,
                 halt(no_table(profile))
             if preflight is not None:
                 preflight(cur)
+            accept = _accept_periods(cur, spec, accept)
             counts = core.refresh_counts(cur, spec, accept)
             print("rows refresh-latest would write: "
                   + (", ".join(f"{p}={n}" for p, n in counts.items()) or "none")
@@ -611,6 +651,7 @@ def run_refresh_latest(profile: Profile, args, *, connect=connect,
             if not writing:
                 print("DRY RUN: nothing written (use --commit or --simulate)")
                 return 0
+            _refresh_guard(cur, spec, accept)
             res = core.refresh_latest(cur, spec, accept)
             if res["updated"]:
                 bad = load_checks.check_latest_equals_live(

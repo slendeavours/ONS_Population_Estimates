@@ -837,6 +837,9 @@ def _profile(spec) -> pe.Profile:
     return PROFILE.with_spec(spec)
 
 
+# _stored, live_row_count and check_live_equals_edition are for callers
+# only: the engine calls its own versions, so patching these names has no
+# effect on apply_month or compare_month.
 def _stored(cur, spec, month: str, against: str):
     """({lad24cd: (total, enhanced)}, label): see period_editions.stored."""
     return pe.stored(cur, _profile(spec), month, against)
@@ -1166,6 +1169,7 @@ def cmd_load(args) -> int:
 
 
 _mode = pe.mode_parser
+
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="S19 PIP claimants: editions "
