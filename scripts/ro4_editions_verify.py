@@ -2,8 +2,9 @@
 
 Mirrors scripts/s1b_editions_verify.py. Prints `GATE n name: PASS/FAIL`; exits 1
 on any FAIL. Gates 1-3 cover table shape, immutability and the supersedes-chain
-helpers (the shared s1_editions.latest_edition, called with table= and
-period_col='financial_year'); 4-5 cover the backfill (coverage, edition 1 equals
+helpers (the loader's own chain tip and writer, ro4_editions.latest_edition
+and _insert, which are editions_core with SPEC; gate 3z checks the shared
+s1_editions.latest_edition still accepts the RO4 table); 4-5 cover the backfill (coverage, edition 1 equals
 the live table row for row, NULL not 0); 6-7 cover provenance (manifest, file
 hashes) and an independent re-parse of the local ods files; 8 is today's status;
 9 a seeded newer edition; 10 the retired-literal scan; 11-19 the load,
@@ -33,8 +34,8 @@ from _db import get_conn  # noqa: E402
 import ro4_editions as m  # noqa: E402
 import s1_editions  # noqa: E402
 import s1b_editions  # noqa: E402
-from s1_editions import (EDITION_TABLES, classify_period, latest_edition,  # noqa: E402
-                         latest_map, period_hashes, rows_differing)
+import editions_core as core  # noqa: E402
+from s1_editions import EDITION_TABLES, latest_edition  # noqa: E402
 from s1_editions_verify import (RETIRED, _defined_functions,  # noqa: E402
                                 scan_retired)
 
@@ -53,7 +54,9 @@ def report(n, name, ok, detail=""):
 
 
 def tip(cur, fy):
-    return latest_edition(cur, fy, table=TABLE, period_col=PERIOD)
+    """The loader's own chain tip (ro4_editions.latest_edition, which is
+    editions_core.chain_tip with SPEC)."""
+    return m.latest_edition(cur, fy)
 
 
 def table_exists(cur):
@@ -143,8 +146,8 @@ def _expect_sql_error(cur, n, name, stmt, needle, fy=FY):
         return report(n, name, False, f"{TABLE} absent")
 
     def body(cur):
-        m.insert_edition(cur, [_rec(_first_lad(cur), 1, fy)], fy,
-                         **_kw("t", None, "h0"))
+        m._insert(cur, [_rec(_first_lad(cur), 1, fy)], fy,
+                  **_kw("t", None, "h0"))
         cur.execute("SAVEPOINT stmt")
         try:
             cur.execute(stmt)
@@ -165,8 +168,8 @@ def gate_1b_bad_financial_year(cur):
         def body(cur, bad=bad):
             cur.execute("SAVEPOINT s")
             try:
-                m.insert_edition(cur, [_rec(_first_lad(cur), 1, bad)], bad,
-                                 **_kw("t", None, "hb"))
+                m._insert(cur, [_rec(_first_lad(cur), 1, bad)], bad,
+                          **_kw("t", None, "hb"))
                 return False, "inserted"
             except psycopg2.Error as e:
                 cur.execute("ROLLBACK TO SAVEPOINT s")
@@ -197,11 +200,12 @@ def gate_3t_truncate(cur):
 
 
 def _chain(cur, specs):
-    """Insert editions of FY; specs = [(supersedes, published, value)]."""
+    """Insert editions of FY through the loader's writer; specs =
+    [(supersedes, published, value)], each supersedes the chain tip."""
     lad = _first_lad(cur)
     for i, (sup, d, v) in enumerate(specs):
-        m.insert_edition(cur, [_rec(lad, v)], FY,
-                         **dict(_kw("t", d, f"h{i}"), supersedes=sup))
+        m._insert(cur, [_rec(lad, v)], FY,
+                  **dict(_kw("t", d, f"h{i}"), supersedes=sup))
 
 
 def _raw_chain(cur, rows):
@@ -261,8 +265,8 @@ def gate_3b_fork_raises(cur):
     name = "latest_edition: fork (two editions supersede one) raises"
 
     def body(cur):
-        _chain(cur, [(None, date(2099, 1, 1), 1), (1, date(2099, 2, 1), 2),
-                     (1, date(2099, 3, 1), 3)])
+        # planted directly: the loader's writer refuses a fork
+        _raw_chain(cur, [(1, None), (2, 1), (3, 1)])
         return _raises(lambda: tip(cur, FY), ValueError)
     r = _chain_gate(cur, "3b", name, body)
     if r is not None:
@@ -285,7 +289,8 @@ def gate_3f_two_roots_raise(cur):
     name = "latest_edition: two roots with no supersedes raise"
 
     def body(cur):
-        _chain(cur, [(None, date(2099, 1, 1), 1), (None, date(2099, 1, 1), 1)])
+        # planted directly: the loader's writer refuses a second root
+        _raw_chain(cur, [(1, None), (2, None)])
         return _raises(lambda: tip(cur, FY), ValueError)
     r = _chain_gate(cur, "3f", name, body)
     if r is not None:
@@ -340,7 +345,7 @@ def gate_3c_empty_recs(cur):
     name = "insert_edition: empty rows halts and writes nothing"
 
     def body(cur):
-        r = _raises(lambda: m.insert_edition(cur, [], FY, **_kw("t", None, "h0")),
+        r = _raises(lambda: m._insert(cur, [], FY, **_kw("t", None, "h0")),
                     SystemExit)
         cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} WHERE {PERIOD} = %s",
                     (FY,))
@@ -356,12 +361,12 @@ def gate_3d_bad_supersedes(cur):
 
     def body(cur):
         lad = _first_lad(cur)
-        m.insert_edition(cur, [_rec(lad, 1)], FY, **_kw("t", date(2099, 1, 1), "h0"))
+        m._insert(cur, [_rec(lad, 1)], FY, **_kw("t", date(2099, 1, 1), "h0"))
         bad = dict(_kw("t", date(2099, 2, 1), "h1"), supersedes=7)
-        r = _raises(lambda: m.insert_edition(cur, [_rec(lad, 2)], FY, **bad),
+        r = _raises(lambda: m._insert(cur, [_rec(lad, 2)], FY, **bad),
                     SystemExit)
         good = dict(_kw("t", date(2099, 2, 1), "h1"), supersedes=1)
-        ed = m.insert_edition(cur, [_rec(lad, 2)], FY, **good)
+        ed = m._insert(cur, [_rec(lad, 2)], FY, **good)
         cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} WHERE {PERIOD} = %s",
                     (FY,))
         return r, ed, cur.fetchone()[0]
@@ -377,8 +382,8 @@ def gate_3i_idempotent(cur):
 
     def body(cur):
         lad = _first_lad(cur)
-        a = m.insert_edition(cur, [_rec(lad, 1)], FY, **_kw("t", None, "h0"))
-        b = m.insert_edition(cur, [_rec(lad, 1)], FY, **_kw("t", None, "h0"))
+        a = m._insert(cur, [_rec(lad, 1)], FY, **_kw("t", None, "h0"))
+        b = m._insert(cur, [_rec(lad, 1)], FY, **_kw("t", None, "h0"))
         cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} WHERE {PERIOD} = %s",
                     (FY,))
         return a, b, cur.fetchone()[0]
@@ -433,7 +438,7 @@ def gate_4s_seeded(cur):
     sh = _in_savepoint(cur, short)
 
     def orphan(cur):
-        m.insert_edition(cur, [_rec(_first_lad(cur), 1)], FY, **_kw("t", None, "o"))
+        m._insert(cur, [_rec(_first_lad(cur), 1)], FY, **_kw("t", None, "o"))
         return m.check_coverage(cur)[0]
     orph = _in_savepoint(cur, orphan)
     ok = (any(f"{fy} ed{nxt}" in x for x in sh)
@@ -549,10 +554,10 @@ def _fake_edition(cur, fy, mutate=None):
     rows = {r[0]: dict(zip(m.DATA_COLS, r)) for r in cur.fetchall()}
     if mutate:
         mutate(rows)
-    return m.insert_edition(cur, list(rows.values()), fy, release_label="gate-fake",
-                            published_date=date(2099, 1, 1),
-                            source_file="gate-fake.ods",
-                            source_sha256=f"gate-fake-{fy}-{t}", supersedes=t)
+    return m._insert(cur, list(rows.values()), fy, release_label="gate-fake",
+                     published_date=date(2099, 1, 1),
+                     source_file="gate-fake.ods",
+                     source_sha256=f"gate-fake-{fy}-{t}", supersedes=t)
 
 
 def gate_9_seeded_newer_edition(cur):
@@ -573,24 +578,21 @@ def gate_9_seeded_newer_edition(cur):
         r["data_missing"] = False
 
     def body(cur):
-        before = period_hashes(cur, LIVE, ("lad24cd",), period_col=PERIOD)
+        before = core.period_hashes(cur, m.SPEC, "live")
         ed = _fake_edition(cur, fy, bump)
         st = m.status(cur)
-        pending, _ = classify_period(cur, LIVE, TABLE, ("lad24cd",),
-                                     m.REFRESH_COLS, fy, ed, PERIOD)
+        pending, _ = core.classify_period(cur, m.SPEC, fy, ed)
         other = [y for y in years if y != fy][0]
-        other_kind = classify_period(cur, LIVE, TABLE, ("lad24cd",),
-                                     m.REFRESH_COLS, other, tip(cur, other),
-                                     PERIOD)[0]
-        n = rows_differing(cur, LIVE, TABLE, ("lad24cd",), m.REFRESH_COLS, fy,
-                           ed, PERIOD)
+        other_kind = core.classify_period(cur, m.SPEC, other,
+                                          tip(cur, other))[0]
+        n = core.rows_differing(cur, m.SPEC, fy, ed)
         cols = ", ".join(m.DATA_COLS)
         cur.execute(f"""INSERT INTO public.{TABLE} ({cols}, edition, supersedes,
                         source_sha256) SELECT {cols}, %s, 1, 'gate-fork'
                         FROM public.{TABLE} WHERE {PERIOD} = %s AND edition = 1""",
                     (ed + 1, fy))
         forked = m.status(cur)
-        after = period_hashes(cur, LIVE, ("lad24cd",), period_col=PERIOD)
+        after = core.period_hashes(cur, m.SPEC, "live")
         return st, pending, other_kind, n, forked, before == after
     try:
         st, pend, other_kind, n, forked, live_same = _in_savepoint(cur, body)
@@ -617,9 +619,8 @@ def _years(cur):
 
 
 def _hashes(cur):
-    return (period_hashes(cur, LIVE, m.HASH_KEY, period_col=PERIOD),
-            period_hashes(cur, LIVE, m.HASH_KEY, exclude=m.REFRESH_COLS,
-                          period_col=PERIOD))
+    return (core.period_hashes(cur, m.SPEC, "live"),
+            core.period_hashes(cur, m.SPEC, "live", exclude=m.REFRESH_COLS))
 
 
 def _halts(fn):
@@ -1031,10 +1032,10 @@ def _load_variant(cur, fy, recs, raw, mutate=None, drop=None):
     if mutate:
         mutate({r["lad24cd"]: r for r in recs})
     t = tip(cur, fy)
-    ed = m.insert_edition(cur, recs, fy, release_label="gate-load",
-                          published_date=date(2099, 1, 1),
-                          source_file="gate-load.ods",
-                          source_sha256=f"gate-load-{fy}-{t}", supersedes=t)
+    ed = m._insert(cur, recs, fy, release_label="gate-load",
+                   published_date=date(2099, 1, 1),
+                   source_file="gate-load.ods",
+                   source_sha256=f"gate-load-{fy}-{t}", supersedes=t)
     return (m.check_loaded(cur, fy, ed),
             m.check_raw_integrity(cur, fy, ed, raw)[0])
 

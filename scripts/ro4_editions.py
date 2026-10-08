@@ -5,9 +5,11 @@ ro4_housing_expenditure holds one row per authority per financial year (the
 latest layer, read unchanged by the W1 nodes and the map export). This module
 owns ro4_housing_expenditure_editions, which keeps every release held of a year
 so a later release never overwrites what was sent. Rows are immutable: triggers
-raise on UPDATE, DELETE and TRUNCATE. It mirrors s1b_editions.py and reuses the
-generic helpers of s1_editions.py (latest_edition, classify_period, status,
-period_hashes, guard_problems), passing period_col='financial_year'.
+raise on UPDATE, DELETE and TRUNCATE. It mirrors s1b_editions.py. The editions
+machinery (schema, chain tip, status, the refresh UPDATE and its guard, and the
+loader's inserts) is editions_core driven by SPEC; what is RO4's own (manifest
+and cover-sheet checks, file re-parse, raw-cell re-read, edition 1 from the
+manifest file or 'as loaded', the gates and the halt messages) stays here.
 
 Edition model. Ordering is the `supersedes` chain, never published_date. The
 chain can only be extended at its tip: a release published earlier than one
@@ -85,12 +87,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from s1_editions import (classify_period, format_status as _format_status,  # noqa: E402
-                         guard_problems, halt,
-                         latest_edition as _s1_latest_edition, latest_map,
-                         live_period_counts, modal_count, period_hashes,
-                         rows_differing, sha256_file)
-from s1_editions import status as _status  # noqa: E402
+import editions_core as core  # noqa: E402
+import load_checks  # noqa: E402
+from editions_core import modal_count  # noqa: E402
+from s1_editions import format_status as _format_status  # noqa: E402
+from s1_editions import halt, sha256_file  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -98,8 +99,6 @@ if hasattr(sys.stdout, "reconfigure"):
 TABLE = "ro4_housing_expenditure_editions"
 LIVE = "ro4_housing_expenditure"
 PERIOD = "financial_year"
-TRIGGER = "ro4_editions_immutable"
-TRUNCATE_TRIGGER = "ro4_editions_no_truncate"
 MEASURES = ("nightly_paid_ta_gross_exp_000", "nightly_paid_ta_net_exp_000",
             "hostels_gross_exp_000", "hostels_net_exp_000", "bb_gross_exp_000",
             "bb_net_exp_000", "hra_admin_prevention_relief_net_exp_000",
@@ -110,9 +109,30 @@ MEASURES = ("nightly_paid_ta_gross_exp_000", "nightly_paid_ta_net_exp_000",
 REFRESH_COLS = MEASURES + ("la_name", "data_missing", "source")
 DATA_COLS = ("lad24cd", PERIOD) + REFRESH_COLS
 KEY = ("lad24cd",)
-HASH_KEY = (PERIOD, "lad24cd")
-EXTRA_COLS = ("release_label", "published_date", "source_file",
-              "source_sha256", "supersedes")
+
+# The RO4 tables for editions_core. Every live column except loaded_at is a
+# key, value or extra column, so insert_edition writes them all and
+# compare_cols (what status and refresh-latest compare) is exactly
+# REFRESH_COLS, as before. Types and the CHECK are those of the real editions
+# table; the live table's primary key is (lad24cd, financial_year), so the
+# core's EXCEPT ALL counts the same as RO4's EXCEPT. A fresh create_schema
+# differs from the existing table only in column order and loaded_at NOT NULL
+# (the existing table is never re-created).
+SPEC = core.EditionSpec(
+    name="ro4",
+    live_table=LIVE,
+    editions_table=TABLE,
+    key_cols=KEY,
+    period_col=PERIOD,
+    key_types=((PERIOD, f"varchar(7) NOT NULL CONSTRAINT {TABLE}_{PERIOD}_chk "
+                f"CHECK ({PERIOD} ~ '^\\d{{4}}-\\d{{2}}$')"),),
+    value_cols=tuple((c, "numeric(12,2)") for c in MEASURES),
+    extra_cols=(("la_name", "varchar(100)"), ("data_missing", "boolean"),
+                ("source", "text")),
+    refresh_cols=REFRESH_COLS,
+)
+TRIGGER = SPEC.trigger                    # ro4_editions_immutable
+TRUNCATE_TRIGGER = SPEC.truncate_trigger  # ro4_editions_no_truncate
 
 REPO = Path(__file__).resolve().parent.parent
 REF_DIR = REPO / "data" / "reference"
@@ -171,49 +191,20 @@ def source_text(entry: dict) -> str:
 # ------------------------------------------------------------------ schema
 
 def create_schema(cur) -> None:
-    """Create the table and immutability triggers if absent. Idempotent."""
-    t = TABLE
-    measure_cols = ",\n        ".join(f"{c} numeric(12,2)" for c in MEASURES)
-    cur.execute(f"""
-    CREATE TABLE IF NOT EXISTS public.{t} (
-        lad24cd        varchar(9) NOT NULL
-            REFERENCES public.la_boundaries (lad24cd),
-        {PERIOD}       varchar(7) NOT NULL
-            CONSTRAINT {t}_{PERIOD}_chk CHECK ({PERIOD} ~ '^\\d{{4}}-\\d{{2}}$'),
-        edition        integer    NOT NULL,
-        la_name        varchar(100),
-        {measure_cols},
-        data_missing   boolean,
-        source         text,
-        release_label  text,
-        published_date date,
-        source_file    text,
-        source_sha256  text,
-        supersedes     integer,
-        loaded_at      timestamptz DEFAULT now(),
-        PRIMARY KEY (lad24cd, {PERIOD}, edition)
-    )""")
+    """Create the table and immutability triggers if absent. Idempotent
+    (editions_core.create_schema with SPEC: the trigger function and triggers
+    have the same names and text as before), plus RO4's own la_name fix."""
+    core.create_schema(cur, SPEC)
     # a table made by the first version of this module has la_name unbounded;
     # the live table's is varchar(100). A column type change is schema, not a
-    # row update: it fires no row trigger and rewrites no value.
+    # row update: it fires no row trigger and rewrites no value. RO4's own:
+    # the core never alters an existing table.
     cur.execute("""SELECT character_maximum_length FROM information_schema.columns
                    WHERE table_schema = 'public' AND table_name = %s
-                     AND column_name = 'la_name'""", (t,))
+                     AND column_name = 'la_name'""", (TABLE,))
     if cur.fetchone()[0] != 100:
-        cur.execute(f"ALTER TABLE public.{t} ALTER COLUMN la_name TYPE "
+        cur.execute(f"ALTER TABLE public.{TABLE} ALTER COLUMN la_name TYPE "
                     "varchar(100)")
-    cur.execute(f"""
-    CREATE OR REPLACE FUNCTION public.{TRIGGER}() RETURNS trigger AS $f$
-    BEGIN
-        RAISE EXCEPTION '{TABLE} is append-only: % is not permitted', TG_OP;
-    END
-    $f$ LANGUAGE plpgsql""")
-    cur.execute(f"""CREATE OR REPLACE TRIGGER {TRIGGER}
-        BEFORE UPDATE OR DELETE ON public.{TABLE}
-        FOR EACH ROW EXECUTE FUNCTION public.{TRIGGER}()""")
-    cur.execute(f"""CREATE OR REPLACE TRIGGER {TRUNCATE_TRIGGER}
-        BEFORE TRUNCATE ON public.{TABLE}
-        FOR EACH STATEMENT EXECUTE FUNCTION public.{TRIGGER}()""")
 
 
 def table_exists(cur) -> bool:
@@ -221,49 +212,45 @@ def table_exists(cur) -> bool:
     return cur.fetchone()[0] is not None
 
 
-def insert_edition(cur, recs: list, fy: str, *, release_label: str,
-                   published_date: "date | None", source_file: "str | None",
-                   source_sha256: str, supersedes: "int | None") -> int:
-    """Insert one edition of a financial year; return its edition number.
-
-    If source_sha256 is already recorded for the year nothing is inserted and
-    the existing edition number is returned. Missing measures are stored NULL
-    (never 0). Empty recs is a hard stop, and so is a `supersedes` that is not
-    an existing edition of the year or a row of another year."""
-    from psycopg2.extras import execute_values
+def _insert(cur, recs: list, fy: str, *, release_label: str,
+            published_date: "date | None", source_file: "str | None",
+            source_sha256: str, supersedes: "int | None") -> int:
+    """The only writer of RO4 editions (backfill, load, sync-new, and the
+    verify gates): editions_core.insert_edition with SPEC. A source_sha256
+    already recorded for the year inserts nothing and returns that edition;
+    missing measures are stored NULL (never 0); supersedes must be the year's
+    chain tip (None only for a year with no editions). Not strict: RO4's
+    original stored a missing measure, name or flag as NULL rather than
+    refusing it. Empty recs halts here first, with RO4's own message."""
     if not recs:
         halt(f"insert_edition: no records supplied for {fy}")
-    cur.execute(f"SELECT DISTINCT edition FROM public.{TABLE} "
-                f"WHERE {PERIOD} = %s AND source_sha256 = %s",
-                (fy, source_sha256))
-    existing = [r[0] for r in cur.fetchall()]
-    if existing:
-        return existing[0]
-    cur.execute(f"SELECT COALESCE(MAX(edition), 0) FROM public.{TABLE} "
-                f"WHERE {PERIOD} = %s", (fy,))
-    edition = cur.fetchone()[0] + 1
-    if supersedes is not None:
-        cur.execute(f"SELECT 1 FROM public.{TABLE} WHERE {PERIOD} = %s "
-                    "AND edition = %s LIMIT 1", (fy, supersedes))
-        if cur.fetchone() is None:
-            halt(f"insert_edition: supersedes={supersedes} is not an existing "
-                 f"edition of {fy}")
-    if any(r[PERIOD] != fy for r in recs):
-        halt(f"insert_edition: records contain a financial year other than {fy}")
-    cols = list(DATA_COLS) + ["edition"] + list(EXTRA_COLS)
-    data = [[r.get(c) for c in DATA_COLS] + [edition, release_label,
-            published_date, source_file, source_sha256, supersedes]
-            for r in recs]
-    execute_values(cur, f"INSERT INTO public.{TABLE} ({', '.join(cols)}) "
-                   "VALUES %s", data, page_size=1000)
-    return edition
+    return core.insert_edition(cur, SPEC, recs, fy,
+                               release_label=release_label,
+                               published_date=published_date,
+                               source_file=source_file,
+                               source_sha256=source_sha256,
+                               supersedes=supersedes)
 
 
 def latest_edition(cur, fy: str) -> int:
     """Chain tip of the financial year; the validation (single root, no fork,
-    no self/dangling supersedes, whole chain reachable) lives in
-    s1_editions.latest_edition."""
-    return _s1_latest_edition(cur, fy, table=TABLE, period_col=PERIOD)
+    no self/dangling supersedes, whole chain reachable) is
+    editions_core.chain_tip. Raises LookupError (no editions) or ValueError
+    (broken chain) rather than halting, as callers here catch those."""
+    return core.chain_tip(cur, SPEC, fy)
+
+
+def latest_map(cur) -> tuple:
+    """(tips, new_years, chain_errors) of the live financial years
+    (editions_core.latest_map with SPEC). A module-level name so that
+    ro4_editions_verify gate 17 can stand in for it."""
+    return core.latest_map(cur, SPEC)
+
+
+def live_period_counts(cur) -> dict:
+    """{financial_year: live rows} (editions_core.live_period_counts with
+    SPEC); module-level for verify gate 17, as latest_map."""
+    return core.live_period_counts(cur, SPEC)
 
 
 # ----------------------------------------------------------------- derived
@@ -271,7 +258,7 @@ def latest_edition(cur, fy: str) -> int:
 def expected_authorities(cur) -> "int | None":
     """Authorities per financial year, derived: the most common per-year row
     count of the live table (None if it is empty)."""
-    return modal_count(live_period_counts(cur, LIVE, PERIOD))
+    return modal_count(live_period_counts(cur))
 
 
 def rows_sha256(recs: list) -> str:
@@ -327,7 +314,7 @@ def check_coverage(cur) -> tuple:
             bad.append(f"{fy}: no edition 1")
     for fy, e in sorted(eds.items()):
         for k, v in sorted(e.items()):
-            n1 += v[1] if k == 1 else 0
+            n1 += v[1] if k == 1 else 0  # not a source value
             if v != (want, want):
                 bad.append(f"{fy} ed{k}: {v[0]} authorities/{v[1]} rows, "
                            f"expected {want}/{want}")
@@ -335,43 +322,27 @@ def check_coverage(cur) -> tuple:
     return bad, n1, cur.fetchone()[0]
 
 
-def _except_counts(cur, a_sql, a_args, b_sql, b_args) -> tuple:
-    """(rows in A not in B, rows in B not in A); EXCEPT is NULL-safe."""
-    out = []
-    for x, xa, y, ya in ((a_sql, a_args, b_sql, b_args),
-                         (b_sql, b_args, a_sql, a_args)):
-        cur.execute(f"SELECT COUNT(*) FROM (({x}) EXCEPT ({y})) q", xa + ya)
-        out.append(cur.fetchone()[0])
-    return tuple(out)
-
-
 def check_latest_equals_live(cur, years=None) -> list:
     """For each live financial year the latest edition equals the live rows on
-    every refresh column, NULL-safe (0 is not NULL)."""
-    cur.execute(f"SELECT DISTINCT {PERIOD} FROM public.{LIVE}")
-    live_years = sorted(r[0] for r in cur.fetchall())
-    cols = ", ".join(KEY + REFRESH_COLS)
-    bad = []
-    for fy in (years or live_years):
-        try:
-            ed = latest_edition(cur, fy)
-        except (LookupError, ValueError) as e:
-            bad.append(f"{fy}: {e}")
-            continue
-        ed_only, live_only = _except_counts(
-            cur, f"SELECT {cols} FROM public.{TABLE} WHERE {PERIOD} = %s "
-            "AND edition = %s", (fy, ed),
-            f"SELECT {cols} FROM public.{LIVE} WHERE {PERIOD} = %s", (fy,))
-        if ed_only or live_only:
-            bad.append(f"{fy} ed{ed}: {ed_only} edition-only, {live_only} "
-                       "live-only rows")
-    return bad
+    every refresh column, NULL-safe (0 is not NULL).
+    load_checks.check_latest_equals_live with SPEC: it compares SPEC.data_cols,
+    which are KEY + REFRESH_COLS plus financial_year (equal by the WHERE), with
+    EXCEPT, the same chain errors and the same message text as RO4's own."""
+    return load_checks.check_latest_equals_live(cur, SPEC, years)
 
 
 def check_null_not_zero(cur) -> list:
     """In every stored edition data_missing is true exactly where the total
     homelessness gross figure is NULL (a real zero is kept as 0, a
-    not-yet-reported authority is NULL)."""
+    not-yet-reported authority is NULL).
+
+    Kept, not replaced by load_checks.blank_regression plus
+    check_raw_integrity: on the stored data (checked 2026-10-07, task 6)
+    blank_regression reports 30 and 31 NULL<->0 cells between the earlier
+    year's editions 1->2 and 2->3 (the publisher's own revisions, which are
+    legitimate), and check_raw_integrity cannot read that year's edition 1
+    (recorded 'as loaded', no local file). Both would turn gate 5n and the backfill/sync-new gates
+    from PASS to FAIL; this check returns no problem on the same data."""
     cur.execute(f"""SELECT {PERIOD}, edition,
         COUNT(*) FILTER (WHERE data_missing IS DISTINCT FROM
                          (total_homelessness_gross_exp_000 IS NULL))
@@ -636,7 +607,9 @@ def record_edition1(cur, fy, want, plan_only=False) -> tuple:
                   f"; local file {entry['file']} {describe(cmp)}"))
     if plan_only:
         return None, len(recs), how
-    ed = insert_edition(cur, recs, fy, supersedes=None, **kw)
+    # supersedes None: callers (backfill, sync-new) only reach a year with no
+    # editions, so None is its chain tip
+    ed = _insert(cur, recs, fy, supersedes=None, **kw)
     cur.execute(f"SELECT COUNT(*) FROM public.{TABLE} WHERE {PERIOD} = %s "
                 "AND edition = %s", (fy, ed))
     return ed, cur.fetchone()[0], how
@@ -682,9 +655,18 @@ def run_backfill_gates(cur) -> None:
 # ------------------------------------------------------------------ status
 
 def status(cur) -> dict:
-    """What needs action between the live table and its editions (read-only);
-    the shape is s1_editions.status, keyed by financial year."""
-    return _status(cur, LIVE, TABLE, KEY, REFRESH_COLS, period_col=PERIOD)
+    """What needs action between the live table and its editions (read-only),
+    keyed by financial year.
+
+    editions_core.status with SPEC (expected rows: the most common per-year
+    live count, as before), returned under the key names RO4 has always used
+    (s1_editions.format_status, cmd_sync_new and the verify gates read them):
+    the core's 'drift' is 'drift_periods' and 'forked' is 'chain_errors'."""
+    st = core.status(cur, SPEC)
+    return {"new_periods": st["new_periods"], "drift_periods": st["drift"],
+            "pending_refresh": st["pending_refresh"],
+            "chain_errors": st["forked"], "bad_counts": st["bad_counts"],
+            "periods": st["periods"], "ok": st["ok"]}
 
 
 def format_status(st: dict) -> str:
@@ -1045,7 +1027,7 @@ def cmd_load(args):
             if not writing:
                 print("DRY RUN: nothing written (use --commit or --simulate)")
                 return
-            ed = insert_edition(
+            ed = _insert(  # prev is the chain tip (latest_edition above)
                 cur, recs, fy, release_label=entry["release_label_stored"],
                 published_date=date.fromisoformat(
                     entry["published_date_stored"]),
@@ -1080,11 +1062,6 @@ def cmd_load(args):
 # refresh is checked by a per-year before/after content hash in the same
 # transaction.
 
-def _refresh_where() -> str:
-    return "(" + " OR ".join(f"l.{c} IS DISTINCT FROM e.{c}"
-                             for c in REFRESH_COLS) + ")"
-
-
 def sync_new(cur, expected_authorities_n=None) -> list:
     """Give every live financial year that has no editions its edition 1
     ('as loaded', or the manifest file if the live rows equal it). Never touches
@@ -1093,12 +1070,20 @@ def sync_new(cur, expected_authorities_n=None) -> list:
     editions. Returns the years that were given an edition. If no live year has
     editions yet there is nothing to derive the count from, so
     expected_authorities_n (CLI --expected-authorities N) must be given; once a
-    count can be derived N is accepted only if it equals it."""
-    tips, new, errors = latest_map(cur, LIVE, TABLE, PERIOD)
+    count can be derived N is accepted only if it equals it.
+
+    RO4's own rather than editions_core.sync_new: edition 1 may record the
+    manifest file (record_edition1), the 'as loaded' label and published date
+    come from the live source text, and authorities are counted as live rows.
+    The chain map, row counts and the insert are the core's, through the
+    module-level latest_map / live_period_counts (verify gate 17 stands in for
+    them) and _insert. No savepoint of its own, as before: a halt leaves the
+    caller to roll back."""
+    tips, new, errors = latest_map(cur)
     if errors:
         halt("sync-new: invalid edition chain " + "; ".join(
             f"{p}: {m}" for p, m in errors.items()))
-    known = {p: n for p, n in live_period_counts(cur, LIVE, PERIOD).items()
+    known = {p: n for p, n in live_period_counts(cur).items()
              if p not in new}
     derived = modal_count(known)
     if (expected_authorities_n is not None and derived is not None
@@ -1119,16 +1104,9 @@ def sync_new(cur, expected_authorities_n=None) -> list:
 
 
 def _one_sided(cur, fy, edition) -> int:
-    """Authorities in only one of the live year and the edition."""
-    cur.execute(f"""SELECT
-        (SELECT COUNT(*) FROM public.{LIVE} l WHERE l.{PERIOD} = %s AND NOT
-            EXISTS (SELECT 1 FROM public.{TABLE} e WHERE e.{PERIOD} = %s
-                    AND e.edition = %s AND e.lad24cd = l.lad24cd))
-      + (SELECT COUNT(*) FROM public.{TABLE} e WHERE e.{PERIOD} = %s
-            AND e.edition = %s AND NOT EXISTS (SELECT 1 FROM public.{LIVE} l
-                    WHERE l.{PERIOD} = %s AND l.lad24cd = e.lad24cd))""",
-                (fy, fy, edition, fy, edition, fy))
-    return cur.fetchone()[0]
+    """Authorities in only one of the live year and the edition
+    (editions_core._one_sided with SPEC: the same two NOT EXISTS counts)."""
+    return core._one_sided(cur, SPEC, fy, edition)
 
 
 def _plan(cur, accept_drift=()) -> tuple:
@@ -1136,8 +1114,13 @@ def _plan(cur, accept_drift=()) -> tuple:
     live rows differ from the latest edition, unaccepted drift years). kind is
     'pending' (live equals an earlier edition) or 'drift' (it equals none);
     rows is how many live rows an update would write, one_sided how many
-    authorities are in only one of live and the edition."""
-    tips, new, errors = latest_map(cur, LIVE, TABLE, PERIOD)
+    authorities are in only one of live and the edition.
+
+    RO4's own, built from the core's pieces (latest_map, classify_period,
+    _refresh_where, _one_sided with SPEC), so that its halts keep RO4's
+    wording ('financial years', '--accept-drift FY'); editions_core._plan
+    makes the same decisions with 'periods' in its messages."""
+    tips, new, errors = latest_map(cur)
     if new:
         halt(f"financial years with no editions {new}; run sync-new first")
     if errors:
@@ -1145,8 +1128,7 @@ def _plan(cur, accept_drift=()) -> tuple:
             f"{p}: {m}" for p, m in errors.items()))
     plan, drift = {}, []
     for fy, tip in tips.items():
-        kind, _ = classify_period(cur, LIVE, TABLE, KEY, REFRESH_COLS, fy, tip,
-                                  PERIOD)
+        kind, _ = core.classify_period(cur, SPEC, fy, tip)
         if kind == "current":
             continue
         if kind == "drift" and fy not in accept_drift:
@@ -1161,7 +1143,8 @@ def _plan(cur, accept_drift=()) -> tuple:
         cur.execute(f"""SELECT COUNT(*) FROM public.{LIVE} l
                         JOIN public.{TABLE} e ON e.lad24cd = l.lad24cd
                          AND e.{PERIOD} = l.{PERIOD} AND e.edition = %s
-                        WHERE l.{PERIOD} = %s AND {_refresh_where()}""",
+                        WHERE l.{PERIOD} = %s
+                          AND {core._refresh_where(SPEC)}""",
                     (v["edition"], fy))
         v["rows"] = cur.fetchone()[0]
         v["one_sided"] = _one_sided(cur, fy, v["edition"])
@@ -1186,14 +1169,25 @@ def refresh_latest(cur, accept_drift=(), _after_update_hook=None) -> dict:
 
     Updates ONLY the eleven measures, la_name, data_missing and source, on the
     rows of those years that differ. Every other column, including loaded_at,
-    and every other year is untouched. Inside the caller's transaction the
-    per-year content hash (excluding loaded_at) is taken before and after: a
-    year not being refreshed must be identical, a refreshed one may differ only
-    in the refresh columns; each refreshed year must then equal its latest
-    edition on every refresh column. A year whose live rows equal no stored
-    edition is drift: it halts unless named in accept_drift. Any failure halts
-    (the caller rolls back). _after_update_hook(cur) is a test seam that runs
-    after the UPDATE and before the after-checks.
+    and every other year is untouched. The UPDATE and its checks are
+    editions_core.refresh_latest with SPEC: the per-year content hash
+    (excluding loaded_at, and separately excluding the refresh columns) is
+    taken before and after, a year not being refreshed must be identical, a
+    refreshed one may differ only in the refresh columns, the editions table
+    must not change, the rows written must be the rows planned, and each
+    refreshed year must then equal its latest edition on every refresh
+    column. A year whose live rows equal no stored edition is drift: it halts
+    unless named in accept_drift.
+
+    RO4's own on top of the core: the plan is made first by _plan, so a
+    drifted, one-sided, new or broken year halts before anything is written
+    with RO4's own message (the core would halt on the same years with its
+    'periods' wording); and check_latest_equals_live runs on the refreshed
+    years afterwards, as before. The whole runs in a savepoint of RO4's own,
+    so any failure rolls back to it and halts; the caller's transaction is
+    never committed here. _after_update_hook(cur) is a test seam that runs
+    after the UPDATE and before the after-checks (the core passes the plan
+    too; it is dropped).
 
     Result: {'updated': {fy: rows}, 'rows': n, 'drift_accepted': [...]}.
     """
@@ -1207,45 +1201,19 @@ def refresh_latest(cur, accept_drift=(), _after_update_hook=None) -> dict:
     if stuck:
         halt(f"{stuck} differ from the latest edition in rows present in only "
              "one of them; an update of the refresh columns cannot repair that")
-    result = {"updated": {}, "rows": 0,
-              "drift_accepted": sorted(p for p, v in plan.items()
-                                       if v["kind"] == "drift")}
-    if not plan:
-        return result
-    refreshed = set(plan)
-    full_b = period_hashes(cur, LIVE, HASH_KEY, period_col=PERIOD)
-    kept_b = period_hashes(cur, LIVE, HASH_KEY, exclude=REFRESH_COLS,
-                           period_col=PERIOD)
-    sets = ", ".join(f"{c} = e.{c}" for c in REFRESH_COLS)
-    pairs = tuple((p, v["edition"]) for p, v in sorted(plan.items()))
-    cur.execute(f"""UPDATE public.{LIVE} l SET {sets}
-                    FROM public.{TABLE} e
-                    WHERE e.lad24cd = l.lad24cd AND e.{PERIOD} = l.{PERIOD}
-                      AND (e.{PERIOD}, e.edition) IN %s AND {_refresh_where()}""",
-                (pairs,))
-    n = cur.rowcount
-    expected = sum(v["rows"] for v in plan.values())
+    hook = None
     if _after_update_hook is not None:
-        _after_update_hook(cur)
-    full_a = period_hashes(cur, LIVE, HASH_KEY, period_col=PERIOD)
-    kept_a = period_hashes(cur, LIVE, HASH_KEY, exclude=REFRESH_COLS,
-                           period_col=PERIOD)
-    bad = guard_problems(full_b, full_a, kept_b, kept_a, refreshed)
-    if n != expected:
-        bad.append(f"wrote {n} rows, expected {expected}")
-    for fy, v in sorted(plan.items()):
-        k = rows_differing(cur, LIVE, TABLE, KEY, REFRESH_COLS, fy,
-                           v["edition"], PERIOD)
-        if k:
-            bad.append(f"{fy}: {k} rows still differ from edition "
-                       f"{v['edition']} after the refresh")
-    bad += [f"live!=latest: {x}"
-            for x in check_latest_equals_live(cur, sorted(refreshed))]
-    if bad:
-        halt("refresh-latest failed its before/after checks, rolled back: "
-             + "; ".join(bad[:6]))
-    result["updated"] = {p: v["rows"] for p, v in sorted(plan.items())}
-    result["rows"] = n
+        def hook(c, _plan_unused):
+            _after_update_hook(c)
+    with core._own_savepoint(cur, "ro4_refresh_latest"):
+        result = core.refresh_latest(cur, SPEC, tuple(accept_drift),
+                                     _after_update_hook=hook)
+        if result["updated"]:
+            bad = [f"live!=latest: {x}" for x in
+                   check_latest_equals_live(cur, sorted(result["updated"]))]
+            if bad:
+                halt("refresh-latest failed its before/after checks, rolled "
+                     "back: " + "; ".join(bad[:6]))
     return result
 
 
@@ -1325,7 +1293,7 @@ def cmd_sync_new(args):
         with conn.cursor() as cur:
             if not table_exists(cur):
                 halt(f"{TABLE} does not exist; run ddl then backfill")
-            tips, new, errors = latest_map(cur, LIVE, TABLE, PERIOD)
+            tips, new, errors = latest_map(cur)
             print("financial years with no editions: " + (", ".join(new)
                                                           or "none"))
             if not writing:
