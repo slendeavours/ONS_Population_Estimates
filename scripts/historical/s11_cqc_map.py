@@ -29,6 +29,18 @@ Inputs  : data/processed/cqc_locations_processed.csv
 Outputs : data/processed/cqc_locations_mapped.csv
           Prints mapping_method counts, per-method listings, cross-check rate.
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s11_cqc_editions.py. The old S11 load step upserted with INSERT ... '
+    'ON CONFLICT (location_id) DO UPDATE, setting loaded_at, so each new file replaced the row of '
+    "every location it contained (locations that dropped out of a file kept their earlier values); "
+    'the July and August 2026 snapshots were rebuilt from the files on 2026-10-09, and the residue rows '
+    '(128 July, 108 August) also remain in cqc_locations_legacy. This map step also wrote '
+    'cqc_unresolved_locations on every run, in place, with no preview.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import json
 import os
 import sys

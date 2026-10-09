@@ -285,6 +285,19 @@ Source: ONS Price Index of Private Rents (PIPR), by English local authority, mon
 
 Source: CQC Care directory with filters (monthly). Only supply-side column in the pipeline — every other signal measures demand.
 
+Since 2026-10-09 each monthly file is kept as a dated snapshot of the CQC register (Adult social care locations), loaded by `scripts/s11_cqc_editions.py`:
+
+| Table | What it holds |
+|---|---|
+| `cqc_location_snapshots` | Live layer: one row per location per snapshot, keyed (`snapshot_date`, `location_id`). `snapshot_date` is the file's own "as at" date from its README sheet. |
+| `cqc_location_snapshots_editions` | Append-only editions of each snapshot (edition 1 is the file as first loaded; a later edition only if a file for the same date was reissued and its location set is unchanged; a recheck of the July, August and September 2026 snapshots is refused because location `1-28257167158` is kept unresolved in them as loaded but now resolves through postcodes.io, so the held editions stay as loaded). |
+| Text rule | Repeated spaces in text cells (second and later spaces of a run, stored in the ODS as `<text:s/>`) collapse to one space, so a location or provider name with a double space is stored with one. This is a documented transformation, kept from the retired loader so held rows and joins stay stable; 41 July and 43 October cells differ from the file's raw text only by this. |
+| `cqc_location_snapshots_editions_file_checks` | Append-only ledger of every file read. |
+| `cqc_location_snapshots_unresolved` | Append-only: the locations of each snapshot that could not be given a `lad24cd`. |
+| `cqc_locations` | A **view** over the snapshots with the same columns as the old table: one row per location ever seen, with its values from the latest snapshot containing it. W1 and the map export read this view unchanged. The old table is kept as `cqc_locations_legacy` (dropping it is a later, separate decision). `cqc_unresolved_locations` is the old unresolved table, no longer written. |
+
+In the view, `is_active` means the location is in the **latest snapshot**; it does not mean "deregistered". A location absent from the latest file may be deregistered, may have left the Adult social care scope, or may be a late deregistration (CQC's own README says deregistrations can appear late). `deregistered_seen_date` is the date of the first later snapshot that lacks it.
+
 | Column | Type | Range | Description |
 |---|---|---|---|
 | `supported_living_locations` | integer | 0 – 800+ | Active, non-dormant CQC-registered supported living locations per LA. Dual-registered locations count twice (both registrations are regulated entities). |

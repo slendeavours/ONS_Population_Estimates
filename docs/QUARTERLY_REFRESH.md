@@ -648,6 +648,15 @@ levels do not go on the demand map). No W1 run or map refresh is needed after
 an S18 load, including after `refresh-latest --commit`. If a future source or
 export starts to read it, this paragraph needs changing.
 
+**Text rule.** Repeated spaces in a text cell collapse to one (ODS `<text:s/>`),
+as in the retired loader; this is deliberate, so held rows and joins stay stable.
+
+**Rechecks of July, August and September 2026 are refused.** Location
+1-28257167158 is kept unresolved in those snapshots as loaded but postcodes.io
+now resolves it, so the set differs because the mapping changed, not the file.
+The held editions stay as loaded; do nothing unless CQC reissues one of those
+files, which needs the engine's whole-snapshot replace first.
+
 **Never run the old scripts.** `scripts/historical/s18_pipr_fetch.py`,
 `s18_pipr_transform.py`, `s18_pipr_load.py` and `s18_pipr_verify.py` upserted
 rows in place (`ON CONFLICT DO UPDATE`) from 2026-07-12 until commit ab14ef9
@@ -727,6 +736,53 @@ the command line and had no Final filter of its own; the year-end Final files
 were kept out by the discovery in `verify_load_crfd.py` and the n8n-era load. The two `verify_load_*` scripts loaded June
 2026 on 2026-08-20 the same way. They now stop with a RETIRED message.
 
+## S11 CQC register of care locations: the monthly check
+
+`cqc_location_snapshots` holds one snapshot of the CQC register of Adult social
+care locations per monthly file (the period is the "as at" date on the file's
+README sheet), with an append-only editions table
+(`cqc_location_snapshots_editions`), a ledger of every file read
+(`cqc_location_snapshots_editions_file_checks`) and an append-only unresolved
+table. `cqc_locations` is a view over the snapshots that W1 and the map read.
+Record: [S11](decisions/2026-10-09-s11-editions-first-load.md).
+
+Run from `ONS_Population_Estimates`, monthly (CQC publishes in the first days of
+the month; the page label can be a day after the file's own date):
+
+1. `python scripts/s11_cqc_editions.py load` (preview). It finds the filters
+   file on the CQC page, downloads it to `data/raw/` (also in a preview; rows
+   without coordinates are looked up on postcodes.io), reads the README
+   identity and prints the snapshot, what changed against the previous one and
+   the unresolved locations. Nothing is written to the database.
+2. Read the preview. A snapshot is REJECTED (nothing stored, exit 1) on an
+   identity mismatch, a header change, an unexpected marker, a Barnsley or
+   Sheffield code in the file, a location over 2 km from every polygon, rows
+   more than 2% from the previous snapshot, more than 1,000 locations gone or
+   new, more than 10 unresolved, an authority with no location, supported
+   living over 50% in more than 5 authorities, or an older file than held (page
+   or `--file`; `--allow-older-file` overrides).
+3. `python scripts/s11_cqc_editions.py load --commit` stores the snapshot, its
+   live rows, its unresolved rows and the ledger row in one transaction.
+4. `status` should say OK, and `python scripts/s11_cqc_editions_verify.py`
+   should pass all 22 gates.
+5. There is no `refresh-latest` step unless a recheck stored a second edition
+   of a held snapshot (`load --recheck PERIOD`); then preview it, and run it
+   again with `--commit`.
+6. After a new snapshot, run `w1_run.py`, then `refresh_map.py`: W1 counts
+   supported-living locations from the latest snapshot, so the next run moves
+   `supported_living_locations`. Neither is run by the loader.
+
+**Never run the old scripts.** `scripts/historical/s11_cqc_fetch.py`,
+`s11_cqc_process.py`, `s11_cqc_map.py`, `s11_cqc_load.py` and `s11_cqc_verify.py`
+now stop with a RETIRED message. The load step upserted with `INSERT ... ON
+CONFLICT (location_id) DO UPDATE`, so each new file replaced the row of every
+location it contained (locations that dropped out of a file kept their earlier
+values). The July and August 2026 snapshots were rebuilt from the files on
+2026-10-09, and the residue rows (128 July, 108 August) also remain in
+`cqc_locations_legacy`; the map step wrote
+`cqc_unresolved_locations` on every run with no preview; the fetch step
+overwrote a same-named download and took the date from the file name.
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
@@ -735,6 +791,7 @@ were kept out by the discovery in `verify_load_crfd.py` and the n8n-era load. Th
 - **Running the S15 monthly check.** Nothing runs `s15_hpi_editions.py load` for you; see the S15 section.
 - **Running the S18 monthly check.** Nothing runs `s18_pipr_editions.py load` for you; see the S18 section.
 - **Running the S9a and S9b monthly checks.** Nothing runs `s9a_drd_editions.py load` or `s9b_crfd_editions.py load` for you; see the S9 section.
+- **Running the S11 monthly check.** Nothing runs `s11_cqc_editions.py load` for you; see the S11 section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

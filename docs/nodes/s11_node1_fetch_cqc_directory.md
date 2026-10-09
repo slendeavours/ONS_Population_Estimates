@@ -1,5 +1,7 @@
 # Node 1 - Fetch CQC care directory with filters
 
+> **Superseded 2026-10-09.** The old S11 scripts this note describes are retired to `scripts/historical/`. S11 is now loaded by `scripts/s11_cqc_editions.py`, which keeps each monthly file as a dated snapshot (`cqc_location_snapshots`) instead of upserting `cqc_locations`, which is now a view. The text below is left as written and describes the old method.
+
 ## Type
 Python fetch + ODS-to-CSV conversion (`scripts/s11_cqc_fetch.py`)
 

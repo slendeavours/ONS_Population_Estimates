@@ -22,8 +22,8 @@ The top of this list is the documentation debt.
 | `join_path` | 13 | the build script's geography resolution step |
 | `revises_back_series` | 13 | — |
 | `build_script_path` | 12 | the build script, if it is in the published tree |
-| `revision_note` | 12 | — |
 | `detected_period_type` | 11 | — |
+| `revision_note` | 11 | — |
 | `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
 | `n8n_workflow_name` | 10 | the n8n workflow that runs the source, where one does |
 | `publication_window` | 9 | the publisher's stated release window |
@@ -35,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 307 null fields across 26 published sources.
+Total: 306 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -322,7 +322,6 @@ Total: 307 null fields across 26 published sources.
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `revises_back_series` | — |
-| `revision_note` | — |
 
 **Note.** S11 is the pipeline's only supply-side source: every other source measures need, S11 records existing CQC-registered provision. It is stored agnostically; the pipeline does not score or rank markets.
 

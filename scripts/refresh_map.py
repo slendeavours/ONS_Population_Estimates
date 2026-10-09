@@ -21,8 +21,8 @@ Default mode:
   4. A short summary is printed. Nothing is committed and nothing is pushed.
      The push is a separate, approved step: python scripts/push.py
 
-W1 input tables are discovered, not listed: every real table name in
-information_schema that appears in a W1 step file, less the outputs
+W1 input tables are discovered, not listed: every real table name (or view
+that exposes a loaded_at column, such as cqc_locations) in information_schema that appears in a W1 step file, less the outputs
 (staging_*) and la_boundaries. Of those, the ones with a loaded_at column are
 tested for loads after the latest complete run's run_date. Every W1 source
 table has one (checked 2026-10-08); a table without one is reported as not
@@ -68,7 +68,12 @@ def table_tokens(sql, names):
 
 
 def _real_tables(cur):
-    """{base table: has a loaded_at column} for schema public, read-only."""
+    """{table or view: has a loaded_at column} for schema public, read-only.
+
+    Base tables, plus views that expose a loaded_at column (cqc_locations is a
+    view over the S11 snapshots; its maximum moves with each new snapshot).
+    Views without loaded_at stay out, as before.
+    """
     cur.execute("""
         SELECT t.table_name,
                EXISTS (SELECT 1 FROM information_schema.columns c
@@ -76,7 +81,13 @@ def _real_tables(cur):
                           AND c.table_name = t.table_name
                           AND c.column_name = 'loaded_at')
           FROM information_schema.tables t
-         WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+         WHERE t.table_schema = 'public'
+           AND (t.table_type = 'BASE TABLE'
+                OR (t.table_type = 'VIEW'
+                    AND EXISTS (SELECT 1 FROM information_schema.columns c
+                                 WHERE c.table_schema = t.table_schema
+                                   AND c.table_name = t.table_name
+                                   AND c.column_name = 'loaded_at')))
     """)
     return dict(cur.fetchall())
 

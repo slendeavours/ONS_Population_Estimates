@@ -602,6 +602,30 @@ SOURCES = [
     dict(
         source_code="11",
         detected_period_type="reference_period",
+        revision_note=("Snapshots, not revisions. Each monthly file is a "
+            "dated snapshot of the CQC register of Adult social care "
+            "locations (the README sheet's as-at date is the period) and is "
+            "stored as its own snapshot in cqc_location_snapshots, kept for "
+            "good; a published file has not been seen reissued, and the "
+            "register itself changes between files (locations register, "
+            "leave and return, and CQC's README warns that deregistrations "
+            "can appear late, so a later snapshot can correct the state an "
+            "earlier one showed). revises_back_series is left unset because a new file "
+            "does not restate an older one. If CQC reissues a file for a "
+            "date already held with an unchanged location set, load --recheck "
+            "stores it as the next edition (a changed set is refused by the "
+            "engine; a recheck of July, August or September 2026 is refused "
+            "because 1-28257167158 is kept unresolved there as loaded but now "
+            "resolves via postcodes.io, so the held editions stay as loaded) "
+            "in cqc_location_snapshots_editions and every file "
+            "checked is recorded in cqc_location_snapshots_editions_file_"
+            "checks. The old loader upserted each location in place (ON "
+            "CONFLICT (location_id) DO UPDATE): each location in a new file "
+            "replaced its row, and locations that dropped out kept earlier "
+            "values. The July and August 2026 snapshots were rebuilt on "
+            "2026-10-09 from the files on disk; the residue rows (128 July, "
+            "108 August) also remain in cqc_locations_legacy. Record: "
+            "docs/decisions/2026-10-09-s11-editions-first-load.md."),
         source_name="CQC Care directory with filters",
         publisher="CQC",
         series_name="HSCA Active Locations",
@@ -612,26 +636,50 @@ SOURCES = [
             "run, never hardcoded: CQC is migrating its directory to a new "
             "digital system and the file URL moves with each edition. The "
             "link pattern is an href whose filename contains "
-            "HSCA_Active_Locations, in .ods or .xlsx — both formats have been "
-            "published historically. The ODS route cannot use odfpy: "
-            "content.xml is roughly 440 MB uncompressed and odfpy loads it "
-            "whole (MemoryError), so the script stream-parses the zip entry "
-            "with xml.etree.iterparse."),
+            "HSCA_Active_Locations, in .ods or .xlsx; the ratings and "
+            "deactivated-locations links on the same page are excluded, and "
+            "more than one candidate halts. The page label is a day or so "
+            "after the file's own date (the page said 02 October 2026; the "
+            "README says as at 2026-10-01): the file's identity comes from "
+            "its README sheet (title and as-at date), which must equal the "
+            "date in the file name, never from the page or the link. The ODS "
+            "route cannot use odfpy: content.xml is roughly 440 MB "
+            "uncompressed and odfpy loads it whole (MemoryError), so "
+            "scripts/s11_cqc_editions.py stream-parses the zip entry with "
+            "xml.etree.iterparse. An older file than held is refused "
+            "(also with --file) without --allow-older-file. is_active in "
+            "the cqc_locations view means present in the latest snapshot, "
+            "not deregistered. Text rule: repeated spaces in text cells collapse "
+            "to one (ODS text:s is dropped, as in the old loader; kept so held "
+            "rows and joins stay stable), so 41 July and 43 October names "
+            "differ from the raw file only by that. The old scripts (s11_cqc_fetch, process, "
+            "map, load, verify) are archived in scripts/historical/ and "
+            "must not be run."),
         cadence="monthly", cadence_months=1,
-        target_table="cqc_locations", geography_level="entity",
-        join_path=("Location postcodes resolved to lad24cd in "
-                   "scripts/s11_cqc_map.py, then aggregated to LA for "
-                   "staging_la_signals."),
-        build_script_path="scripts/s11_cqc_fetch.py",
+        target_table="cqc_location_snapshots", geography_level="entity",
+        join_path=("Location points resolved to lad24cd by point-in-polygon "
+                   "against la_boundaries (postcodes.io fallback through "
+                   "scripts/geography.py) in scripts/s11_cqc_editions.py, "
+                   "then aggregated to LA for staging_la_signals through the "
+                   "cqc_locations view."),
+        build_script_path="scripts/s11_cqc_editions.py",
         node_docs_path="docs/nodes/s11_node1..s11_node7",
-        verification_checks={"script": "scripts/s11_cqc_verify.py"},
+        verification_checks={"method": "editions",
+                             "script": "scripts/s11_cqc_editions_verify.py",
+                             "checks": 22,
+                             "first_load": "2026-10-09",
+                             "gate": "all gates must pass; the loader halts "
+                                     "before any write on an identity, "
+                                     "header, marker or geography failure, "
+                                     "an older file or a snapshot outside "
+                                     "the stop conditions"},
         n8n_workflow_name="Workflow 1",
         completeness_note=(
             "S11 is the pipeline's only supply-side source: every other "
             "source measures need, S11 records existing CQC-registered "
             "provision. It is stored agnostically; the pipeline does not "
             "score or rank markets."),
-        latest_period_loaded="2026-07-01",
+        latest_period_loaded="2026-10-01",
         refresh_tier="B", status="active",
         publish_github=True, publish_map=True,
     ),
