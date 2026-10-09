@@ -56,7 +56,8 @@ class Profile:
     period) raises unless a fetched period is whole (run before anything is
     compared or stored); savepoint: the per-period savepoint name;
     example_label: the label of the values in compare examples (default the
-    value columns, '(v1, v2)')."""
+    value columns, '(v1, v2)'). file_checks: also keep the append-only
+    per-period file-check ledger (file_checks_table); off by default."""
     spec: core.EditionSpec
     value_cols: tuple[str, ...]
     run_agent: str
@@ -69,6 +70,7 @@ class Profile:
     check_records: "Callable[[list, str], None] | None" = None
     savepoint: str = "period_editions_period"
     example_label: "str | None" = None
+    file_checks: bool = False
 
     def __post_init__(self):
         data = ({c for c, _ in self.spec.value_cols}
@@ -490,6 +492,80 @@ def mode_parser(p) -> None:
                    help="run the --commit path and always roll back")
 
 
+# ---------------------------------------------------------------------------
+# File-check ledger (opt-in: Profile.file_checks)
+# ---------------------------------------------------------------------------
+
+FILE_CHECK_OUTCOMES = ("new", "unchanged", "revised", LIVE_MISSING)
+
+
+def file_checks_table(profile: Profile) -> str:
+    return f"{profile.spec.editions_table}_file_checks"
+
+
+def _need_file_checks(profile: Profile) -> None:
+    if not profile.file_checks:
+        raise ValueError(f"{profile.spec.name}: the profile does not enable "
+                         "file_checks")
+
+
+def create_file_checks(cur, profile: Profile) -> None:
+    """The append-only ledger of every file checked for a period and what
+    came of it. Idempotent. The period column has the spec's type."""
+    spec = profile.spec
+    t = file_checks_table(profile)
+    ptype = dict(spec.key_types).get(spec.period_col, "text NOT NULL")
+    fn = f"{spec.name}_file_checks_immutable"
+    trunc = f"{spec.name}_file_checks_no_truncate"
+    outcomes = ", ".join(f"'{o}'" for o in FILE_CHECK_OUTCOMES)
+    cur.execute(f"""CREATE TABLE IF NOT EXISTS public.{t} (
+        id bigserial PRIMARY KEY,
+        {spec.period_col} {ptype},
+        source_file text NOT NULL,
+        file_sha256 text NOT NULL,
+        outcome text NOT NULL CHECK (outcome IN ({outcomes})),
+        edition integer,
+        checked_at timestamptz NOT NULL DEFAULT now()
+    )""")
+    cur.execute(f"""
+    CREATE OR REPLACE FUNCTION public.{fn}() RETURNS trigger AS $f$
+    BEGIN
+        RAISE EXCEPTION '{t} is append-only: % is not permitted', TG_OP;
+    END
+    $f$ LANGUAGE plpgsql""")
+    cur.execute(f"""CREATE OR REPLACE TRIGGER {fn}
+        BEFORE UPDATE OR DELETE ON public.{t}
+        FOR EACH ROW EXECUTE FUNCTION public.{fn}()""")
+    cur.execute(f"""CREATE OR REPLACE TRIGGER {trunc}
+        BEFORE TRUNCATE ON public.{t}
+        FOR EACH STATEMENT EXECUTE FUNCTION public.{fn}()""")
+
+
+def record_file_check(cur, profile: Profile, period: str, source_file: str,
+                      file_sha256: str, outcome: str,
+                      edition: "int | None" = None) -> None:
+    """Append one check. Call it inside the period's savepoint so it commits
+    or rolls back with the month."""
+    _need_file_checks(profile)
+    pc = profile.spec.period_col
+    cur.execute(f"INSERT INTO public.{file_checks_table(profile)} "
+                f"({pc}, source_file, file_sha256, outcome, edition) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (period, source_file, file_sha256, outcome, edition))
+
+
+def checked_files(cur, profile: Profile) -> "dict[str, set[str]]":
+    """{period (string): {source_file, ...}} of every file checked."""
+    _need_file_checks(profile)
+    pc = profile.spec.period_col
+    cur.execute(f"SELECT DISTINCT {pc}, source_file FROM "
+                f"public.{file_checks_table(profile)}")
+    out: dict = {}
+    for period, f in cur.fetchall():
+        out.setdefault(_p(period), set()).add(f)
+    return out
+
+
 def run_ddl(profile: Profile, args, *, connect=connect,
             table_exists=table_exists, create_schema=None) -> int:
     """ddl [--commit | --simulate]: the editions table and its triggers."""
@@ -507,8 +583,12 @@ def run_ddl(profile: Profile, args, *, connect=connect,
                 core.create_schema(cur, spec)
             else:
                 create_schema(cur)
+            extra = ""
+            if profile.file_checks:
+                create_file_checks(cur, profile)
+                extra = f"; {file_checks_table(profile)} present"
         finish(conn, args, f"ddl: {table} and triggers {spec.trigger}, "
-                           f"{spec.truncate_trigger} present")
+                           f"{spec.truncate_trigger} present{extra}")
         return 0
     except BaseException:
         conn.rollback()

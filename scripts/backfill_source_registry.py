@@ -442,12 +442,16 @@ SOURCES = [
     ),
     dict(
         source_code="9a",
-        latest_period_loaded="2026-06-01",
-        build_script_path="scripts/s9a_drd_build.py",
-        verification_checks={"method": "exact reproduction",
-                             "rows": 3978,
-                             "reproduced": "2026-08-14",
-                             "cell_differences": 0},
+        latest_period_loaded="2026-08-01",
+        build_script_path="scripts/s9a_drd_editions.py",
+        verification_checks={"method": "editions",
+                             "script": "scripts/s9a_drd_editions_verify.py",
+                             "checks": 24,
+                             "first_load": "2026-10-09",
+                             "gate": "all gates must pass; the loader halts "
+                                     "before any write on a short month, a "
+                                     "header shift, an unexpected code or a "
+                                     "file identity mismatch"},
         detected_period_type="reference_period",
         revises_back_series=True,
         revision_note=("NHS England revises DRD in annual waves and announces them on "
@@ -455,7 +459,20 @@ SOURCES = [
             "were revised and republished on 9 July 2026; April 2024 to "
             "April 2025 on 10 July 2025. Revised files carry a -Revised "
             "filename suffix, so a revision is detectable from the link "
-            "list without downloading anything."),
+            "list without downloading anything. Each workbook's cover "
+            "sheet carries Period, Published and Revised dates; the "
+            "Revised dates seen are 2025-07-10 and 2026-07-09. Both waves "
+            "predate the first load, so their size is not measurable from "
+            "held data. Since 2026-10-09 every revision is stored as the "
+            "next edition in nhs_drd_discharge_delays_editions rather than "
+            "overwriting (scripts/s9a_drd_editions.py); the live table "
+            "holds the latest edition of each month. The old build upserted "
+            "rows in place (ON CONFLICT DO UPDATE); as far as loaded_at and "
+            "the files show, no held month was reloaded from a different file "
+            "after its first load. June "
+            "2026 edition 2 is a file-form correction (CSV to webfile, "
+            "precision only, below 4e-9), not a publisher revision. Record: "
+            "docs/decisions/2026-10-09-s9a-editions-first-load.md."),
         source_name="NHS DRD monthly",
         publisher="NHSE",
         series_name="Discharge Ready Date (DRD) monthly data, acute",
@@ -478,7 +495,13 @@ SOURCES = [
             "search API — each month is published as an official statistic "
             "titled 'Timeliness of Acute Hospital Discharges (Discharge "
             "Ready Date) for {Month} {Year}' — while the NHS England page "
-            "remains the file source."),
+            "remains the file source. "
+            "scripts/s9a_drd_editions.py reads each month's current webfile "
+            "from the page (a -Revised file beats the original; CSV files "
+            "are not read) and records every file checked in a ledger. The "
+            "first sync-new needs --expected-areas 153. The old scripts "
+            "(s9a_drd_build, verify_load_drd) are archived in "
+            "scripts/historical/ and must not be run."),
         cadence="monthly", cadence_months=1,
         target_table="nhs_drd_discharge_delays", geography_level="UTLA",
         join_path=("utla_lad_mapping, a population-weighted UTLA to LAD "
@@ -494,13 +517,37 @@ SOURCES = [
     ),
     dict(
         source_code="9b",
-        latest_period_loaded="2026-06-01",
-        build_script_path="scripts/s9b_crfd_build.py",
-        verification_checks={"method": "exact reproduction",
-                             "rows": 11248, "periods": 38,
-                             "reproduced": "2026-08-14",
-                             "cell_differences": 0},
+        latest_period_loaded="2026-08-01",
+        build_script_path="scripts/s9b_crfd_editions.py",
+        verification_checks={"method": "editions",
+                             "script": "scripts/s9b_crfd_editions_verify.py",
+                             "checks": 24,
+                             "first_load": "2026-10-09",
+                             "gate": "all gates must pass; the loader halts "
+                                     "before any write on a short month, an "
+                                     "unexpected code or a file identity "
+                                     "mismatch"},
         detected_period_type="reference_period",
+        revises_back_series=True,
+        revision_note=("NHS England publishes each month first as a "
+            "Performance file and later reissues it: a year-end Final file "
+            "(revised Multiple Submission Window Model submissions) and vN "
+            "reissues. The first comparison, on 2026-10-09, found 36 months "
+            "(April 2023 to March 2026) revised from Performance to Final: "
+            "5,038 area values changed, national totals rising in 35 of 36 "
+            "months. April and May 2026 are Performance v2 reissues equal "
+            "to what was held. Every revision is stored as the next edition "
+            "in nhs_mh_crfd_editions rather than overwriting "
+            "(scripts/s9b_crfd_editions.py); nhs_mh_crfd holds the latest "
+            "edition of each month. The old build upserted rows in place "
+            "(ON CONFLICT DO UPDATE) from a file URL and period given on "
+            "the command line, with no Final filter of its own (the Finals were "
+            "kept out by the discovery in verify_load_crfd.py and the n8n-era "
+            "load); as far as loaded_at and the files show, no held month was "
+            "reloaded from a different file after its first load, except that "
+            "the held Barnsley/Sheffield rows were re-keyed in place on "
+            "2026-08-14 and 2026-10-01 without changing loaded_at. The 2026-27 year-end Finals are expected in spring 2027. "
+            "Record: docs/decisions/2026-10-09-s9b-editions-first-load.md."),
         source_name="MHSDS MHS26",
         publisher="NHS Digital",
         series_name="Mental Health Services Monthly Statistics, measure MHS26",
@@ -516,7 +563,14 @@ SOURCES = [
             "hash paths and must be discovered from the publication page "
             "HTML, never constructed. File naming varies by period: CSV with "
             "a version suffix (Apr-Aug 2023), plain CSV (Sep-Dec 2023), ZIP "
-            "containing a CSV (Jan 2024 onward)."),
+            "containing a CSV (Jan 2024 onward). "
+            "scripts/s9b_crfd_editions.py picks each month's highest-ranking "
+            "file (Final above Performance, then the version), streams it "
+            "and reads the largest CSV member line by line; the first "
+            "sync-new needs --expected-areas 296. Barnsley and Sheffield "
+            "resolve through scripts/geography.py (mixed forms). The old "
+            "scripts (s9b_crfd_build, verify_load_crfd) are archived in "
+            "scripts/historical/ and must not be run."),
         cadence="monthly", cadence_months=1,
         target_table="nhs_mh_crfd", geography_level="LAD24",
         join_path="Direct LA level; exposed as vw_mh_crfd_lad.",

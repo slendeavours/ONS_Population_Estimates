@@ -1,4 +1,12 @@
 """Verify the loaded DRD month against publication, then load any newer month."""
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s9a_drd_editions.py. "
+    "This one-off script loaded June 2026 on 2026-08-20 (from the CSV form of the file) with the same upsert (ON CONFLICT DO UPDATE), which would overwrite a held row.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import os
 import sys
 import datetime

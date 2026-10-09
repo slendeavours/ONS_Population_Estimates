@@ -1,4 +1,12 @@
 """Verify the loaded MHS26 month against publication, then load June 2026."""
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s9b_crfd_editions.py. "
+    "This one-off script loaded June 2026 on 2026-08-20 with the same upsert (ON CONFLICT DO UPDATE), which would overwrite a held row. It skipped Final files.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import os
 import io
 import re

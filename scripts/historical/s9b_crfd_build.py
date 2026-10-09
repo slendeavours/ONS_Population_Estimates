@@ -18,6 +18,14 @@ Usage:
     python scripts/s9b_crfd_build.py --reproduce
     python scripts/s9b_crfd_build.py --load --url <file-url> --period YYYY-MM-01
 """
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s9b_crfd_editions.py. "
+    "The old S9b build upserted rows in place (INSERT ... ON CONFLICT DO UPDATE, setting loaded_at), so loading a republished file overwrote held rows; as far as loaded_at and the files show, no held month was reloaded from a different file after its first load (the one exception: the held Barnsley/Sheffield rows were re-keyed in place on 2026-08-14 and 2026-10-01, which left loaded_at unchanged). It took the file URL and period on the command line and had no Final filter of its own: the year-end Final files were kept out by the discovery in verify_load_crfd.py and the n8n-era load, not by this script.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import argparse
 import csv
 import io

@@ -19,10 +19,10 @@ The top of this list is the documentation debt.
 | `verification_checks` | 18 | the source's verification suite and its documented check count |
 | `source_doc_path` | 16 | a source documentation file — the single largest gap for undocumented sources |
 | `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
-| `revises_back_series` | 14 | — |
 | `join_path` | 13 | the build script's geography resolution step |
-| `revision_note` | 13 | — |
+| `revises_back_series` | 13 | — |
 | `build_script_path` | 12 | the build script, if it is in the published tree |
+| `revision_note` | 12 | — |
 | `detected_period_type` | 11 | — |
 | `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
 | `n8n_workflow_name` | 10 | the n8n workflow that runs the source, where one does |
@@ -35,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 309 null fields across 26 published sources.
+Total: 307 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -284,8 +284,6 @@ Total: 309 null fields across 26 published sources.
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
 
 ### S10
 

@@ -531,5 +531,169 @@ class EngineControl(unittest.TestCase):
             ap.parse_args(["--commit", "--simulate"])
 
 
+FC = dataclasses.replace(P, file_checks=True)
+FC_DATE = dataclasses.replace(make_profile(period_type="date NOT NULL"),
+                              file_checks=True)
+
+
+def _args():
+    return mock.Mock(commit=False, simulate=True)
+
+
+def _ledger_exists(cur, profile):
+    return pe.table_exists(cur, pe.file_checks_table(profile))
+
+
+class FileCheckLedger(unittest.TestCase):
+    """The opt-in per-period file-check ledger (Profile.file_checks)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = get_conn()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.conn.rollback()
+        cls.conn.close()
+
+    def _ddl(self, cur, profile):
+        with quiet():
+            return pe.run_ddl(profile, _args(),
+                              connect=lambda w: _Borrowed(cur))
+
+    def test_name_follows_the_editions_table(self):
+        self.assertEqual(pe.file_checks_table(P), "zz_pe_editions_file_checks")
+        self.assertFalse(P.file_checks)
+
+    def test_ledger_created_only_when_enabled(self):
+        with rolled_back(self.conn) as cur:
+            self.assertEqual(self._ddl(cur, P), 0)
+            self.assertFalse(_ledger_exists(cur, P))
+            self.assertEqual(self._ddl(cur, FC), 0)
+            self.assertTrue(_ledger_exists(cur, FC))
+            self.assertEqual(self._ddl(cur, FC), 0)  # idempotent
+
+    def test_profile_without_file_checks_creates_nothing_extra(self):
+        with rolled_back(self.conn) as cur:
+            self._ddl(cur, P)
+            cur.execute("SELECT count(*) FROM pg_class WHERE relname LIKE "
+                        "'zz_pe%file_checks%'")
+            self.assertEqual(cur.fetchone()[0], 0)
+            cur.execute("SELECT count(*) FROM pg_trigger WHERE tgname LIKE "
+                        "'zz_pe%file_checks%'")
+            self.assertEqual(cur.fetchone()[0], 0)
+
+    def test_columns_and_outcome_check(self):
+        with rolled_back(self.conn) as cur:
+            self._ddl(cur, FC)
+            cur.execute("SELECT column_name, data_type, is_nullable FROM "
+                        "information_schema.columns WHERE table_name = "
+                        "'zz_pe_editions_file_checks' ORDER BY ordinal_position")
+            self.assertEqual(cur.fetchall(), [
+                ("id", "bigint", "NO"), ("period", "text", "NO"),
+                ("source_file", "text", "NO"), ("file_sha256", "text", "NO"),
+                ("outcome", "text", "NO"), ("edition", "integer", "YES"),
+                ("checked_at", "timestamp with time zone", "NO")])
+            for outcome in ("new", "unchanged", "revised", pe.LIVE_MISSING):
+                pe.record_file_check(cur, FC, "202604", "f", "h", outcome)
+            cur.execute("SAVEPOINT bad")
+            with self.assertRaises(Exception):
+                pe.record_file_check(cur, FC, "202604", "f", "h", "bogus")
+            cur.execute("ROLLBACK TO SAVEPOINT bad")
+
+    def test_append_only(self):
+        with rolled_back(self.conn) as cur:
+            self._ddl(cur, FC)
+            pe.record_file_check(cur, FC, "202604", "f", "h", "new", 1)
+            for sql in ("UPDATE public.zz_pe_editions_file_checks SET "
+                        "outcome = 'revised'",
+                        "DELETE FROM public.zz_pe_editions_file_checks",
+                        "TRUNCATE public.zz_pe_editions_file_checks"):
+                cur.execute("SAVEPOINT ap")
+                with self.assertRaises(Exception) as cm:
+                    cur.execute(sql)
+                self.assertIn("append-only", str(cm.exception))
+                cur.execute("ROLLBACK TO SAVEPOINT ap")
+            self.assertEqual(pe.checked_files(cur, FC), {"202604": {"f"}})
+
+    def test_check_rolls_back_with_a_failing_period(self):
+        with rolled_back(self.conn) as cur:
+            self._ddl(cur, FC)
+            r = recs("202604")
+
+            def apply(cur, profile, period, records, *, fetched_on,
+                      source_file):
+                pe.record_file_check(cur, profile, period, source_file, "h",
+                                     "new", 1)
+                raise RuntimeError("boom")
+
+            with quiet():
+                rc = pe.load_periods(cur, FC, ["202604"],
+                                     fetcher({"202604": r}), FETCHED, False,
+                                     simulate=True, apply=apply)
+            self.assertEqual(rc, 1)
+            self.assertEqual(pe.checked_files(cur, FC), {})
+
+    def test_check_inside_a_good_period_savepoint_is_kept_until_outer_rollback(self):
+        """A check made in the period's savepoint stays with the transaction
+        (commit keeps it) when the month goes through."""
+        with rolled_back(self.conn) as cur:
+            self._ddl(cur, FC)
+            r = recs("202604")
+
+            def apply(cur, profile, period, records, *, fetched_on,
+                      source_file):
+                pe.record_file_check(cur, profile, period, source_file, "h",
+                                     "new", 1)
+                return "new"
+
+            seen = {}
+
+            def compare(cur, profile, period, records, against):
+                seen["before"] = pe.checked_files(cur, profile)
+                return {"kind": "new", "changed": 0, "examples": [],
+                        "against": "x"}
+
+            with quiet():
+                rc = pe.load_periods(cur, FC, ["202604"],
+                                     fetcher({"202604": r}), FETCHED, False,
+                                     simulate=True, apply=apply,
+                                     compare=compare)
+            self.assertEqual(rc, 0)
+            self.assertEqual(seen["before"], {})
+            # simulate rolls the period's savepoint back, ledger row included
+            self.assertEqual(pe.checked_files(cur, FC), {})
+
+    def test_checked_files_groups_by_period_as_strings(self):
+        with rolled_back(self.conn) as cur:
+            self._ddl(cur, FC)
+            self.assertEqual(pe.checked_files(cur, FC), {})
+            pe.record_file_check(cur, FC, "202604", "a.csv", "h1", "new", 1)
+            pe.record_file_check(cur, FC, "202604", "b.csv", "h2", "revised", 2)
+            pe.record_file_check(cur, FC, "202604", "b.csv", "h2", "unchanged")
+            pe.record_file_check(cur, FC, "202605", "c.csv", "h3", "new", 1)
+            self.assertEqual(pe.checked_files(cur, FC), {
+                "202604": {"a.csv", "b.csv"}, "202605": {"c.csv"}})
+
+    def test_date_period_column_comes_back_as_iso_string(self):
+        with rolled_back(self.conn, period_type="date") as cur:
+            self._ddl(cur, FC_DATE)
+            pe.record_file_check(cur, FC_DATE, "2026-04-01", "f", "h", "new", 1)
+            got = pe.checked_files(cur, FC_DATE)
+            self.assertEqual(got, {"2026-04-01": {"f"}})
+            self.assertIsInstance(next(iter(got)), str)
+            cur.execute("SELECT data_type FROM information_schema.columns "
+                        "WHERE table_name = 'zz_pe_editions_file_checks' "
+                        "AND column_name = 'period'")
+            self.assertEqual(cur.fetchone()[0], "date")
+
+    def test_functions_refused_without_the_option(self):
+        with rolled_back(self.conn) as cur:
+            with self.assertRaises(ValueError):
+                pe.record_file_check(cur, P, "202604", "f", "h", "new")
+            with self.assertRaises(ValueError):
+                pe.checked_files(cur, P)
+
+
 if __name__ == "__main__":
     unittest.main()

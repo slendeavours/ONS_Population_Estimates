@@ -23,7 +23,7 @@ Checks (see docs/RULES.md, sections 1 and 5):
   d. A verify script exists: `<stem>_verify.py`, `verify_<stem>.py`, or the
      same with a trailing `_build`/`_load`/`_editions`/`_refresh` removed
      from the stem, or `verify_[load_]<name>.py` with the `sN_` prefix
-     removed (verify_load_drd.py for s9a_drd_build.py), beside the loader or
+     removed (verify_load_drd.py for s9a_drd_build.py, now retired), beside the loader or
      in scripts/verify.
   e. A source the registry marks `revises_back_series` must import
      `editions_core` (a NO_EDITIONS declaration does not excuse it).
@@ -52,8 +52,8 @@ LOADERS = {
     "S4": ["verify/rebuild_care_leavers.py"],
     "S6": ["s6_asylum_build.py"],
     "S8b": ["s8b_hb_editions.py"],
-    "S9a": ["s9a_drd_build.py"],
-    "S9b": ["s9b_crfd_build.py"],
+    "S9a": ["s9a_drd_editions.py"],
+    "S9b": ["s9b_crfd_editions.py"],
     "S11": ["s11_cqc_load.py"],
     "S14": ["s14_lha_rates_build_v2.py"],
     "S15": ["s15_hpi_editions.py"],

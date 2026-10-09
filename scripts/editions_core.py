@@ -125,6 +125,7 @@ class EditionSpec:
     refresh_from: tuple = ()
     as_loaded_source_col: "str | None" = None
     as_loaded_date: str = "single"
+    refresh_source_whole_period: bool = False
 
     def __post_init__(self):
         for n in (self.name, self.live_table, self.editions_table,
@@ -168,6 +169,11 @@ class EditionSpec:
                                  "or map it in refresh_from)")
         if len(set(self.refresh_cols)) != len(self.refresh_cols):
             raise ValueError(f"{self.name}: a refresh column is listed twice")
+        if self.refresh_source_whole_period and (
+                self.as_loaded_source_col is None
+                or self.as_loaded_source_col not in mapped):
+            raise ValueError(f"{self.name}: refresh_source_whole_period needs "
+                             "as_loaded_source_col mapped in refresh_from")
 
     @property
     def compare_cols(self) -> tuple:
@@ -782,6 +788,41 @@ def refresh_counts(cur, spec: EditionSpec, accept_drift=()) -> dict:
     return {p: v["rows"] for p, v in sorted(plan.items())}
 
 
+def _source_cols(spec: EditionSpec) -> tuple:
+    live_col = spec.as_loaded_source_col
+    return live_col, dict(spec.refresh_from)[live_col]
+
+
+def _set_source_whole_period(cur, spec: EditionSpec, pairs) -> None:
+    """Set the live source column of every row of each refreshed period to
+    the latest edition's (opt-in refresh_source_whole_period). Only that
+    column; rows already right are not touched."""
+    lc, ec = _source_cols(spec)
+    cur.execute(f"""UPDATE public.{spec.live_table} l SET {lc} = e.{ec}
+                    FROM public.{spec.editions_table} e
+                    WHERE {_key_join(spec)}
+                      AND (e.{spec.period_col}, e.edition) IN %s
+                      AND l.{lc} IS DISTINCT FROM e.{ec}""", (pairs,))
+
+
+def _source_problems(cur, spec: EditionSpec, pairs) -> list:
+    """After-check: every live row of each refreshed period carries the
+    latest edition's source, and the period has the same row count."""
+    lc, ec = _source_cols(spec)
+    bad = []
+    for p, ed in pairs:
+        cur.execute(f"""SELECT COUNT(*) FROM public.{spec.live_table} l
+                        LEFT JOIN public.{spec.editions_table} e
+                          ON {_key_join(spec)} AND e.edition = %s
+                        WHERE l.{spec.period_col} = %s
+                          AND l.{lc} IS DISTINCT FROM e.{ec}""", (ed, p))
+        k = cur.fetchone()[0]
+        if k:
+            bad.append(f"{p}: {k} rows do not carry edition {ed}'s {lc} "
+                       "after the refresh")
+    return bad
+
+
 def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
                    _after_update_hook=None) -> dict:
     """Copy the latest edition into the live table for every period whose
@@ -841,6 +882,8 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
                           AND (e.{pc}, e.edition) IN %s
                           AND {_refresh_where(spec)}""", (pairs,))
         n = cur.rowcount
+        if spec.refresh_source_whole_period:
+            _set_source_whole_period(cur, spec, pairs)
         if _after_update_hook is not None:
             _after_update_hook(cur, plan)
         full_a = period_hashes(cur, spec, "live")
@@ -855,6 +898,8 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
             if k:
                 bad.append(f"{p}: {k} rows still differ from edition "
                            f"{v['edition']} after the refresh")
+        if spec.refresh_source_whole_period:
+            bad.extend(_source_problems(cur, spec, pairs))
         if bad:
             halt("refresh-latest failed its before/after checks, rolled back: "
                  + "; ".join(bad[:6]))

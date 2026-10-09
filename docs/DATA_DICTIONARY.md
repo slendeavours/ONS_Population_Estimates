@@ -302,6 +302,8 @@ Source: NHS England DRD monthly data (Official Statistics, SUS extract). Native 
 | `drd_bed_days_lost` | integer | 0 – 15,000+ | Total bed days lost to delayed discharge in the latest reporting month. Population-weighted for county→district apportionment. |
 | `drd_pct_delayed_1plus_days` | numeric | 0 – 100 | Percentage of discharges delayed 1+ days. **UTLA-level pass-through:** districts under a county share the same value (no district-level breakdown published). |
 
+Tables: `nhs_drd_discharge_delays` holds the latest edition of each month and UTLA (key `reporting_period, utla_code`; 4,437 rows, 29 months to August 2026). `nhs_drd_discharge_delays_editions` is append-only (update, delete and truncate blocked by trigger) and holds every edition: key `(utla_code, reporting_period, edition)`, the 17 value columns of the live table, `utla_name`, `release_label` and `published_date` (informational), `source_file`, `source_sha256`, `supersedes` and `loaded_at` (provenance). 4,590 rows on 2026-10-09 (edition 1 for 29 months; June 2026 edition 2 is a precision-only file-form correction). `nhs_drd_discharge_delays_editions_file_checks` is the ledger of every file read, also append-only: `reporting_period`, `source_file`, `file_sha256`, `outcome` (new, unchanged, revised or live-missing), `edition`, `checked_at`. `total_discharges` is NULL throughout, as published. The live `source` column holds the URL of the file that supplied the row, and equals the latest edition's `source_file`. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
+
 ### S9b — MHSDS CRFD (MHS26)
 
 Source: NHS Digital Mental Health Services Monthly Statistics. MHS26 — Clinically Ready for Discharge delayed bed days (combined MH + LD/autism). Published at LAD level directly; no apportionment required.
@@ -309,6 +311,8 @@ Source: NHS Digital Mental Health Services Monthly Statistics. MHS26 — Clinica
 | Column | Type | Range | Description |
 |---|---|---|---|
 | `crfd_days` | integer | 0 – 2,500+ | MHS26 CRFD delayed discharge days in the latest reporting month. NULL where suppressed at source (28–46% of LAs per month). |
+
+Tables: `nhs_mh_crfd` holds the latest edition of each month and area (key `reporting_period, lad24cd, measure_id`; 12,136 rows, 41 months to August 2026, 296 areas). `nhs_mh_crfd_editions` is append-only and holds every edition: key `(lad24cd, measure_id, reporting_period, edition)`, `measure_value`, `la_name`, `measure_name`, `release_label` and `published_date` (informational), `source_file`, `source_sha256`, `supersedes` and `loaded_at`. 22,792 rows on 2026-10-09: edition 1 for 41 months, and edition 2 (the year-end Final file) for the 36 months April 2023 to March 2026. `nhs_mh_crfd_editions_file_checks` is the append-only ledger of every file read (same columns as the S9a ledger). Edition 1 of a month is normally the Performance figure; Final figures are large revisions by nature (late submissions). The live `source` column holds the URL of the file that supplied the row, and equals the latest edition's `source_file`. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
 
 ---
 
