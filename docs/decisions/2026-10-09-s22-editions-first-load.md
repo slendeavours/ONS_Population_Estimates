@@ -108,8 +108,9 @@ exemption classes B, D to L and Q on the CTB form, "or tables 1.18 and 2.01", an
 all-vacants equals CTB `empty_total + unoccupied_exemptions_total` in **297 of 297** rows (296 authorities and
 England; the loader's authority-level proof reports 296 of 296).
 
-The wrong sentences are not corrected in this note's commit. They are listed here for the documentation task
-(Task 5):
+The wrong sentences were not corrected in the commit that loaded this. They were corrected afterwards, in the commit
+`refactor: retire the old S22 build; docs, registry, RULES`, in the places below (and `docs/S22_BUILD_SUMMARY.md`'s
+refresh procedure and geography sentence were corrected with them):
 
 - `docs/METHODOLOGY.md` line 83
 - `docs/S22_BUILD_SUMMARY.md` line 139 and its copy `outputs/S22_BUILD_SUMMARY.md` line 139
@@ -184,8 +185,9 @@ state, restore edition 1 and refresh. Nothing is ever deleted from the editions 
 
 ## Notes
 
-- The old scripts (`s22_ctb_discover.py`, `s22_ctb_empties_build.py`, `s22_run.py`, `s22_verify.py`) are retired
-  separately (Task 5); this commit does not touch them.
+- The old scripts (`s22_ctb_discover.py`, `s22_ctb_empties_build.py`, `s22_run.py`, `s22_verify.py`) were not retired
+  in the commit that loaded this; they were retired afterwards, in the commit `refactor: retire the old S22 build;
+  docs, registry, RULES` (now in `scripts/historical/`, each with a RETIRED guard and a subprocess test).
 - The 615 row-count lines `ROW COUNT 2004: 353 rows, expected 326` printed by `status` before the migration were
   the engine's generic expectation of the 2009-2018 count; they are real year-to-year differences in the number of
   published districts, and `status` reports OK after the migration.

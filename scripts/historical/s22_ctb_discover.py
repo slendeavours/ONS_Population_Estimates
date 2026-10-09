@@ -12,10 +12,21 @@ pages a human would read:
 
 Writes build_reports/s22_source_structure.md and returns the resolved paths.
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s22_ctb_editions.py. The old S22 build (s22_ctb_discover.py, '
+    's22_ctb_empties_build.py, s22_run.py, s22_verify.py) was run once, on 2026-08-13 (run-log id '
+    '83); no earlier S22 load existed, so nothing was overwritten in practice. This is the '
+    'discovery step: it kept a same-named raw download whatever its content (an existing file was '
+    "never fetched again) and took the release from the landing page, not from the file's own "
+    'cover. Use scripts/s22_ctb_editions.py (load, load-615, refresh-latest) instead.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import datetime
 import json
 import re
-import sys
 import urllib.request
 from pathlib import Path
 

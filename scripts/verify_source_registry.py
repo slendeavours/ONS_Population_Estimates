@@ -438,9 +438,11 @@ def main():
     # Idempotency is now tested inside a transaction that is always rolled
     # back, with a content checksum compared either side.
     # The precise rule: a suite may record that it ran, and may not write the
-    # data under test. pipeline_run_log is the one permitted target — s22's
-    # node is verify-and-log by design, and forbidding that would be a rule
-    # about tidiness rather than correctness.
+    # data under test. pipeline_run_log is the one permitted target. The
+    # verify-and-log suite that this allowance was written for (s22_verify.py)
+    # is retired and sits in scripts/historical; the rule stays, because
+    # forbidding a suite from recording that it ran would be a rule about
+    # tidiness rather than correctness.
     committers, suites = [], []
     for path in sorted(script_dir.glob("*verify*.py")):
         suites.append(path.name)

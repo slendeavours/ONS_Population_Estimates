@@ -287,6 +287,33 @@ Source: ONS Price Index of Private Rents (PIPR), by English local authority, mon
 
 ---
 
+## Empty Homes and Vacant Dwellings (S22)
+
+Source: MHCLG Council Taxbase (CTB) local authority level workbook and Live Table 615. Source note: `docs/s22_source_structure.md`. Each live table is the latest-edition layer of an append-only `*_editions` table, loaded by `scripts/s22_ctb_editions.py`.
+
+| Table | What it holds |
+|---|---|
+| `la_council_taxbase_empties` | One row per billing authority and taxbase year (`lad24cd`, `taxbase_year`); 296 rows for 2025. W1 reads the latest year; `v_la_empty_homes_rates` derives the rates. `loaded_at` is the edition's, so a revision is visible to `refresh_map.py` |
+| `la_ctb_exemption_classes` | The 11 unoccupied exemption classes (B, D to L, Q) per authority and taxbase year (`lad24cd`, `taxbase_year`, `exemption_class`); 3,256 rows |
+| `la_vacant_dwellings_615` | Live Table 615, one row per published code and year where either sheet has a number (`published_la_code`, `year`); 7,170 rows for 2004 to 2025. `lad24cd` is NULL and `mapping_status` is `unmapped` for abolished districts (891 rows, 80 codes) |
+| `la_council_taxbase_empties_editions`, `la_ctb_exemption_classes_editions`, `la_vacant_dwellings_615_editions` | Append-only: what one file says about one period, keyed by the live key plus `edition`. The CTB main and class editions of a year always carry the same edition number. Edition 1 is the table exactly as held before 2026-10-09 |
+| `la_council_taxbase_empties_editions_file_checks`, `la_vacant_dwellings_615_editions_file_checks` | Append-only ledgers of every file read: final URL, sha256, outcome (a file whose pair is held for every period it covers is not parsed again) |
+
+| Column | Definition |
+|---|---|
+| `total_dwellings` | CTB table 1.01 (Line 1) |
+| `empty_total` | Table 1.18 (Line 15): dwellings classed as empty for council tax |
+| `empty_6_months_plus` | Table 1.19 (Line 16): dwellings classed as empty for more than six months. **Not** MHCLG's long-term vacant figure, which is Line 18 (table 1.22) and excludes empties on discount class D and flood empties (England 309,889 here against 303,185; 179 of 296 authorities differ). The measure is unchanged |
+| `empty_under_6_months` | Derived: `empty_total - empty_6_months_plus`; NULL unless both are published |
+| `empty_homes_premium_count` | Table 1.17 (Line 14); not comparable across 1 April 2024 |
+| `second_homes` | Table 1.11 (Line 11); affected by reclassification from 1 April 2025 |
+| `unoccupied_exemptions_total` | Derived: the sum of the 11 classes; NULL unless all 11 are published |
+| `vacant_dwellings` (615) | All vacants; for 2025 equals `empty_total + unoccupied_exemptions_total` |
+| `long_term_vacant_dwellings` (615) | MHCLG's long-term vacants (Line 18 / table 1.22 for 2025) |
+| `null_reasons` | `column=reason` pairs sorted and joined with `;`: `suppressed_or_not_available` (`[x]`), `not_applicable` (`[z]`) or `built_from_null` (a derived column with a NULL part). NULL when the row has no NULL value; NULL in every held row |
+
+Suppressed and not-applicable cells are NULL, never 0 (rule 1). Dacorum 2012 in Table 615 is published as a non-integer and held rounded (1416 and 495). Rates (`lte_rate_pct`, `premium_coverage_pct`) are derived in `v_la_empty_homes_rates` and never stored.
+
 ## Care Providers (Supply Side)
 
 Source: CQC Care directory with filters (monthly). Only supply-side column in the pipeline — every other signal measures demand.

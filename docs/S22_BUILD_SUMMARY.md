@@ -1,5 +1,7 @@
 # S22 Build Summary — MHCLG Council Taxbase Empty Homes
 
+> **Superseded 2026-10-09 in part.** The load, verification and refresh described below were done by the old S22 scripts, now retired to `scripts/historical/` (run once, on 2026-08-13, run-log id 83). S22 is loaded by `scripts/s22_ctb_editions.py`; see `docs/s22_source_structure.md`, `docs/QUARTERLY_REFRESH.md` and `docs/decisions/2026-10-09-s22-editions-first-load.md`. Two sentences below were wrong and are corrected: the Council Taxbase and Table 615 are reconciled by the publisher, and Barnsley and Sheffield are not described as the same area. The rest is left as written.
+
 ## Sources
 
 ### Source A — Local authority Council Taxbase in England
@@ -88,7 +90,7 @@ Only the current taxbase year is published in the release workbook — there are
 
 Resolution runs through `la_code_lookup`. A pure recode resolves; an abolition into a successor unitary does not.
 
-MHCLG publishes Barnsley and Sheffield under the codes recoded on 1 April 2025 (SI 1328/2024) — E08000038 and E08000039 — while `la_boundaries` is LAD May 2024 and carries E08000016 and E08000019. Both resolve as `change_type = 'recode'`: same area, new number. The same two codes appear in Table 615 and are resolved the same way there.
+MHCLG publishes Barnsley and Sheffield under the codes recoded on 1 April 2025 (SI 1328/2024) — E08000038 and E08000039 — while `la_boundaries` is LAD May 2024 and carries E08000016 and E08000019. Both resolve through `scripts/geography.py` and the `recode` rows of `la_code_lookup` under rule 4.5 (Table 615 note 10 says the two districts' boundaries were changed on 1 April 2025). The same two codes appear in Table 615 and are resolved the same way there.
 
 ## W1 Integration
 
@@ -136,7 +138,7 @@ Recorded in `ctb_series_breaks`, machine-readable, so consumers of the data see 
 ## Known Caveats
 
 - **`premium_coverage_pct` is directional only and can never reach 100.** Long-term empty starts at six months, the premium starts at twelve, so the numerator is drawn from a strictly narrower population than the denominator. It is not a compliance rate. The caveat is carried as a column comment on the view.
-- **Long-term empty is not the same as vacant.** Source A counts dwellings a billing authority classes as empty for council tax; Source B counts vacant dwellings on a different definition and a different snapshot date. The two are held in separate tables and are not reconciled to each other.
+- **Long-term empty is a narrower measure than all vacant, and the two sources are reconciled by the publisher.** Table 615's cover defines October 2025 all-vacants as Line 15 plus exemption classes B, D to L and Q on the CTB form (CTB tables 1.18 and 2.01), and long-term vacants as Line 18 (table 1.22). `empty_6_months_plus` is table 1.19 (Line 16), which is not MHCLG's long-term vacant figure: England 309,889 against 303,185, 179 of 296 authorities differ.
 - **The 2025 release is a revision.** MHCLG corrected data from 22 authorities on 21 January 2026, affecting the taxbase, second homes, empty homes, discounts and premiums. Any figure quoted from the November 2025 original will differ.
 - **Five authorities charge no empty homes premium** — Amber Valley, Bolsover, Castle Point, Gravesham, Ribble Valley — and report zero, matching the release statement that 291 of 296 applied a premium.
 - **No national figure is published for six-month-plus empties.** The release page prints headline figures for total dwellings, all empties, premium counts, second homes and unoccupied exemptions, but none for dwellings empty more than six months. That is NOT FOUND on the release page, not unchecked; those two measures reconcile against the publisher's own England total row in the same workbook, and the substitution is stated wherever the figure appears.
@@ -144,16 +146,7 @@ Recorded in `ctb_series_breaks`, machine-readable, so consumers of the data see 
 
 ## Refresh Procedure
 
-The next release is due **November 2026** (Council Taxbase 2026), with a revision expected January 2027.
-
-1. Run `python scripts/s22_ctb_empties_build.py` via `scripts/s22_run.py`. Discovery is automatic — it reads the collection page, takes the most recent `Council Taxbase <year> in England` release, and finds the local-authority-level workbook by title. No URL needs editing.
-2. The run halts if the release structure has changed: a missing table number, a block without a `Total` column, or a missing exemption class each stop the build with the reason. Confirm the table numbers against the new workbook's `Contents` sheet before assuming a code change is needed.
-3. The load upserts on `(lad24cd, taxbase_year)`, so a new year adds 296 rows rather than replacing the existing ones. Re-running the same year is a no-op.
-4. Update `RELEASE_PAGE_TARGETS` in `scripts/s22_run.py` with the new release's national headline figures. They are the reconciliation targets and must come from the release page itself.
-5. Re-run `scripts/s22_w1_wire.py` to produce a new W1 run, then `scripts/export_map_data.py`, then publish.
-6. Check whether MHCLG has added a further structural break. Any new premium threshold or category change goes into `ctb_series_breaks` in the same run that loads the affected year.
-
-Table 615 refreshes on its own cadence with the dwelling stock live tables. Re-running the build picks up whatever is current; the upsert is on `(published_la_code, year)`, so revised historic years are corrected in place.
+Superseded. Council Taxbase 2026 is due in November 2026, with a revision expected in early 2027. Run `scripts/s22_ctb_editions.py` as set out in the S22 section of `docs/QUARTERLY_REFRESH.md`. The steps that stood here named the retired scripts and `RELEASE_PAGE_TARGETS`, and said the load upserted on its key so that revised years were corrected in place; the new loader stores a revision as a new edition instead.
 
 ## Verification
 

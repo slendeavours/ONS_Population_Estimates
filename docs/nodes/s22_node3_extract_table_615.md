@@ -1,5 +1,7 @@
 # Node 3 — Extract Table 615 and Resolve Geography
 
+> **Superseded 2026-10-09.** The old S22 scripts this note describes (`s22_ctb_discover.py`, `s22_ctb_empties_build.py`, `s22_run.py`, `s22_verify.py`) were run once, on 2026-08-13 (run-log id 83), and are retired to `scripts/historical/`, where they stop with a RETIRED message. S22 is now loaded by `scripts/s22_ctb_editions.py`, which finds both files itself, reads each file's identity from its own cover and keeps each file's statement about each year as an edition (`la_council_taxbase_empties_editions`, `la_ctb_exemption_classes_editions`, `la_vacant_dwellings_615_editions`). The source note is `docs/s22_source_structure.md`. The text below is left as written and describes the old method.
+
 ## Type
 
 Code (Python). `scripts/s22_ctb_empties_build.py`, functions `extract_table_615` and `resolve_615_geography`.
@@ -87,7 +89,7 @@ def resolve_615_geography(conn, rows):
 4. Treat `[x]` and the other published suppression markers as absent, not as zero. A district with no value for a year produces no row rather than a row of zero.
 5. Outer-join the two sheets on `(code, year)` so a district present in one sheet and not the other still produces a row with the other measure null.
 6. Resolve geography against `la_boundaries` first: a code that is already a current LAD is `direct`.
-7. Otherwise consult `la_code_lookup`. Only `change_type = 'recode'` resolves — a renumbering of the same area. That covers the 1 April 2025 Barnsley and Sheffield recodes.
+7. Otherwise consult `la_code_lookup`. Only `change_type = 'recode'` resolves — a renumbering, resolved under rule 4.5 (Table 615 note 10 says the two districts' boundaries changed). That covers the 1 April 2025 Barnsley and Sheffield recodes.
 8. Everything else is `unmapped` with a null `lad24cd`. That includes `new_unitary` and `merger` entries the lookup does hold. **Abolished districts are deliberately not folded into successor unitaries**: mapping six Somerset districts onto E06000066 would make any downstream sum count Somerset six times over.
 9. Nothing is written back to `la_code_lookup`.
 

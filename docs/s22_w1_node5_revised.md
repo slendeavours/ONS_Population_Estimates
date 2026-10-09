@@ -1,5 +1,7 @@
 # W1 Node 5 — revised SQL
 
+> **Superseded 2026-10-09.** W1 now runs from this repository (`sql/w1/05_la_signals.sql`, `scripts/w1_run.py`); this n8n-era copy of node 5 is kept as history. The S22 tables it reads are loaded by `scripts/s22_ctb_editions.py`. The text below is left as written.
+
 The full `LA Signals` query as stored in the n8n workflow. Held as markdown because `*.sql` is gitignored repo-wide to keep database dumps out; the canonical build artefact is `build_reports/s22_w1_node5_revised.sql` on the pipeline host.
 
 Divergence between this query and `staging_la_signals` is enforced in three places: the `Signal Column Pre-flight` node inside W1, `scripts/w1_contract_check.py` on the scripted path, and a backstop in `scripts/export_map_data.py`.

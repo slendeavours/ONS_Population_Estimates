@@ -21,10 +21,24 @@ Phases:
 
 Run `python scripts/s22_ctb_empties_build.py all` for the whole sequence.
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s22_ctb_editions.py. The old S22 build (s22_ctb_discover.py, '
+    's22_ctb_empties_build.py, s22_run.py, s22_verify.py) was run once, on 2026-08-13 (run-log id '
+    '83); no earlier S22 load existed, so nothing was overwritten in practice. This is the step '
+    'that upserted: INSERT ... ON CONFLICT ... DO UPDATE on la_council_taxbase_empties, '
+    'la_ctb_exemption_classes and la_vacant_dwellings_615, setting loaded_at, so a second run would '
+    'have overwritten the held rows. It wrote when run, with no preview and no --commit. Its '
+    'unoccupied-exemptions total counted a suppressed or blank class cell as 0 (and the England '
+    "target used 'or 0'); that never happened on the 2025 file, where all 11 classes are published "
+    'for every authority. Use scripts/s22_ctb_editions.py (load, load-615, refresh-latest) instead.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import datetime
 import json
 import re
-import sys
 from pathlib import Path
 
 import openpyxl

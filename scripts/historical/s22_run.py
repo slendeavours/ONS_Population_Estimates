@@ -4,9 +4,19 @@ Hard gates run inside the load transaction. Any failure rolls the whole
 transaction back, so a failed build leaves the database in its pre-load
 state and halts with the reason.
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s22_ctb_editions.py. The old S22 build (s22_ctb_discover.py, '
+    's22_ctb_empties_build.py, s22_run.py, s22_verify.py) was run once, on 2026-08-13 (run-log id '
+    '83); no earlier S22 load existed, so nothing was overwritten in practice. This is the phase '
+    'runner: it ran the load and the hard gates and wrote when run, with no preview and no '
+    '--commit. Use scripts/s22_ctb_editions.py (load, load-615, refresh-latest) instead.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import datetime
 import json
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
