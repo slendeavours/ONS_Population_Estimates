@@ -1960,11 +1960,11 @@ def w1_query(table):
     text = (HERE.parent / "sql" / "w1" / "05_la_signals.sql").read_text(
         encoding="utf-8")
     mt = W1_JOIN.search(text)
-    if not mt or "cl.semi_independent AS care_leavers_semi_indep" not in text:
+    if not mt or "cl.semi_independent_published AS care_leavers_semi_indep" not in text:
         raise ValueError("the care leaver join was not found in "
                          "sql/w1/05_la_signals.sql")
     join = mt.group(0).replace("care_leaver_accommodation", f"public.{table}")
-    return (f"SELECT b.lad24cd, cl.semi_independent FROM (SELECT DISTINCT "
+    return (f"SELECT b.lad24cd, cl.semi_independent_published FROM (SELECT DISTINCT "
             f"lad24cd FROM public.{table}) b {join}")
 
 
@@ -1977,7 +1977,7 @@ def w1_matches_tip(cur, live_table, editions_table, spec):
     if latest is None:
         return False, "no 17-21 rows", {}
     tip = core.chain_tip(cur, spec, str(latest))
-    cur.execute(f"SELECT lad24cd, semi_independent FROM "
+    cur.execute(f"SELECT lad24cd, semi_independent_published FROM "
                 f"public.{editions_table} WHERE reporting_year = %s AND "
                 "edition = %s AND age_group = '17-21'", (latest, tip))
     want = dict(cur.fetchall())
@@ -1993,7 +1993,7 @@ def real_w1(cur, spec=SPEC):
     ok, detail, want = w1_matches_tip(cur, spec.live_table,
                                       spec.editions_table, spec)
     nulls = sum(1 for v in want.values() if v is None)
-    return ok, (f"W1's join on live returns the tip's semi_independent for "
+    return ok, (f"W1's join on live returns the tip's semi_independent_published for "
                 f"{detail} ({nulls} NULL from suppressed parts, as W1 "
                 "expects)" if ok else detail)
 
@@ -2004,11 +2004,11 @@ def gate_19_w1(cur):
     out = {}
 
     def body(e):
-        sup = {(CODES[2], 2024, Y17, "Foyers"): "c"}
+        sup = {(CODES[2], 2024, Y17, m.SEMI): "c"}
         e.seed(values17=sup)
         out["ok"] = w1_matches_tip(e.cur, ZL, ZE, ZZ)
-        e.cur.execute(f"UPDATE public.{ZL} SET semi_independent = "
-                      "semi_independent + 1 WHERE lad24cd = %s AND "
+        e.cur.execute(f"UPDATE public.{ZL} SET semi_independent_published = "
+                      "semi_independent_published + 1 WHERE lad24cd = %s AND "
                       "reporting_year = 2024 AND age_group = '17-21'",
                       (CODES[0],))
         out["drift"] = w1_matches_tip(e.cur, ZL, ZE, ZZ)

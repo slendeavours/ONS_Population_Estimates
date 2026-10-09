@@ -234,9 +234,9 @@ class VerifyGates(unittest.TestCase):
     def test_w1_join_catches_a_drifted_live_value(self):
         self.seed()
         self.assertTrue(w1(self.cur, ZZ)[0])
-        self.cur.execute(f"UPDATE public.{ZL} SET semi_independent = "
-                         "semi_independent + 1 WHERE lad24cd = %s AND "
-                         "reporting_year = 2024 AND age_group = '17-21'",
+        self.cur.execute(f"UPDATE public.{ZL} SET semi_independent_published = "
+                         "semi_independent_published + 1 WHERE lad24cd = %s "
+                         "AND reporting_year = 2024 AND age_group = '17-21'",
                          (CODES[0],))
         ok, detail = w1(self.cur, ZZ)
         self.assertFalse(ok)

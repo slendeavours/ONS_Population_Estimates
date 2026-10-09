@@ -27,7 +27,7 @@ FROM (
 UNION ALL
 
 SELECT $1::integer, 'care_leavers', rank_position, lad24cd, la_name,
-       care_leavers_semi_indep, 'semi_independent_2024', 'High'
+       care_leavers_semi_indep, 'semi_independent_published', 'High'
 FROM (
     SELECT lad24cd, la_name, care_leavers_semi_indep,
            ROW_NUMBER() OVER (ORDER BY care_leavers_semi_indep DESC NULLS LAST) AS rank_position

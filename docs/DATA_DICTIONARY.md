@@ -98,7 +98,7 @@ Source: DfE Children Looked After in England including adoptions, SSDA903 return
 
 | Column | Type | Range | Description |
 |---|---|---|---|
-| `care_leavers_semi_indep` | integer | 0 – 500+ | Care leavers aged 17-21 in supported accommodation. Pipeline aggregate of three DfE categories: semi-independent transitional, foyers, supported lodgings. **Not** DfE's published category |
+| `care_leavers_semi_indep` | integer | 0 – 500+ | Care leavers aged 17-21 in DfE's published category `Semi-independent, transitional accommodation` (`semi_independent_published`), latest year. NULL where DfE suppressed the cell, never 0. From reporting year 2024 the category means Ofsted-registered provision only, so do not trend across 2023/2024. Up to W1 run 25 this column held the wider pipeline aggregate `semi_independent` (see below) |
 
 ### Which measure to quote
 
