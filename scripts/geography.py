@@ -65,11 +65,16 @@ DATASET_FORM = {
            "the 2026-08-14 scan found la_rough_sleeping on the new codes "
            "only before resolution."),
     "11": ("none",
-           "CQC locations carry no GSS codes for these authorities "
-           "(data/raw/s11_csv: none of the four codes); lad24cd is assigned "
-           "by point-in-polygon against la_boundaries. The postcodes.io "
-           "fallback is a second source and may return E08000038/39; it "
-           "resolves through la_code_lookup."),
+           "CQC locations carry no GSS codes for these authorities: the four "
+           "Care directory with filters files of July, August, September and "
+           "October 2026 (data/raw/*_HSCA_Active_Locations.ods, read "
+           "2026-10-09) carry none of the four codes in any cell (their only "
+           "GSS-like codes are CCG E38...), and scripts/s11_cqc_editions.py "
+           "halts on a file that does. lad24cd is assigned by "
+           "point-in-polygon against la_boundaries. The postcodes.io "
+           "fallback is a second source and returns current codes "
+           "(E08000038/39); they resolve through geography.canonical, then "
+           "la_boundaries, then la_code_lookup."),
     "12": ("none",
            "No EFS or S.114 row for Barnsley or Sheffield in la_efs_support, "
            "la_s114_notices or data/reference/la_s114_notices.csv; if either "
