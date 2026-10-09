@@ -116,7 +116,19 @@ class EditionSpec:
     live lacks (every data column, every same-named refresh column and the
     refresh_from columns, so each data column must also be a live column),
     then runs the usual update. False keeps the old rule: a key in only one
-    of live and the edition halts the refresh.
+    of live and the edition halts the refresh. Editions-only columns (see
+    editions_only_cols) are not written by that insert; the live columns
+    mapped from them are.
+    refresh_source_whole_period: opt-in (default False). After the update,
+    every live row of each refreshed period gets the latest edition's
+    as_loaded_source_col (from its refresh_from editions column), not only
+    the rows the update wrote; checked afterwards.
+    whole_period_cols: opt-in (default ()). Live columns, each a refresh
+    column mapped in refresh_from, handled as refresh_source_whole_period
+    handles the source column: set on every live row of each refreshed
+    period from the latest edition, and afterwards checked uniform per
+    period and equal to the edition's. A spec may use either or both; the
+    set used is their union (whole_period_pairs).
     """
     name: str
     live_table: str
@@ -135,10 +147,12 @@ class EditionSpec:
     as_loaded_date: str = "single"
     refresh_source_whole_period: bool = False
     refresh_key_changes: bool = False
+    whole_period_cols: tuple = ()
 
     def __post_init__(self):
         for n in (self.name, self.live_table, self.editions_table,
                   self.period_col, *self.key_cols, *self.refresh_cols,
+                  *self.whole_period_cols,
                   *(c for c, _ in self.value_cols),
                   *(c for c, _ in self.extra_cols),
                   *(c for c, _ in self.key_types),
@@ -183,6 +197,40 @@ class EditionSpec:
                 or self.as_loaded_source_col not in mapped):
             raise ValueError(f"{self.name}: refresh_source_whole_period needs "
                              "as_loaded_source_col mapped in refresh_from")
+        if len(set(self.whole_period_cols)) != len(self.whole_period_cols):
+            raise ValueError(f"{self.name}: whole_period_cols names a column "
+                             "twice")
+        for c in self.whole_period_cols:
+            if c not in self.refresh_cols:
+                raise ValueError(f"{self.name}: whole_period_cols column {c} "
+                                 "is not a refresh column")
+            if c not in mapped:
+                raise ValueError(f"{self.name}: whole_period_cols column {c} "
+                                 "is not mapped in refresh_from")
+
+    @property
+    def whole_period_pairs(self) -> tuple:
+        """(live column, editions column) of every column set whole-period on
+        refresh: as_loaded_source_col when refresh_source_whole_period, then
+        whole_period_cols, without repeats. () when neither is used."""
+        mapped = dict(self.refresh_from)
+        cols = ((self.as_loaded_source_col,)
+                if self.refresh_source_whole_period else ())
+        cols += tuple(c for c in self.whole_period_cols if c not in cols)
+        return tuple((c, mapped[c]) for c in cols)
+
+    @property
+    def editions_only_cols(self) -> tuple:
+        """Data columns that are the editions side of a refresh_from pair and
+        are not themselves live refresh columns (nor key or period columns):
+        the editions table has them, the live table need not. A key-change
+        insert does not write them; it writes the live columns mapped from
+        them."""
+        sources = {ec for _, ec in self.refresh_from}
+        keys = tuple(self.key_cols) + (self.period_col,)
+        return tuple(c for c in self.data_cols
+                     if c in sources and c not in self.refresh_cols
+                     and c not in keys)
 
     @property
     def compare_cols(self) -> tuple:
@@ -925,19 +973,31 @@ def _delete_removed(cur, spec: EditionSpec, period, keys) -> int:
     return cur.rowcount
 
 
-def _insert_added(cur, spec: EditionSpec, period, edition: int, keys) -> int:
-    """Insert the edition's rows of `period` whose key is in keys into live:
-    every data column, the same-named refresh columns that are not data
-    columns (metadata such as source_file) and the refresh_from live columns
-    from their editions columns. Rows inserted."""
-    if not keys:
-        return 0
+def _insert_cols(spec: EditionSpec) -> tuple:
+    """(live columns, editions expressions) of a key-change insert: every
+    data column except the refresh_from live columns and the editions-only
+    columns, the same-named refresh columns that are not data columns
+    (metadata such as source_file), then the refresh_from live columns from
+    their editions columns. With no editions-only columns this is exactly
+    the list used before they existed."""
     mapped = dict(spec.refresh_from)
-    data = tuple(c for c in spec.data_cols if c not in mapped)
+    skip = set(spec.editions_only_cols)
+    data = tuple(c for c in spec.data_cols
+                 if c not in mapped and c not in skip)
     meta = tuple(c for c in spec.update_cols if c not in spec.data_cols)
     live_cols = data + meta + tuple(lc for lc, _ in spec.refresh_from)
     src = (tuple(f"e.{c}" for c in data + meta)
            + tuple(f"e.{ec}" for _, ec in spec.refresh_from))
+    return live_cols, src
+
+
+def _insert_added(cur, spec: EditionSpec, period, edition: int, keys) -> int:
+    """Insert the edition's rows of `period` whose key is in keys into live
+    (columns from _insert_cols: editions-only columns are not written, the
+    live columns mapped from them are). Rows inserted."""
+    if not keys:
+        return 0
+    live_cols, src = _insert_cols(spec)
     kc = "(" + ", ".join(f"e.{c}" for c in spec.key_cols) + ")"
     cur.execute(f"""INSERT INTO public.{spec.live_table} ({', '.join(live_cols)})
                     SELECT {', '.join(src)} FROM public.{spec.editions_table} e
@@ -952,38 +1012,43 @@ def refresh_counts(cur, spec: EditionSpec, accept_drift=()) -> dict:
     return {p: v["rows"] for p, v in sorted(plan.items())}
 
 
-def _source_cols(spec: EditionSpec) -> tuple:
-    live_col = spec.as_loaded_source_col
-    return live_col, dict(spec.refresh_from)[live_col]
-
-
 def _set_source_whole_period(cur, spec: EditionSpec, pairs) -> None:
-    """Set the live source column of every row of each refreshed period to
-    the latest edition's (opt-in refresh_source_whole_period). Only that
-    column; rows already right are not touched."""
-    lc, ec = _source_cols(spec)
-    cur.execute(f"""UPDATE public.{spec.live_table} l SET {lc} = e.{ec}
-                    FROM public.{spec.editions_table} e
-                    WHERE {_key_join(spec)}
-                      AND (e.{spec.period_col}, e.edition) IN %s
-                      AND l.{lc} IS DISTINCT FROM e.{ec}""", (pairs,))
+    """Set each whole-period live column (spec.whole_period_pairs: the
+    source column of refresh_source_whole_period and whole_period_cols) of
+    every row of each refreshed period to the latest edition's. One UPDATE
+    per column, only that column; rows already right are not touched."""
+    for lc, ec in spec.whole_period_pairs:
+        cur.execute(f"""UPDATE public.{spec.live_table} l SET {lc} = e.{ec}
+                        FROM public.{spec.editions_table} e
+                        WHERE {_key_join(spec)}
+                          AND (e.{spec.period_col}, e.edition) IN %s
+                          AND l.{lc} IS DISTINCT FROM e.{ec}""", (pairs,))
 
 
 def _source_problems(cur, spec: EditionSpec, pairs) -> list:
-    """After-check: every live row of each refreshed period carries the
-    latest edition's source, and the period has the same row count."""
-    lc, ec = _source_cols(spec)
+    """After-check, for each whole-period column: every live row of each
+    refreshed period carries the latest edition's value (a live row with no
+    edition row counts as not carrying it), and the column holds one value
+    over the period (NULL counts as a value). Names the column."""
     bad = []
+    lt, pc = spec.live_table, spec.period_col
     for p, ed in pairs:
-        cur.execute(f"""SELECT COUNT(*) FROM public.{spec.live_table} l
-                        LEFT JOIN public.{spec.editions_table} e
-                          ON {_key_join(spec)} AND e.edition = %s
-                        WHERE l.{spec.period_col} = %s
-                          AND l.{lc} IS DISTINCT FROM e.{ec}""", (ed, p))
-        k = cur.fetchone()[0]
-        if k:
-            bad.append(f"{p}: {k} rows do not carry edition {ed}'s {lc} "
-                       "after the refresh")
+        for lc, ec in spec.whole_period_pairs:
+            cur.execute(f"""SELECT COUNT(*) FROM public.{lt} l
+                            LEFT JOIN public.{spec.editions_table} e
+                              ON {_key_join(spec)} AND e.edition = %s
+                            WHERE l.{pc} = %s
+                              AND l.{lc} IS DISTINCT FROM e.{ec}""", (ed, p))
+            k = cur.fetchone()[0]
+            if k:
+                bad.append(f"{p}: {k} rows do not carry edition {ed}'s {lc} "
+                           "after the refresh")
+            cur.execute(f"""SELECT COUNT(*) FROM (SELECT DISTINCT {lc}
+                            FROM public.{lt} WHERE {pc} = %s) d""", (p,))
+            n = cur.fetchone()[0]
+            if n > 1:
+                bad.append(f"{p}: {lc} is not uniform after the refresh "
+                           f"({n} values)")
     return bad
 
 
@@ -1017,6 +1082,12 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
     rows inserted and deleted must equal the plan. accept_key_changes on a
     spec that has not opted in halts. Not opted in, a one-sided key halts
     exactly as before.
+
+    Whole-period columns (opt-in, spec.whole_period_pairs: the source column
+    of refresh_source_whole_period and whole_period_cols): after the update
+    each is set on every live row of each refreshed period from the latest
+    edition, and afterwards each must equal the edition's on every row and
+    hold one value over the period (_source_problems names the column).
 
     _after_update_hook(cur, plan), if given, runs after the UPDATE and
     before the after-checks, inside the savepoint: a seam for tests and for
@@ -1074,7 +1145,7 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
                           AND (e.{pc}, e.edition) IN %s
                           AND {_refresh_where(spec)}""", (pairs,))
         n = cur.rowcount
-        if spec.refresh_source_whole_period:
+        if spec.whole_period_pairs:
             _set_source_whole_period(cur, spec, pairs)
         if _after_update_hook is not None:
             _after_update_hook(cur, plan)
@@ -1103,7 +1174,7 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
             if p in common and _one_sided(cur, spec, p, v["edition"]):
                 bad.append(f"{p}: a key is still in only one of live and "
                            f"edition {v['edition']} after the refresh")
-        if spec.refresh_source_whole_period:
+        if spec.whole_period_pairs:
             bad.extend(_source_problems(cur, spec, pairs))
         if bad:
             halt("refresh-latest failed its before/after checks, rolled back: "
