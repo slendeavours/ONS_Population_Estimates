@@ -8,6 +8,18 @@ Inputs  : ONS landing page (stable URL, below). No local inputs.
 Outputs : data/raw/pipr_<edition-date>.xlsx
           Prints edition slug, resolved URL, file size.
 """
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s18_pipr_editions.py. "
+    "Fetching is now inside scripts/s18_pipr_editions.py (load, fetch_latest_file). The old S18 pipeline "
+    "inserted new rows and ignored revisions of rows already held "
+    "(ON CONFLICT DO NOTHING), and took its edition from a command-line "
+    "argument or a hand-off file.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
+
 import re
 import sys
 from pathlib import Path

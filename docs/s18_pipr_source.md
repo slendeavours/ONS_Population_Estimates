@@ -7,12 +7,13 @@
 | Cadence | Monthly (published mid-month, covering the previous calendar month) |
 | Landing page | `https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics` |
 | Geography | English local authorities (294 of 296 — Isles of Scilly and City of London are not published) |
-| Join key | `lad24cd` (via `la_code_lookup`, plus CHD-verified recode mapping — see below) |
+| Join key | `lad24cd` (via `la_code_lookup`, plus the shared `scripts/geography.py` recode — see below) |
 | Target table | `la_private_rents` (grain: lad24cd × period × breakdown_type × category) |
+| Editions table | `la_private_rents_editions` (append-only; key `lad24cd, period, breakdown_type, category, edition`). `la_private_rents` holds the latest edition of each month |
 | Related tables | `la_geography`, `la_succession` (geography dimension, built in the same run) |
-| MIN_PERIOD | 2024-03-01 (earliest period loaded; widen in `.env` if scope changes) |
+| Earliest period loaded | 2024-03-01 (`--min-period` widens it) |
 | First load | 17 June 2026 edition, backfilled 11 July 2026 (Claude Code run, `pipeline_run_log` id 54) |
-| Refresh | n8n S18 sub-workflow (to be built from `s18_pipr_workbook_structure.md`) |
+| Refresh | `python scripts/s18_pipr_editions.py load` (preview), then `--commit`; procedure in [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md). Gates: `scripts/s18_pipr_editions_verify.py` (23). Record: [decisions/2026-10-09-s18-editions-first-load.md](decisions/2026-10-09-s18-editions-first-load.md) |
 
 ## What it provides
 
@@ -22,11 +23,13 @@ Average monthly private rent (£), rent index (January 2023 = 100) and annual pe
 
 The landing page URL is stable; the file URL is not. Each monthly edition gets a new slug (publication date) **and** an unpredictable numeric filename suffix. Never hardcode the file URL — fetch the landing page, take the first (newest) xlsx link. Full pattern and workbook layout: [s18_pipr_workbook_structure.md](s18_pipr_workbook_structure.md).
 
-Every edition republishes the full back series from January 2015 and revises the prior provisional month, so only the latest edition is ever downloaded, and the monthly upsert both inserts the new month and finalises the previous one.
+Every edition republishes the full back series from January 2015, and the latest month is provisional and is re-published later, so every `load` compares every held month with the new workbook. The first comparison, on 2026-10-09, found no change in any held cell: the 16 September 2026 workbook is the one August 2026 was loaded from, so it is not yet shown that revisions occur in the months held. A change, including provisional to final, is stored as the next edition rather than overwriting.
+
+The old pipeline (`s18_pipr_fetch.py`, `s18_pipr_transform.py`, `s18_pipr_load.py`, `s18_pipr_verify.py`, now in `scripts/historical/`) inserted new rows and ignored revisions of rows already held (`ON CONFLICT DO NOTHING`), so a revision would have been discarded. It must not be run: it stops with a RETIRED message. `scripts/s18_pipr_inspect.py`, which lists a workbook's sheets and headers, is kept as a read-only tool.
 
 ## Code handling
 
-PIPR publishes the entire back series on the GSS codes current at publication. From the April 2025 editions onward this means Barnsley = `E08000038` and Sheffield = `E08000039` (The Barnsley and Sheffield (Boundary Changes) Order 2024, SI 1328/2024). These are mapped back to the pipeline's canonical LAD24 codes (`E08000016`, `E08000019`) in the transform; the mapping is verified against the ONS Code History Database, not `la_code_lookup` (which is deliberately unchanged). The successor relationships live in `la_geography` / `la_succession`.
+PIPR publishes the entire back series on the GSS codes current at publication. From the April 2025 editions onward this means Barnsley = `E08000038` and Sheffield = `E08000039` (The Barnsley and Sheffield (Boundary Changes) Order 2024, SI 1328/2024). S18 declares the form `new` in `scripts/geography.py`; the loader resolves them to the pipeline's canonical LAD24 codes (`E08000016`, `E08000019`) through it, and halts if a file carries the old codes. `la_code_lookup` is deliberately unchanged. The successor relationships live in `la_geography` / `la_succession`.
 
 ## Caveats
 

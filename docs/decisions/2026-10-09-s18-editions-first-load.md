@@ -40,8 +40,9 @@ months.
   provisional, so there was no provisional-to-final change to record.
 - Because there was nothing to store, `load --commit` was not run (no edition 2 and no run log row).
   `refresh-latest` previewed zero rows. The first revision will show on a later monthly run.
-- The latest period is unchanged (August 2026), so the map's rent layer does not move because of this
-  load. W1, `refresh_map.py` and the export were not run.
+- The latest period is unchanged (August 2026). W1, `refresh_map.py` and the export were not run, and
+  none is needed: `la_private_rents` is not read by W1, `refresh_map.py` or `export_map_data.py` (see
+  Notes).
 
 ## The monthly check
 
@@ -74,5 +75,13 @@ From `ONS_Population_Estimates`:
 - The first `sync-new` needed `--expected-areas 294`, because no month had editions yet.
 - Barnsley and Sheffield codes (E08000038 and E08000039) resolve through `scripts/geography.py`, with
   S18's declaration 'new'; a file carrying the old codes halts before any write.
-- After a `refresh-latest --commit` that wrote rows, run `scripts/refresh_map.py` only if the latest month
-  changed. Do not run `scripts/w1_run.py` separately for S18.
+- `la_private_rents` is not read by Workflow 1 (`sql/w1/`), `scripts/refresh_map.py` or
+  `scripts/export_map_data.py`; no view or function reads it either (searched the repository and the
+  database on 2026-10-09; the registry has `publish_map` false). So no W1 run or map refresh follows an
+  S18 load, including `refresh-latest --commit`. This corrects the first version of this note, which said
+  to run `refresh_map.py` if the latest month changed.
+- The registry keeps `revises_back_series` true on the strength of the publisher's practice (the latest
+  month is provisional and re-published), worded as expected and not yet observed in the held months.
+- The old pipeline (`s18_pipr_fetch.py`, `transform`, `load`, `verify`) is archived in `scripts/historical/`
+  with a RETIRED guard. It inserted new rows and ignored revisions of rows already held
+  (`ON CONFLICT DO NOTHING`); it did not overwrite. `s18_pipr_inspect.py` is kept as a read-only tool.

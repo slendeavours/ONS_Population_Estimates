@@ -756,9 +756,19 @@ SOURCES = [
         source_code="18",
         detected_period_type="publication_date",
         revises_back_series=True,
-        revision_note=("Every edition republishes the full back series from January "
-            "2015 and revises the prior provisional month, so loading "
-            "the latest edition finalises earlier months automatically."),
+        revision_note=("Expected: every edition republishes the full back "
+            "series and the latest month is provisional and re-published. "
+            "Not yet observed in what is held: the first comparison, on "
+            "2026-10-09, of the 16 September 2026 workbook against what was "
+            "held (all 30 months, 79,380 rows) found no change, because "
+            "that workbook is the one August 2026 was loaded from. Since "
+            "then every revision, including provisional to final, is stored "
+            "as the next edition in la_private_rents_editions rather than "
+            "overwriting (scripts/s18_pipr_editions.py); la_private_rents "
+            "holds the latest edition of each month. The old pipeline "
+            "inserted new rows and ignored revisions of rows already held "
+            "(ON CONFLICT DO NOTHING). Record: "
+            "docs/decisions/2026-10-09-s18-editions-first-load.md."),
         source_name="ONS PIPR",
         publisher="ONS",
         series_name=("Price Index of Private Rents, UK: monthly price "
@@ -773,17 +783,32 @@ SOURCES = [
             "unpredictable numeric filename suffix. Never hardcode the file "
             "URL — fetch the landing page and take the first (newest) xlsx "
             "link. Every edition republishes the full back series from "
-            "January 2015 and revises the prior provisional month, so only "
-            "the latest edition is ever downloaded."),
+            "January 2015; only data from 2024-03-01 is loaded. "
+            "scripts/s18_pipr_editions.py finds the newest workbook itself "
+            "(never hard-coded), saves it to data/raw/, or reads --file; "
+            "the file name, the Cover sheet and the latest month must name "
+            "the same edition or it halts, and an older file than held is "
+            "refused without --allow-older-file. The first sync-new needs "
+            "--expected-areas 294. Barnsley and Sheffield codes resolve "
+            "through scripts/geography.py (the workbook carries E08000038 "
+            "and E08000039 for the whole back series). The old scripts "
+            "(s18_pipr_fetch, transform, load, verify) are archived in "
+            "scripts/historical/ and must not be run."),
         cadence="monthly", cadence_months=1,
         publication_window="Mid-month, covering the previous calendar month",
         target_table="la_private_rents", geography_level="LAD24",
-        join_path=("lad24cd via la_code_lookup, plus a CHD-verified recode "
-                   "mapping for Barnsley and Sheffield. Successor "
-                   "relationships live in la_geography and la_succession."),
-        build_script_path="scripts/s18_pipr_fetch.py",
+        join_path=("lad24cd via la_code_lookup, plus the shared "
+                   "scripts/geography.py recode for Barnsley and Sheffield. "
+                   "Successor relationships live in la_geography and "
+                   "la_succession."),
+        build_script_path="scripts/s18_pipr_editions.py",
         source_doc_path="docs/s18_pipr_source.md",
-        verification_checks={"script": "scripts/s18_pipr_verify.py"},
+        verification_checks={"script": "scripts/s18_pipr_editions_verify.py",
+                             "checks": 23,
+                             "gate": "all gates must pass; the loader halts "
+                                     "before any write on a short month, a "
+                                     "missing breakdown block, an unresolved "
+                                     "code or a file identity mismatch"},
         caveats=["Housing-benefit tenancies are excluded where identifiable. "
                  "Figures represent open-market opportunity cost, not "
                  "HB-supported rents.",

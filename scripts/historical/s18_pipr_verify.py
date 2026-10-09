@@ -12,6 +12,18 @@ Inputs  : data/processed/la_private_rents_<edition>.csv (argv[1] edition slug)
           ONS bulletin https://www.ons.gov.uk/.../privaterentandhousepricesuk/latest
 Outputs : stdout PASS/FAIL per check.
 """
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s18_pipr_editions.py. "
+    "Its checks are replaced by scripts/s18_pipr_editions_verify.py. The old S18 pipeline "
+    "inserted new rows and ignored revisions of rows already held "
+    "(ON CONFLICT DO NOTHING), and took its edition from a command-line "
+    "argument or a hand-off file.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
+
 import os
 import re
 import sys

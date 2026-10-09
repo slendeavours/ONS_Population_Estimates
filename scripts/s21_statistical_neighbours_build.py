@@ -26,7 +26,7 @@ MAX_NEIGHBOURS = 5
 
 # Barnsley/Sheffield April 2025 recode (SI 1328/2024): the ONS Mar-2026 edition
 # still carries the pre-recode codes for this one pair. Same gotcha already
-# handled in the S18 PIPR build (see scripts/s18_pipr_transform.py) - NOT in
+# handled in the S18 PIPR build (see scripts/historical/s18_pipr_transform.py, now scripts/geography.py) - NOT in
 # la_code_lookup by design, handled here as a direct supplement instead.
 CODE_REMAP = {
     "E08000038": "E08000016",  # Barnsley
