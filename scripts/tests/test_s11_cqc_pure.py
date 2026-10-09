@@ -687,5 +687,26 @@ class Misc(_Tmp):
             m.main(["sync-new"])
 
 
+class OdsTextRules(unittest.TestCase):
+    def test_repeated_spaces_collapse_to_one(self):
+        from xml.etree import ElementTree as ET
+        xml = ('<c xmlns:t="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+               'xmlns:x="urn:oasis:names:tc:opendocument:xmlns:text:1.0">'
+               '<x:p>Cossham Gardens <x:s/>- Care Home</x:p></c>')
+        self.assertEqual(m._ods_cell(ET.fromstring(xml)),
+                         "Cossham Gardens - Care Home")
+
+    def test_set_change_reason_names_the_mapping(self):
+        msg = m.set_change_reason({"a", "b"}, {"a", "b", "c"}, {"c", "d"})
+        self.assertIn("mapping changed, not the file", msg)
+        self.assertNotIn("reissued", msg)
+
+    def test_set_change_reason_keeps_reissue_message(self):
+        self.assertEqual(m.set_change_reason({"a"}, {"a", "z"}, set()),
+                         m.ENGINE_GAP)
+        self.assertEqual(m.set_change_reason({"a", "b"}, {"a"}, {"b"}),
+                         m.ENGINE_GAP)
+
+
 if __name__ == "__main__":
     unittest.main()

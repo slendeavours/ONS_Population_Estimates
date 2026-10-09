@@ -28,7 +28,7 @@ Known breaches until corrected: S4 (care leavers) stores suppressed cells as 0 a
 1. A new release **and** a revision of a figure already held are both stored as new rows (a new edition). Nothing is overwritten.
 2. The live table is the latest-edition layer, refreshed from the editions table. The latest edition is the one no other edition supersedes.
 3. A sent or published deliverable is never overwritten. A new version is written and what changed is stated.
-4. Sources the registry marks `revises_back_series` must keep editions. Today S1, S1b, RO4, S8b, S19, S15, S18, S9a and S9b do; the other revising sources are being brought across. S11 (the CQC register) is not a revising source: it keeps every dated snapshot of the register as its own period, on the same engine, and a reissued file for a date already held would be stored as the next edition.
+4. Sources the registry marks `revises_back_series` must keep editions. Today S1, S1b, RO4, S8b, S19, S15, S18, S9a and S9b do; the other revising sources are being brought across. S11 (the CQC register) is not a revising source: it keeps every dated snapshot of the register as its own period, on the same engine, and a reissued file for a date already held would be stored as the next edition, unless it adds or drops locations (the engine refuses a changed location set). That also refuses a recheck of the July, August and September 2026 snapshots: one location (1-28257167158) is kept unresolved there as loaded but now resolves through postcodes.io, so the mapping, not the file, changes the set; the held editions stay as loaded.
 
 Detail: `METHODOLOGY.md` (Revision Handling), `QUARTERLY_REFRESH.md`.
 

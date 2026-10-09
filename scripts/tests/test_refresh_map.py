@@ -382,5 +382,42 @@ class ExportDiscovery(unittest.TestCase):
         self.assertNotIn("la_boundaries", names)
 
 
+class ViewInputs(unittest.TestCase):
+    def test_real_tables_query_accepts_views_with_loaded_at_only(self):
+        cur = mock.Mock()
+        cur.fetchall.return_value = [("cqc_locations", True)]
+        self.assertEqual(refresh_map._real_tables(cur),
+                         {"cqc_locations": True})
+        sql = " ".join(cur.execute.call_args[0][0].split())
+        self.assertIn("'BASE TABLE'", sql)
+        self.assertIn("t.table_type = 'VIEW'", sql)
+        self.assertIn("c.column_name = 'loaded_at'", sql)
+
+    def test_view_input_is_discovered_from_w1_sql(self):
+        cur = mock.Mock()
+        cur.fetchall.return_value = [("cqc_locations", True),
+                                     ("la_population", True)]
+        names = [t for t, _ in refresh_map.input_tables(cur)]
+        self.assertIn("cqc_locations", names)
+
+    def test_s11_only_load_makes_map_behind(self):
+        newer = RUN_DATE + datetime.timedelta(days=1)
+        cur = StubCur(inputs=["la_population", "cqc_locations"],
+                      loaded={"la_population": RUN_DATE
+                              - datetime.timedelta(days=3),
+                              "cqc_locations": newer})
+        with patch_inputs():
+            msgs = refresh_map.staleness(cur, 25)
+        self.assertEqual(len(msgs), 1)
+        self.assertIn("cqc_locations loaded after the run", msgs[0])
+
+    def test_unchanged_inputs_with_view_are_fresh(self):
+        old = RUN_DATE - datetime.timedelta(days=1)
+        cur = StubCur(inputs=["la_population", "cqc_locations"],
+                      loaded={"la_population": old, "cqc_locations": old})
+        with patch_inputs():
+            self.assertEqual(refresh_map.staleness(cur, 25), [])
+
+
 if __name__ == "__main__":
     unittest.main()

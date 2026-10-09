@@ -61,8 +61,7 @@ returns one row per location ever seen, with its values from the latest snapshot
 `source_file_date` that snapshot's date, `is_active` true only for locations in the latest snapshot and
 `deregistered_seen_date` the first later snapshot. In the migration transaction the view was compared with the
 legacy table on every column but `loaded_at` (EXCEPT ALL both ways, 0 and 0 rows), and W1's S11 subquery gave
-the same count per authority before and after the swap (291 authorities, 4,765 locations). Gates 16 and 17
-repeat both checks; once a newer snapshot exists, `is_active` equals the latest snapshot's row count (now
+the same count per authority before and after the swap (291 authorities, 4,765 locations). The equality with the legacy table was proved in the migration transaction and is re-proved only on seeded data: since October the real part of gate 16 checks columns, types and the `is_active` count, and gate 17 compares the view with the latest snapshot, not with the legacy table. Once a newer snapshot exists, `is_active` equals the latest snapshot's row count (now
 30,555).
 
 ## October 2026 loaded
@@ -100,8 +99,7 @@ From `ONS_Population_Estimates`:
    in the ledger and previews the new snapshot. Nothing is written to the database (downloads go to
    `data/raw/`; postcodes.io is read for rows without coordinates).
 2. Read the preview. Stop conditions are enforced in `load` (REJECTED, exit 1): identity (README title and
-   as-at date against the file name), a header change, an unexpected marker, a Barnsley or Sheffield new
-   code in the file, a location over 2 km from every polygon, rows more than 2% from the previous snapshot,
+   as-at date against the file name), a header change, an unexpected marker, a Barnsley or Sheffield code (old or new, any of the four) in the file, a location over 2 km from every polygon, rows more than 2% from the previous snapshot,
    over 1,000 gone or new, over 10 unresolved, an authority with no location, supported living over 50% in
    more than 5 authorities with at least 10, and an older file (`--allow-older-file`).
 3. `python scripts/s11_cqc_editions.py load --commit`.
@@ -116,3 +114,19 @@ From `ONS_Population_Estimates`:
 - The old loader scripts were retired to `scripts/historical/` on 2026-10-09 (they stop with a RETIRED message).
 - Follow-up, a later and separate decision: whether to drop `cqc_locations_legacy` (30,797 rows) and the old
   `cqc_unresolved_locations` once nobody needs them. Nothing was dropped here.
+
+## Review follow-ups (final review, 2026-10-09)
+
+- **Text rule, ruled keep.** The loader drops the `<text:s/>` elements the ODS format uses for the second and
+  later spaces of a run, so repeated spaces in a text cell become one space (41 July and 43 October name cells
+  differ from the file's raw text only by this). The retired loader did the same. Fixing it would change held
+  names and a `--recheck` would store about 40 changed cells as a revision that comes from our parse, not from
+  CQC. So it is an explicit transformation rule, documented in the data dictionary and the registry
+  `known_gotchas`, and pinned by a unit test.
+- **Recheck of July, August and September is refused, now with the true reason.** Location `1-28257167158`
+  (LN5 9WQ) stays unresolved in those snapshots as loaded; postcodes.io now resolves it, so a re-parse has one
+  more location than the held edition and the engine cannot move a changed location set into live. The loader
+  now says the mapping changed, not the file. The held editions stay as loaded. A genuine reissue of one of
+  those dates needs the engine's whole-snapshot replace (the follow-up above) first.
+- **`refresh_map.py`** now also treats a view that has a `loaded_at` column (`cqc_locations`) as a W1 input, so
+  an S11-only load is reported as behind and runs W1.

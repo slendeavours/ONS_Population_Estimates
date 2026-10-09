@@ -487,6 +487,10 @@ def _ods_cell(cell) -> str:
         return cell.get(_O + "boolean-value")
     if vt == "date":
         return cell.get(_O + "date-value")
+    # RULE (documented transformation, kept to match the retired loader so
+    # held rows and joins stay stable): ODS stores the second and later
+    # spaces of a run as <text:s/> elements, which itertext() drops. A run of
+    # spaces in a text cell therefore becomes a single space.
     parts = ["".join(p.itertext()) for p in cell.iter(_X + "p")]
     return "\n".join(parts) if parts else ""
 
@@ -1748,6 +1752,31 @@ ENGINE_GAP = ("the location set differs from the held edition of this "
               "follow-up)")
 
 
+def tip_unresolved_ids(cur, spec, period) -> set:
+    """location_ids recorded unresolved in a snapshot's tip edition."""
+    tip = core.latest_edition(cur, spec, period)
+    cur.execute(f"SELECT location_id FROM public.{unresolved_table(spec)} "
+                "WHERE snapshot_date = %s AND edition = %s", (period, tip))
+    return {r[0] for r in cur.fetchall()}
+
+
+def set_change_reason(held_ids, new_ids, held_unresolved) -> str:
+    """Why a recheck's location set differs from the held edition's: the
+    mapping (locations the snapshot as loaded keeps unresolved now resolve,
+    for example through postcodes.io) or the file (ENGINE_GAP)."""
+    gone = set(held_ids) - set(new_ids)
+    new = set(new_ids) - set(held_ids)
+    if new and not gone and new <= set(held_unresolved):
+        return (f"the location set differs because the mapping changed, not "
+                f"the file: {len(new)} location(s) the snapshot as loaded "
+                f"keeps unresolved now resolve ({sorted(new)[:3]}); "
+                "refresh-latest cannot move a changed set of locations into "
+                "live, so a recheck of this snapshot is refused (the held "
+                "edition stays as loaded; a whole-snapshot replace in the "
+                "engine is the follow-up)")
+    return ENGINE_GAP
+
+
 def _map(cur, rows):
     boundaries = load_boundaries(cur)
     try:
@@ -1811,9 +1840,11 @@ def _run_snapshot(args, conn, cur, spec, base, ready, held, as_at, path,
         {"records": prev} if prev is not None else None)
     acked = ""
     if action == "recheck":
-        if {r["location_id"] for r in prev} != {r["location_id"]
-                                                for r in records}:
-            problems.append(ENGINE_GAP)
+        held_ids = {r["location_id"] for r in prev}
+        new_ids = {r["location_id"] for r in records}
+        if held_ids != new_ids:
+            problems.append(set_change_reason(
+                held_ids, new_ids, tip_unresolved_ids(cur, spec, as_at)))
         zn = zero_null_cells(prev, records)
         if zn:
             msg = (f"{len(zn)} cell(s) go from 0 to NULL or NULL to 0, e.g. "

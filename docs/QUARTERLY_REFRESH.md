@@ -648,6 +648,15 @@ levels do not go on the demand map). No W1 run or map refresh is needed after
 an S18 load, including after `refresh-latest --commit`. If a future source or
 export starts to read it, this paragraph needs changing.
 
+**Text rule.** Repeated spaces in a text cell collapse to one (ODS `<text:s/>`),
+as in the retired loader; this is deliberate, so held rows and joins stay stable.
+
+**Rechecks of July, August and September 2026 are refused.** Location
+1-28257167158 is kept unresolved in those snapshots as loaded but postcodes.io
+now resolves it, so the set differs because the mapping changed, not the file.
+The held editions stay as loaded; do nothing unless CQC reissues one of those
+files, which needs the engine's whole-snapshot replace first.
+
 **Never run the old scripts.** `scripts/historical/s18_pipr_fetch.py`,
 `s18_pipr_transform.py`, `s18_pipr_load.py` and `s18_pipr_verify.py` upserted
 rows in place (`ON CONFLICT DO UPDATE`) from 2026-07-12 until commit ab14ef9
@@ -766,9 +775,11 @@ the month; the page label can be a day after the file's own date):
 **Never run the old scripts.** `scripts/historical/s11_cqc_fetch.py`,
 `s11_cqc_process.py`, `s11_cqc_map.py`, `s11_cqc_load.py` and `s11_cqc_verify.py`
 now stop with a RETIRED message. The load step upserted with `INSERT ... ON
-CONFLICT (location_id) DO UPDATE`, so each new file overwrote every location's
-previous snapshot (the July and August 2026 snapshots survive only in the
-files, and were rebuilt from them on 2026-10-09); the map step wrote
+CONFLICT (location_id) DO UPDATE`, so each new file replaced the row of every
+location it contained (locations that dropped out of a file kept their earlier
+values). The July and August 2026 snapshots were rebuilt from the files on
+2026-10-09, and the residue rows (128 July, 108 August) also remain in
+`cqc_locations_legacy`; the map step wrote
 `cqc_unresolved_locations` on every run with no preview; the fetch step
 overwrote a same-named download and took the date from the file name.
 

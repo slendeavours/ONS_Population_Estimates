@@ -612,13 +612,19 @@ SOURCES = [
             "can appear late, so a later snapshot can correct the state an "
             "earlier one showed). revises_back_series is left unset because a new file "
             "does not restate an older one. If CQC reissues a file for a "
-            "date already held, load --recheck stores it as the next "
-            "edition in cqc_location_snapshots_editions and every file "
+            "date already held with an unchanged location set, load --recheck "
+            "stores it as the next edition (a changed set is refused by the "
+            "engine; a recheck of July, August or September 2026 is refused "
+            "because 1-28257167158 is kept unresolved there as loaded but now "
+            "resolves via postcodes.io, so the held editions stay as loaded) "
+            "in cqc_location_snapshots_editions and every file "
             "checked is recorded in cqc_location_snapshots_editions_file_"
             "checks. The old loader upserted each location in place (ON "
-            "CONFLICT (location_id) DO UPDATE), so the July and August 2026 "
-            "snapshots were overwritten; they were rebuilt on 2026-10-09 "
-            "from the files on disk. Record: "
+            "CONFLICT (location_id) DO UPDATE): each location in a new file "
+            "replaced its row, and locations that dropped out kept earlier "
+            "values. The July and August 2026 snapshots were rebuilt on "
+            "2026-10-09 from the files on disk; the residue rows (128 July, "
+            "108 August) also remain in cqc_locations_legacy. Record: "
             "docs/decisions/2026-10-09-s11-editions-first-load.md."),
         source_name="CQC Care directory with filters",
         publisher="CQC",
@@ -643,7 +649,10 @@ SOURCES = [
             "xml.etree.iterparse. An older file than held is refused "
             "(also with --file) without --allow-older-file. is_active in "
             "the cqc_locations view means present in the latest snapshot, "
-            "not deregistered. The old scripts (s11_cqc_fetch, process, "
+            "not deregistered. Text rule: repeated spaces in text cells collapse "
+            "to one (ODS text:s is dropped, as in the old loader; kept so held "
+            "rows and joins stay stable), so 41 July and 43 October names "
+            "differ from the raw file only by that. The old scripts (s11_cqc_fetch, process, "
             "map, load, verify) are archived in scripts/historical/ and "
             "must not be run."),
         cadence="monthly", cadence_months=1,

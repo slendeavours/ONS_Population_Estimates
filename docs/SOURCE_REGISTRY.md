@@ -296,7 +296,12 @@ snapshots, not revisions: each monthly file is a dated copy of the register
 snapshot and kept for good, and a newer file does not restate an older one. A
 published file has not been seen reissued, so `revises_back_series` is left
 NULL; if CQC did reissue a file for a date already held, `load --recheck`
-stores it as the next edition. Every file read is recorded in the ledger
+stores it as the next edition, unless it adds or drops locations (the engine
+refuses a changed location set). A recheck of the July, August or September
+2026 snapshots is refused for that reason: location 1-28257167158 (LN5 9WQ) is
+kept unresolved in those snapshots as loaded, but postcodes.io now resolves it,
+so the mapping changes the set. The held editions stay as loaded; a genuine
+reissue of one of those dates needs the engine's whole-snapshot replace first. Every file read is recorded in the ledger
 `cqc_location_snapshots_editions_file_checks`, so an unchanged file is not
 downloaded again. The old loader upserted each location in place, so the July
 and August 2026 snapshots were overwritten and were rebuilt from the files on

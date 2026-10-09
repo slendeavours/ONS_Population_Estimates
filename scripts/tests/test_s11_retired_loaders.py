@@ -28,6 +28,9 @@ class RetiredS11(unittest.TestCase):
                 self.assertIn("ON CONFLICT (location_id) DO UPDATE", r.stderr)
                 self.assertIn("loaded_at", r.stderr)
                 self.assertIn("July and August 2026", r.stderr)
+                self.assertIn("cqc_locations_legacy", r.stderr)
+                self.assertIn("kept their earlier values", r.stderr)
+                self.assertNotIn("survive only", r.stderr)
                 self.assertNotIn("ModuleNotFoundError", r.stderr)
                 self.assertNotIn("Traceback", r.stderr)
 

@@ -15,9 +15,10 @@ import sys
 
 _RETIRED = (
     'RETIRED: use scripts/s11_cqc_editions.py. The old S11 load step upserted with INSERT ... '
-    'ON CONFLICT (location_id) DO UPDATE, setting loaded_at, so each new file overwrote every '
-    "location's previous snapshot; the July and August 2026 snapshots survive only in the files "
-    'on disk (rebuilt as snapshots on 2026-10-09). This script checked the table that upsert '
+    'ON CONFLICT (location_id) DO UPDATE, setting loaded_at, so each new file replaced the row of '
+    "every location it contained (locations that dropped out of a file kept their earlier values); "
+    'the July and August 2026 snapshots were rebuilt from the files on 2026-10-09, and the residue rows '
+    '(128 July, 108 August) also remain in cqc_locations_legacy. This script checked the table that upsert '
     'left; use scripts/s11_cqc_editions_verify.py.'
 )
 if __name__ == "__main__":
