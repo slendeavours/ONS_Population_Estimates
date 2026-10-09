@@ -166,9 +166,15 @@ DATASET_FORM = {
            "All 27 DRD monthly webfiles in data/raw/s9a_drd (April 2024 to "
            "July 2026) carry E08000016/19 only (UTLA codes)."),
     "9b": ("mixed",
-           "MHSDS MHS26 uses E08000016/19 to May 2025 and E08000038/39 from "
-           "June 2025 (docs/S9_BUILD_SUMMARY.md; the 2026-08-14 scan found "
-           "nhs_mh_crfd split 52/24 before resolution). No file on disk."),
+           "The form is per file, not per month boundary (read 2026-10-09 "
+           "from the files in data/raw/s9b_mhsds and scripts/verify/src, "
+           "and the March-June 2025 Performance files): Performance files "
+           "carry E08000016/19 to May 2025 and E08000038/39 from June 2025; "
+           "the year-end Final files carry E08000016/19 for April 2023 to "
+           "March 2025 and E08000038/39 from April 2025 (FY2025-26), so a "
+           "Final file for April or May 2025 differs in form from the "
+           "Performance file it replaces. No file carries both forms of "
+           "an area."),
 }
 
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?")
