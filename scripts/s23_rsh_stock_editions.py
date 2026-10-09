@@ -17,7 +17,7 @@ period is (rp_code, lad24cd), so a revision can add or drop providers), the
 publisher's own LA subtotal rows and region rows.
 
 History (so the wording here stays truthful): the old build
-(scripts/s23_rsh_stock_build.py, committed in ad8e349) upserted by design
+(scripts/historical/s23_rsh_stock_build.py, committed in ad8e349) upserted by design
 (INSERT ... ON CONFLICT DO UPDATE ... loaded_at = now()). The held data comes
 from its single run of 2026-08-14 21:24 UTC (pipeline_run_log id 95,
 10,171 rows) and has not been rewritten since; there was no earlier S23

@@ -39,20 +39,40 @@ subtotals for all 296 authorities.
 What LA_SHHOP is, and the caveat that travels with it
 -----------------------------------------------------
 SHHOP is supported housing AND housing for older people, reported as one
-figure. RSH does not split them at local authority level. A large share of it
-is sheltered and retirement housing rather than the supported accommodation
-this pipeline is about, so the number is an upper bound on the relevant stock
-and must not be read as a count of exempt-accommodation-style provision. That
-caveat is recorded on the registry row, not just here.
+figure. RSH does not split them at local authority level (the look-up tool
+labels the column "Supported housing/housing for older people"). The earlier
+text here said a large share of it is sheltered and retirement housing and
+that the figure overstates supported provision by a probably large margin;
+the publisher's notes do not say how the figure splits, so that claim was
+removed on 2026-10-09. See docs/s23_rsh_stock_source.md for what the
+publisher does say.
 
-Usage:
+Retired on 2026-10-09: this script was run once, on 2026-08-14 (run-log id
+95), and is replaced by scripts/s23_rsh_stock_editions.py. See the RETIRED
+message below.
+
+Usage (historical; the script now stops at once):
     python scripts/s23_rsh_stock_build.py --discover
     python scripts/s23_rsh_stock_build.py --load
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s23_rsh_stock_editions.py. The old S23 build (s23_rsh_stock_build.py and '
+    's23_rsh_stock_verify.py) was loaded once, on 2026-08-14 (run-log id 95, 10,171 rows). It '
+    'upserted with INSERT ... ON CONFLICT DO UPDATE, setting loaded_at, so a second run would have '
+    'overwritten the held rows; nothing was overwritten in practice, because no earlier S23 load '
+    'existed and the held rows carry one loaded_at. This is the build: --load created the table and '
+    'wrote with no preview and no --commit, kept a same-named raw download whatever its content, and '
+    'read the edition from one hard-coded release page (the 2024 to 2025 one). Its num() read a '
+    'blank stock cell as 0 (and rounded a non-integer); that never fired on the 2025 file. Use '
+    'scripts/s23_rsh_stock_editions.py (load, refresh-latest, status) instead.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import argparse
 import json
 import re
-import sys
 import urllib.request
 from pathlib import Path
 

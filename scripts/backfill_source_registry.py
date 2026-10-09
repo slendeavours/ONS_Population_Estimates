@@ -1361,74 +1361,154 @@ SOURCES = [
         publisher="Regulator of Social Housing",
         series_name=("Registered provider social housing stock and rents in "
                      "England, registered providers look-up tool"),
+        # The collection, not a release page: the per-year page URL carries
+        # the years and changes every year.
         landing_page_url=(
-            "https://www.gov.uk/government/statistics/registered-provider-"
-            "social-housing-stock-and-rents-in-england-2024-to-2025"),
+            "https://www.gov.uk/government/collections/registered-provider-"
+            "social-housing-stock-and-rents-in-england"),
         acquisition_method="landing_page",
         api_endpoint="https://www.gov.uk/api/content",
         auth_required=False,
         known_gotchas=(
-            "The local authority breakdown is not published as a data file. It "
-            "is the STOCK_BY_LA sheet inside the look-up tool workbook, which "
-            "exists to drive the workbook's own search box, so it is an "
-            "internal sheet that could be renamed without notice. The build "
-            "asserts the exact header set and stops if it changes. "
-            "The same sheet mixes three grains - provider rows, 296 LA subtotal "
-            "rows (RP_Type = 'LA') and 9 regional rows - and a load that does "
-            "not filter on RP_Type double-counts by roughly three times. "
-            "The release landing page URL carries the edition years, so it "
-            "changes every year and cannot be treated as stable."),
+            "The local authority breakdown is not published as a data file. "
+            "It is the STOCK_BY_LA sheet inside the look-up tool workbook, "
+            "which exists to drive the workbook's own search box, so it is an "
+            "internal sheet that could be renamed without notice. The loader "
+            "asserts the exact header set and stops, naming what it saw, if "
+            "it changes; the 2024 tool already had different headers "
+            "(prefixed stock columns) and a different layout, so the 2026 "
+            "file may change too. "
+            "The same sheet mixes three grains - provider rows (RP_Type "
+            "Large, Small or LARP), 296 LA subtotal rows (RP_Type LA) and 9 "
+            "regional rows - and a load that does not filter on RP_Type "
+            "counts roughly three times over. The key inside a stock date is "
+            "(provider, authority), so a reissued file can add or drop "
+            "providers. "
+            "The release page URL carries the edition years, so it changes "
+            "every year: the loader finds the newest release through the "
+            "GOV.UK collection and reads the file's identity (title year, "
+            "source line, publication month, version, Version History) from "
+            "the workbook itself. A GOV.UK attachment can be reissued under a "
+            "new media id with only the workbook's Version History saying so "
+            "(the 2025 additional tables changed three times that way), so "
+            "the file ledger keys on the final URL and the sha256."),
         cadence="annual", cadence_months=12, expected_lag_days=211,
         publication_window="Autumn each year",
         target_table="rsh_rp_stock_by_la", geography_level="LAD24",
-        join_path="lad24cd resolved through la_code_lookup",
-        build_script_path="scripts/s23_rsh_stock_build.py",
+        join_path=("Barnsley and Sheffield are E08000016 and E08000019 in "
+                   "the 2025 file (geography dataset form old for 23). The "
+                   "2026 file describes 31 March 2026, after the 1 April 2025 "
+                   "change, so it may carry E08000038 and E08000039: the load "
+                   "then stops under rule 4.5 until the declaration is "
+                   "changed deliberately, with the evidence. Codes resolve "
+                   "through scripts/geography.py; a code outside la_boundaries "
+                   "and the recode rows stops the load."),
+        build_script_path="scripts/s23_rsh_stock_editions.py",
         source_doc_path="docs/s23_rsh_stock_source.md",
-        node_docs_path="docs/nodes/s23_node1_resolve_edition.md",
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s23_rsh_stock_editions_verify.py",
+            "checks": 21,
+            "first_load": "2026-10-09",
+            "migration_proof": ("migrate-legacy: the loader's parser on the "
+                                "held 2025 look-up tool (version 1.1) "
+                                "reproduced every held row and every "
+                                "compared cell (10,171 rows, 122,052 cells), "
+                                "0 differences; provider rows sum to the 296 "
+                                "authority subtotal rows on all five "
+                                "measures, the subtotals to the 9 regions "
+                                "and the regions to the England totals"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an identity, header, value, reconciliation or "
+                     "geography failure or an older file, and rejects a "
+                     "stock date that breaks a change-size threshold"),
+            "retired": ("the old seven-gate suite (s23_rsh_stock_verify.py) "
+                        "is retired; its single load's run-log row 95 keeps "
+                        "status success")},
+        node_docs_path="docs/nodes/s23_node1..s23_node6",
         metrics=["Supported housing and housing for older people units per "
                  "provider per LA",
                  "General needs self-contained units and bedspaces",
                  "Low cost home ownership units",
                  "Total owned social stock"],
         caveats=[
-            "LA_SHHOP combines supported housing with housing for older "
-            "people and RSH does not split them at local authority level. A "
-            "large share is sheltered and retirement housing, so the figure is "
-            "an upper bound on supported provision of the kind this pipeline "
-            "is about and must not be read as a count of exempt-accommodation "
-            "style units.",
+            "The column LA_SHHOP is labelled \"Supported housing/housing for "
+            "older people\" in the look-up tool and is one figure: the "
+            "publisher does not split it at local authority level. The "
+            "national additional Table 1.1 gives supported housing as two "
+            "lines, social rent 484,312 and Affordable Rent 22,897 (507,209, "
+            "weighted); whether the tool's combined label and that table "
+            "cover exactly the same units is not stated in the publisher's "
+            "notes, and neither says how the figure divides between "
+            "supported housing and housing for older people. Read the column "
+            "under the tool's label, not as a count of supported housing "
+            "alone. The glossary adds that a unit counts as supported "
+            "housing only if it meets the definition in the Rent Policy "
+            "Statement and that a tenant receiving support in their home "
+            "does not make it supported housing.",
             "Stock date and publication date are different and both are "
             "stored. The return is a snapshot at 31 March and publication "
-            "follows roughly seven months later, so the newest available "
-            "figure is up to nineteen months old before the next one lands.",
-            "Loaded rows are unweighted. The publisher's headline national "
-            "figures in the additional tables are weighted to impute for small "
-            "providers filing the short SDR form, so they are slightly higher: "
-            "4,533,055 unweighted against 4,546,653 weighted for total social "
-            "stock at 31 March 2025.",
-            "Stock is recorded where it is owned, not where it is managed. A "
-            "provider owning stock in an area is not evidence that it operates "
-            "there."],
+            "follows roughly seven months later (stock at 31 March 2025, "
+            "published 28 October 2025), so the newest available figure is "
+            "up to nineteen months old before the next one lands.",
+            "Loaded rows are unweighted: the tool's Area Summary says its "
+            "tables comprise all LARPs and PRPs, unweighted. The publisher's "
+            "national tables (additional Tables 1.1 and 1.4) weight PRP data "
+            "for non-response (data quality note: SDR non-response 3.7% in "
+            "2025, all of it providers owning fewer than 1,000 units), so "
+            "their totals are higher: 4,533,055 unweighted against 4,546,653 "
+            "weighted for total social stock at 31 March 2025. Additional "
+            "Table 1.20 gives weighted owned social stock by local authority "
+            "(its 296 values sum to 4,537,377, equal to neither).",
+            "Low cost home ownership: the tool's Area Summary says LCHO unit "
+            "counts are for LARPs and Large PRPs only. All 2,738 Short Form "
+            "(Small PRP) rows hold 0 in that column, which is not evidence "
+            "that those providers own none.",
+            "Stock is recorded where it is owned (the glossary: the owner "
+            "holds the freehold or a leasehold interest and has the direct "
+            "legal relationship with the occupants), not where it is "
+            "managed. A provider owning stock in an area is not evidence "
+            "that it operates there."],
         completeness_note=(
             "296 of 296 authorities, 10,171 provider-by-authority rows for the "
-            "2024 to 2025 edition, stock at 31 March 2025. 504,902 supported "
-            "housing and older people units nationally; 295 of 296 authorities "
-            "carry some. Verified against the publisher's own 296 LA subtotal "
-            "rows, which reconcile exactly on all five measures. "
-            "SDR and LADR are held in one table with a provider_type column "
-            "because the publisher already merges them into this sheet with an "
-            "identical column set. The first direct supply-side measure in the "
-            "pipeline: S11 counts CQC locations and S8 counts HB caseload, "
-            "both indirect. Not yet wired into staging_la_signals."),
+            "2024 to 2025 release (look-up tool version 1.1, November 2025), "
+            "stock at 31 March 2025. 504,902 supported housing and older "
+            "people units nationally; 295 of 296 authorities carry some. "
+            "Verified inside the file against the publisher's own 296 LA "
+            "subtotal rows, which reconcile exactly on all five measures. "
+            "Held as edition 1 of rsh_rp_stock_by_la_editions (the live table "
+            "is the latest-edition layer), proved equal to a re-read of the "
+            "held file. Only the 2025 look-up tool is held: the 2024 tool "
+            "has a different layout and is not loaded. SDR and LADR are held "
+            "in one table with a provider_type column because the publisher "
+            "already merges them into this sheet with an identical column "
+            "set. The first direct supply-side measure in the pipeline: S11 "
+            "counts CQC locations and S8 counts HB caseload, both indirect. "
+            "Not a W1 or map input."),
         latest_period_loaded="2025-03-31",
         revises_back_series=True,
         revision_note=(
-            "Established from the publisher's own technical notes: RSH states "
-            "it will republish the statistics in the April of the year "
-            "following initial publication where aggregate changes made by "
-            "providers require a major revision, and makes non-scheduled "
-            "corrections where a substantial error or methodological issue is "
-            "identified."),
+            "The publisher's technical notes: no scheduled revisions; it "
+            "will republish in the April of the year following initial "
+            "publication if the aggregate changes made by providers require "
+            "a major revision, and makes non-scheduled corrections for "
+            "substantial errors \"as soon as is practical\", normally to the "
+            "previous year's data only. No April 2026 republication has "
+            "happened (the release page's change history says only \"First "
+            "published.\"). A look-up tool can be reissued: the 2025 tool is "
+            "version 1.1 (November 2025; version history \"Corrected an "
+            "issue which affected England stock figures only\"); version 1.0 "
+            "(October 2025) is not on the release page or in the Wayback "
+            "Machine, so that change is not measured. The 2025 release "
+            "revised LARP stock for 2020 to 2024 (headline figures, under "
+            "0.4% of total stock; earlier years' tools were not reissued). A "
+            "held stock date can therefore change through a reissued tool: "
+            "it is stored as the next edition and reaches the live table "
+            "only through refresh-latest --commit. The old build "
+            "(scripts/historical/s23_rsh_stock_build.py) upserted by design, "
+            "but its load ran once, on 2026-08-14 (run-log id 95), and "
+            "nothing was overwritten in practice. Record: "
+            "docs/decisions/2026-10-09-s23-editions-first-load.md."),
         detected_period_type="reference_period",
         # Registered supported provision is the direct comparator for a
         # supported housing scheme (HSS); for UCWS it is a different model, but

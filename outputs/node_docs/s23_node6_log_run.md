@@ -1,5 +1,7 @@
 # S23 Node 6: Log the Run
 
+> **Superseded 2026-10-09.** The old S23 scripts this note describes (`s23_rsh_stock_build.py`, `s23_rsh_stock_verify.py`) were loaded once, on 2026-08-14 (run-log id 95), and are retired to `scripts/historical/`, where they stop with a RETIRED message. S23 is now loaded by `scripts/s23_rsh_stock_editions.py`, which finds the newest release itself, reads the file's identity from the workbook and keeps each file's statement about each stock date as an edition (`rsh_rp_stock_by_la_editions`). The source note is `docs/s23_rsh_stock_source.md`. The text below is left as written and describes the old method.
+
 - **Type:** Postgres INSERT
 - **Purpose:** Record the load in `pipeline_run_log` with `source_code` populated so `vw_source_due` resolves S23 by code.
 - **Credential:** `PG_USER` / `PG_PASSWORD` via `scripts/_db.py`.
