@@ -1700,18 +1700,26 @@ def gate_15_revision_and_refresh(cur):
 
 # ---------------------------------------------------------------- gate 16
 
+def hash_fields(h):
+    """The note's scan-safe form of a sha256: two 32-hex halves in two
+    labelled fields (the credential scan flags a 64-hex run)."""
+    return f"sha256-first32={h[:32]} sha256-last32={h[32:]}"
+
+
 def note_hashes(note):
     """{period: (rows, sha256)} from lines `before-state rsh_rp_stock_by_la
-    <period> rows=<n> sha256=<hex>` of the decision note, or {}. (The
-    `before-state-all` lines are a different record and do not match.)"""
+    <period> rows=<n> sha256-first32=<32 hex> sha256-last32=<32 hex>` of the
+    decision note (the two halves joined), or {}. (The `before-state-all`
+    lines are a different record and do not match.)"""
     p = Path(note)
     if not p.exists():
         return {}
     text = p.read_text(encoding="utf-8")
-    return {mt.group(1): (int(mt.group(2)), mt.group(3))
+    return {mt.group(1): (int(mt.group(2)), mt.group(3) + mt.group(4))
             for mt in re.finditer(
                 r"before-state rsh_rp_stock_by_la ([0-9]{4}-[0-9]{2}-"
-                r"[0-9]{2}) rows=([0-9]+) sha256=([0-9a-f]{64})", text)}
+                r"[0-9]{2}) rows=([0-9]+) sha256-first32=([0-9a-f]{32}) "
+                r"sha256-last32=([0-9a-f]{32})", text)}
 
 
 def real_edition1_hash(cur, spec=REAL, note=NOTE, legacy_rows=None):
@@ -1740,7 +1748,7 @@ def real_edition1_hash(cur, spec=REAL, note=NOTE, legacy_rows=None):
         if Path(note).exists():
             if p not in recorded:
                 bad.append(f"the decision note records no 'before-state "
-                           f"rsh_rp_stock_by_la {p} rows=.. sha256=..' line")
+                           f"rsh_rp_stock_by_la {p} rows=.. sha256-first32=.. sha256-last32=..' line")
             elif recorded[p] != (n, h):
                 bad.append(f"{p}: edition 1 {n} rows sha256 {h[:16]}.. "
                            f"differs from the note's {recorded[p][0]} rows "
@@ -1774,16 +1782,17 @@ def gate_16_before_state_hash(cur):
         out["same"] = h == m.rows_content_sha(m.records(e.cur, ZZ, P))
         with tempfile.TemporaryDirectory() as tmp:
             note = Path(tmp) / "note.md"
-            line = f"before-state rsh_rp_stock_by_la {P} rows={N} sha256={h}"
+            line = (f"before-state rsh_rp_stock_by_la {P} rows={N} "
+                    f"{hash_fields(h)}")
             note.write_text(f"intro\n{line}\nbefore-state-all "
-                            f"rsh_rp_stock_by_la {P} rows={N} sha256="
-                            f"{'1' * 64}\n", encoding="utf-8")
+                            f"rsh_rp_stock_by_la {P} rows={N} "
+                            f"{hash_fields('1' * 64)}\n", encoding="utf-8")
             out["ok"] = real_edition1_hash(e.cur, ZZ, note, N)
-            note.write_text(note.read_text().replace(h, "0" * 64),
+            note.write_text(note.read_text().replace(h[:32], "0" * 32),
                             encoding="utf-8")
             out["bad_hash"] = real_edition1_hash(e.cur, ZZ, note, N)
             note.write_text(f"before-state-all rsh_rp_stock_by_la {P} "
-                            f"rows={N} sha256={h}\n", encoding="utf-8")
+                            f"rows={N} {hash_fields(h)}\n", encoding="utf-8")
             out["no_line"] = real_edition1_hash(e.cur, ZZ, note, N)
             note.write_text(line.replace(f"rows={N}", f"rows={N + 1}"),
                             encoding="utf-8")

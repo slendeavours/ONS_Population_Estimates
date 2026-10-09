@@ -212,8 +212,8 @@ class VerifyGates(unittest.TestCase):
         note = Path(self.tmpdir.name) / "n.md"
         h = "ab" * 32
         note.write_text(f"before-state rsh_rp_stock_by_la {P} rows=10171 "
-                        f"sha256={h}\nbefore-state-all rsh_rp_stock_by_la "
-                        f"{P} rows=10171 sha256={'cd' * 32}\n",
+                        f"{v.hash_fields(h)}\nbefore-state-all rsh_rp_stock_by_la "
+                        f"{P} rows=10171 {v.hash_fields('cd' * 32)}\n",
                         encoding="utf-8")
         self.assertEqual(v.note_hashes(note), {P: (10171, h)})
         self.assertEqual(v.note_hashes(Path(self.tmpdir.name) / "none"), {})
@@ -230,15 +230,16 @@ class VerifyGates(unittest.TestCase):
         self.migrated()
         h = m.rows_content_sha(m.records(self.cur, ZZ, P, 1))
         note = Path(self.tmpdir.name) / "n.md"
-        line = f"before-state rsh_rp_stock_by_la {P} rows={N} sha256={h}"
+        line = (f"before-state rsh_rp_stock_by_la {P} rows={N} "
+                f"{v.hash_fields(h)}")
         note.write_text(line + "\n", encoding="utf-8")
         ok, detail = v.real_edition1_hash(self.cur, ZZ, note, N)
         self.assertTrue(ok, detail)
         for text, needle in (
-                (line.replace(h, "0" * 64), "differs"),
+                (line.replace(h[:32], "0" * 32), "differs"),
                 (line.replace(f"rows={N}", f"rows={N + 1}"), "differs"),
                 (f"before-state-all rsh_rp_stock_by_la {P} rows={N} "
-                 f"sha256={h}", "records no"),
+                 f"{v.hash_fields(h)}", "records no"),
                 (line + "\n" + line.replace(P, "2024-03-31"),
                  "no edition 1 as loaded"),
                 ("", "records no")):

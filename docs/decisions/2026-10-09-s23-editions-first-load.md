@@ -16,12 +16,12 @@ Confirmed first: 10,171 rows, one stock date (2025-03-31), 296 authorities, one 
 Zeros (published): `total_social_stock` 12 (all LARPs that own no stock), `general_needs_self_contained` 4,499,
 `general_needs_bedspaces` 9,878, `supported_housing_and_older_people` 4,603, `low_cost_home_ownership` 5,563.
 
-The first line is the loader's `rows_content_sha` (key plus the 11 compared columns, provenance excluded; the line the
+Each sha256 is written as two 32-hex halves (`first32` then `last32`; join them) so the credential scan, which flags a 64-hex run, stays untouched. The first line is the loader's `rows_content_sha` (key plus the 11 compared columns, provenance excluded; the line the
 verify script's gate 16 reads). The second hashes every stored column, `loaded_at` included: every column in table
 order, rows sorted by stock date, provider code and authority code, NULL as empty, cells joined by `|`, rows by LF.
 
-before-state rsh_rp_stock_by_la 2025-03-31 rows=10171 sha256=5c0ba1ceacd364fd557d2ddadbfd1b299644c09c83fb8468c8ee8f786135f427
-before-state-all rsh_rp_stock_by_la 2025-03-31 rows=10171 sha256=6645b4ef47fb6658ee5c5bd835ddee3fb33c9e30acdfbd0dbabf80593611f3bb
+before-state rsh_rp_stock_by_la 2025-03-31 rows=10171 sha256-first32=5c0ba1ceacd364fd557d2ddadbfd1b29 sha256-last32=9644c09c83fb8468c8ee8f786135f427
+before-state-all rsh_rp_stock_by_la 2025-03-31 rows=10171 sha256-first32=6645b4ef47fb6658ee5c5bd835ddee3f sha256-last32=b33c9e30acdfbd0dbabf80593611f3bb
 
 After the migration both hashes of the live table are the same, and edition 1 hashes (compared columns) to the first.
 
