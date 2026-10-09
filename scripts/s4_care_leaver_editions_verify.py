@@ -1447,7 +1447,8 @@ def gate_11_stop_conditions(cur):
 
 def gate_12_one_transaction(cur):
     name = ("a new year in one transaction (edition 1, live rows and two "
-            "ledger rows); a failing live or ledger write rolls all back")
+            "ledger rows); a failing live or ledger write rolls all back; a "
+            "year that failed part-way is retried")
     problems = []
 
     def body(e):
@@ -1482,11 +1483,40 @@ def gate_12_one_transaction(cur):
                             f"two ledger rows together: {text[-150:]}")
         if not m.status(e.cur, ZZ)["ok"]:
             problems.append("status not clean after the load")
+
+    def multi(e):
+        # two new years; the second fails after the first is committed;
+        # the rerun must read the files again and store it (the pair is in
+        # the ledger for the first year only), the first not duplicated
+        e.release("2025", (2024, 2025), (2024, 2025))
+        e.latest = "2025"
+        real = m.insert_live
+
+        def ins(c, profile, period, records):
+            if period == "2025":
+                raise RuntimeError("boom")
+            return real(c, profile, period, records)
+        with mock.patch.object(m, "insert_live", side_effect=ins):
+            rc, text, _, _ = e.run_main(["load", "--commit"])
+        if rc != 1 or tl.editions(e.cur, 2025) or                 tl.editions(e.cur, 2024) != [(1, None, 2 * N)]:
+            problems.append(f"multi-year failure: rc {rc}, 2025 "
+                            f"{tl.editions(e.cur, 2025)}")
+        led24 = tl.ledger(e.cur, 2024)
+        rc, text, _, logged = e.run_main(["load", "--commit"])
+        if rc != 0 or "nothing parsed" in text or                 tl.editions(e.cur, 2025) != [(1, None, 2 * N)] or                 tl.count(e.cur, ZL, "WHERE reporting_year = 2025") != 2 * N                 or tl.editions(e.cur, 2024) != [(1, None, 2 * N)] or                 tl.ledger(e.cur, 2024) != led24 or not logged.called:
+            problems.append(f"the rerun after a part-way failure did not "
+                            f"store the failed year once: {text[-150:]}")
+        rc, text, _, _ = e.run_main(["load", "--commit"])
+        if rc != 0 or "nothing parsed" not in text:
+            problems.append("a complete rerun parsed the files again")
     scenario(cur, body)
+    scenario(cur, multi, seed=False)
     report(12, name, not problems,
            "edition 1, 2N live rows and two ledger rows stored together; a "
            "failing live insert and a failing ledger write each roll all "
-           "of them back" if not problems else "; ".join(problems[:3]))
+           "of them back; a two-year load failing in its second year is "
+           "retried on the rerun (first year not duplicated)"
+           if not problems else "; ".join(problems[:3]))
 
 
 # --------------------------------------------------------------- gate 13

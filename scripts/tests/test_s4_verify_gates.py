@@ -316,6 +316,32 @@ class VerifyGates(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("no file", detail)
 
+    def run_gate(self, gate):
+        before, lines = len(v.RESULTS), len(v.OUTPUT)
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            gate(self.cur)
+        ok = v.RESULTS[before:]
+        del v.RESULTS[before:]
+        del v.OUTPUT[lines:]
+        return ok, out.getvalue()
+
+    def test_gate_12_retries_a_year_that_failed_part_way(self):
+        ok, text = self.run_gate(v.gate_12_one_transaction)
+        self.assertEqual(ok, [True], text)
+        self.assertIn("retried on the rerun", text)
+        # the old skip (the pair in the ledger for SOME year) fails the gate
+
+        def old(metas, src, checked, tips, *, allow_older=False):
+            seen = {}
+            for y, pairs in checked.items():
+                for pr in pairs:
+                    seen.setdefault(pr, set()).add(y)
+            return [seen.get((x["source"], x["sha"])) for x in metas]
+        with mock.patch.object(m, "ledger_complete", side_effect=old):
+            ok, text = self.run_gate(v.gate_12_one_transaction)
+        self.assertEqual(ok, [False], text)
+        self.assertIn("did not store the failed year once", text)
+
 
 class Pure(unittest.TestCase):
     def test_gate_list_is_numbered_in_order(self):

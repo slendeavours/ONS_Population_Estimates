@@ -343,6 +343,92 @@ class LoaderDB(Fixture):
                                    "WHERE reporting_year = 2025"), 0)
             logged.assert_not_called()
 
+    def fail_year(self, year):
+        """insert_live failing for one year only."""
+        real = m.insert_live
+
+        def ins(cur, profile, period, records):
+            if period == str(year):
+                raise RuntimeError("boom")
+            return real(cur, profile, period, records)
+        return mock.patch.object(m, "insert_live", side_effect=ins)
+
+    def test_a_year_that_failed_part_way_is_retried_on_the_rerun(self):
+        with rolled_back(self.conn) as cur:
+            # two new years; the second fails after the first is committed
+            self.release("2025", (2024, 2025), (2024, 2025))
+            self.latest = "2025"
+            with self.fail_year(2025):
+                rc, text, _, logged = self.run_main(cur, ["load", "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("2025: FAILED", text)
+            self.assertEqual(editions(cur, 2024), [(1, None, 2 * N)])
+            self.assertEqual(editions(cur, 2025), [])
+            self.assertEqual(len(ledger(cur, 2024)), 2)
+            logged.assert_not_called()
+            # the pair is in the ledger for 2024 only: the rerun reads the
+            # files and stores 2025; 2024 is not compared or stored again
+            real = m.read_file
+            calls = []
+            with mock.patch.object(m, "read_file",
+                                   side_effect=lambda q: calls.append(q)
+                                   or real(q)):
+                rc, text, _, logged = self.run_main(cur, ["load", "--commit"])
+            self.assertEqual(rc, 0, text)
+            self.assertEqual(len(calls), 2)
+            self.assertIn("2024 (checked", text)
+            self.assertIn("2025: new", text)
+            self.assertEqual(editions(cur, 2025), [(1, None, 2 * N)])
+            self.assertEqual(count(cur, "zz_s4_live",
+                                   "WHERE reporting_year = 2025"), 2 * N)
+            self.assertEqual(editions(cur, 2024), [(1, None, 2 * N)])
+            self.assertEqual(count(cur, "zz_s4_live",
+                                   "WHERE reporting_year = 2024"), 2 * N)
+            self.assertEqual(len(ledger(cur, 2024)), 2)
+            self.assertEqual(len(ledger(cur, 2025)), 2)
+            logged.assert_called_once()
+            self.assertTrue(m.status(cur, ZZ)["ok"])
+            # now complete: nothing parsed
+            calls.clear()
+            with mock.patch.object(m, "read_file",
+                                   side_effect=lambda q: calls.append(q)
+                                   or real(q)):
+                rc, text, _, _ = self.run_main(cur, ["load", "--commit"])
+            self.assertEqual((rc, calls), (0, []), text)
+            self.assertIn("nothing parsed", text)
+
+    def test_a_rejected_year_is_retried_with_its_acknowledgement(self):
+        with rolled_back(self.conn) as cur:
+            zeros = {(CODES[2], 2023, a, c): "0"
+                     for a in ("17 to 18 years", "19 to 21 years")
+                     for c in ("Bed and breakfast", "Emergency accommodation",
+                               "No fixed abode/homeless")}
+            self.seed(cur, values17=zeros)
+            flip = dict(zeros)
+            flip[(CODES[2], 2023, "17 to 18 years", "Bed and breakfast")] = "c"
+            self.release("2025", range(2021, 2026), (2023, 2024, 2025),
+                         values17=flip)
+            self.latest = "2025"
+            rc, text, _, _ = self.run_main(cur, ["load", "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertEqual(editions(cur, 2025), [(1, None, 2 * N)])
+            before = {y: ledger(cur, y) for y in (2021, 2022, 2024, 2025)}
+            # preview of the retry writes nothing
+            rc, text, borrowed, _ = self.run_main(
+                cur, ["load", "--acknowledge", "2023"])
+            self.assertEqual(rc, 0, text)
+            self.assertIn("2023: revised", text)
+            self.assertEqual(borrowed.commits, 0)
+            self.assertEqual(editions(cur, 2023), [(1, None, 2 * N)])
+            rc, text, _, _ = self.run_main(
+                cur, ["load", "--commit", "--acknowledge", "2023"])
+            self.assertEqual(rc, 0, text)
+            self.assertEqual(editions(cur, 2023), [(1, None, 2 * N),
+                                                   (2, 1, 2 * N)])
+            self.assertEqual({y: ledger(cur, y)
+                              for y in (2021, 2022, 2024, 2025)}, before)
+            self.assertEqual(editions(cur, 2025), [(1, None, 2 * N)])
+
     def test_unchanged_recheck_records_the_ledger_only_on_commit(self):
         with rolled_back(self.conn) as cur:
             self.seed(cur)

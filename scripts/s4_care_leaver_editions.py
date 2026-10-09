@@ -1419,6 +1419,41 @@ def _sources(args, held) -> dict:
     return out
 
 
+def ledger_complete(metas, src, checked, tips, *, allow_older=False) -> list:
+    """Per file of the run: the years the ledger records its (source,
+    sha256) for, if that covers every year the file needs, else None. A
+    file needs each year of its dataset's timePeriodRange on the release's
+    page (unknown without the page: None, so the file is read and
+    plan_years decides per year), except a held year whose tip is from a
+    newer release (skipped as older, unless allow_older). So a multi-year
+    load that failed or was rejected part-way leaves the failed year
+    without a ledger row, and the rerun reads the files and retries it."""
+    seen = {}
+    for y, pairs in checked.items():
+        for pr in pairs:
+            seen.setdefault(pr, set()).add(y)
+    ranks = tip_ranks(tips, checked)
+    try:
+        rank = int(src["slug"])
+    except (TypeError, ValueError):
+        rank = None
+    out = []
+    for m in metas:
+        have = seen.get((m["source"], m["sha"]))
+        ds = (src.get("datasets") or {}).get(m["cohort"])
+        rng = (ds or {}).get("timePeriodRange") or {}
+        try:
+            need = set(range(int(rng["start"]), int(rng["end"]) + 1))
+        except (KeyError, TypeError, ValueError):
+            out.append(None)
+            continue
+        if not allow_older and rank is not None:
+            need = {y for y in need if not (ranks.get(y) is not None
+                                            and ranks[y] > rank)}
+        out.append(have if have and need <= have else None)
+    return out
+
+
 def tip_ranks(tips, checked) -> dict:
     """{held year: the newest release that stated it}: the tip edition's
     rank, or a later release whose file the ledger records for the year
@@ -1493,13 +1528,12 @@ def cmd_load(args) -> int:
                               "url": url, "sha": content_sha256(path)})
             if not metas:
                 halt("no file to read")
-            # a file pair already in the ledger is not parsed again
+            # a file pair already in the ledger for every year it covers is
+            # not parsed again (a year that failed or was rejected part-way
+            # has no ledger row, so the file is read and that year retried)
             if has_ed and args.recheck is None:
-                seen = {}
-                for y, pairs in checked.items():
-                    for pr in pairs:
-                        seen.setdefault(pr, set()).add(y)
-                yrs = [seen.get((m["source"], m["sha"])) for m in metas]
+                yrs = ledger_complete(metas, src, checked, tips,
+                                      allow_older=args.allow_older_file)
                 if all(yrs) and not (set().union(*yrs) & set(stranded)):
                     print("both files' (URL, sha256) are already in the "
                           "ledger for " + ", ".join(
@@ -1607,7 +1641,7 @@ def _run_years(args, conn, cur, spec, base, has_ed, src, metas, rank, tips,
               skipped.items())) or "none"))
     years = sorted(new + revised)
     if not years:
-        if any(r.startswith("older") for r in skipped.values()):
+        if skipped and all(r.startswith("older") for r in skipped.values()):
             halt(f"every year in the files is skipped: the {rank} release is "
                  "older than the tips of all its years; storing it would "
                  "record an older release. If this is deliberate, re-run "
