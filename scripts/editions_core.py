@@ -109,6 +109,14 @@ class EditionSpec:
     per live period and halts otherwise; 'latest' = a period's live rows may
     carry several load dates and edition 1 takes the latest as its
     published_date (S15 only).
+    refresh_key_changes: opt-in (default False). When true, refresh_latest
+    may apply a period whose keys differ from its latest edition, but only
+    when the period is named in accept_key_changes: it deletes the live rows
+    whose key the edition lacks and inserts the edition's rows whose key
+    live lacks (every data column, every same-named refresh column and the
+    refresh_from columns, so each data column must also be a live column),
+    then runs the usual update. False keeps the old rule: a key in only one
+    of live and the edition halts the refresh.
     """
     name: str
     live_table: str
@@ -126,6 +134,7 @@ class EditionSpec:
     as_loaded_source_col: "str | None" = None
     as_loaded_date: str = "single"
     refresh_source_whole_period: bool = False
+    refresh_key_changes: bool = False
 
     def __post_init__(self):
         for n in (self.name, self.live_table, self.editions_table,
@@ -689,13 +698,22 @@ def period_hashes(cur, spec: EditionSpec, which: str,
 
 
 def guard_problems(full_before: dict, full_after: dict, kept_before: dict,
-                   kept_after: dict, intended) -> list:
+                   kept_after: dict, intended, common_before=None,
+                   common_after=None) -> list:
     """The before/after rule of a refresh. full_*: period_hashes excluding
     loaded_at only. kept_*: period_hashes excluding the refresh columns (so
     loaded_at and every other column count). A period outside `intended`
     must be identical in full and in loaded_at (a period appearing or
     vanishing counts); a period inside it may differ only in the refresh
-    columns."""
+    columns.
+
+    common_before / common_after (key changes, opt-in): {period: hash of the
+    kept columns over the keys present both before and after}. For a
+    period named in them that comparison replaces the whole-period kept one
+    (whose row count is meant to move); every other period is checked as
+    above."""
+    common_before = common_before or {}
+    common_after = common_after or {}
     bad = []
     for p in sorted(set(full_before) | set(full_after), key=str):
         if p in intended:
@@ -704,7 +722,11 @@ def guard_problems(full_before: dict, full_after: dict, kept_before: dict,
                 or kept_before.get(p) != kept_after.get(p)):
             bad.append(f"guard: {p} changed but was not being refreshed")
     for p in sorted(intended):
-        if kept_before.get(p) != kept_after.get(p):
+        if p in common_before:
+            if common_before[p] != common_after.get(p):
+                bad.append(f"guard: {p} changed outside the refresh columns "
+                           "on a key present before and after")
+        elif kept_before.get(p) != kept_after.get(p):
             bad.append(f"guard: {p} changed outside the refresh columns "
                        "(or its row count moved)")
     return bad
@@ -738,13 +760,38 @@ def _one_sided(cur, spec: EditionSpec, period: str, edition: int) -> int:
     return cur.fetchone()[0]
 
 
+def _key_diff(cur, spec: EditionSpec, period, edition: int) -> tuple:
+    """(added, removed): sorted key tuples in the edition and not in the
+    live period, and in the live period and not in the edition."""
+    lt, et, pc = spec.live_table, spec.editions_table, spec.period_col
+    kc = ", ".join(spec.key_cols)
+    cur.execute(f"""SELECT {kc} FROM public.{et}
+                    WHERE {pc} = %s AND edition = %s
+                    EXCEPT SELECT {kc} FROM public.{lt} WHERE {pc} = %s""",
+                (period, edition, period))
+    added = sorted(tuple(r) for r in cur.fetchall())
+    cur.execute(f"""SELECT {kc} FROM public.{lt} WHERE {pc} = %s
+                    EXCEPT SELECT {kc} FROM public.{et}
+                    WHERE {pc} = %s AND edition = %s""",
+                (period, period, edition))
+    removed = sorted(tuple(r) for r in cur.fetchall())
+    return added, removed
+
+
+def format_key(key: tuple) -> str:
+    """A key tuple for messages: its single value, or the values joined
+    by '/'."""
+    return "/".join(str(k) for k in key)
+
+
 def _plan(cur, spec: EditionSpec, accept_drift=()) -> tuple:
-    """({period: {edition, kind, rows, one_sided}} for every period whose live
-    rows differ from the latest edition, unaccepted drift periods). kind is
-    'pending' or 'drift'; rows is how many live rows the update would write,
-    one_sided how many keys are in only one of live and the edition. Halts on
-    a period with no editions, an invalid chain, or an accept_drift period
-    that is not drifted."""
+    """({period: {edition, kind, rows, one_sided, added, removed}} for every
+    period whose live rows differ from the latest edition, unaccepted drift
+    periods). kind is 'pending' or 'drift'; rows is how many live rows the
+    update would write, one_sided how many keys are in only one of live and
+    the edition; added / removed the sorted key tuples in the edition only
+    and in live only. Halts on a period with no editions, an invalid chain,
+    or an accept_drift period that is not drifted."""
     tips, new, errors = latest_map(cur, spec)
     if new:
         halt(f"periods with no editions {new}; run sync-new first")
@@ -771,15 +818,132 @@ def _plan(cur, spec: EditionSpec, accept_drift=()) -> tuple:
                           AND {_refresh_where(spec)}""", (v["edition"], p))
         v["rows"] = cur.fetchone()[0]
         v["one_sided"] = _one_sided(cur, spec, p, v["edition"])
+        v["added"], v["removed"] = _key_diff(cur, spec, p, v["edition"])
     return plan, drift
 
 
-def _unrepairable(plan: dict) -> list:
+def _unrepairable(plan: dict, spec: "EditionSpec | None" = None) -> list:
     """Planned periods with a key in only one of live and the edition, or
     that differ with no row to update: an UPDATE cannot repair them. (RO4's
     stricter rule; S1 and S1b checked only for no row to update, and caught a
-    one-sided key later, after writing, in the after-check.)"""
+    one-sided key later, after writing, in the after-check.) When the spec
+    opts in to refresh_key_changes, one-sided keys are repairable (inserted
+    and deleted), so only a period with neither a row to update nor a
+    one-sided key is returned."""
+    if spec is not None and spec.refresh_key_changes:
+        return sorted(p for p, v in plan.items()
+                      if not v["one_sided"] and not v["rows"])
     return sorted(p for p, v in plan.items() if v["one_sided"] or not v["rows"])
+
+
+def key_change_periods(plan: dict) -> list:
+    """Planned periods with a key in only one of live and the edition."""
+    return sorted((p for p, v in plan.items() if v["one_sided"]), key=str)
+
+
+def key_change_lines(plan: dict, accept_key_changes=None, name=str) -> list:
+    """One line per planned period with key changes: the keys added and
+    removed and, when accept_key_changes is given, whether the period is
+    named in it. name renders a period (period_editions passes its string
+    form)."""
+    out = []
+    for p in key_change_periods(plan):
+        v = plan[p]
+        line = (f"{name(p)}: keys added {len(v['added'])} ("
+                + (", ".join(format_key(k) for k in v["added"]) or "none")
+                + f"); removed {len(v['removed'])} ("
+                + (", ".join(format_key(k) for k in v["removed"]) or "none")
+                + ")")
+        if accept_key_changes is not None and p not in accept_key_changes:
+            line += "; not named in --accept-key-changes"
+        out.append(line)
+    return out
+
+
+def check_key_changes(spec: EditionSpec, plan: dict, accept_key_changes=(),
+                      name=str) -> None:
+    """refresh_latest's refusals about key changes, before anything is
+    written: accept_key_changes on a spec that has not opted in; an accepted
+    period that is not planned with key changes; (opted in) a planned period
+    with key changes that is not named. name renders a period."""
+    accept = tuple(accept_key_changes)
+    if accept and not spec.refresh_key_changes:
+        halt(f"--accept-key-changes {sorted(name(p) for p in accept)}: "
+             f"{spec.name} does not opt in to refresh with key changes")
+    if not spec.refresh_key_changes:
+        return
+    keyed = key_change_periods(plan)
+    stray = sorted(name(p) for p in accept if p not in keyed)
+    if stray:
+        halt(f"--accept-key-changes {stray}: no keys added or removed in "
+             "those periods, nothing to accept")
+    unnamed = {p: plan[p] for p in keyed if p not in accept}
+    if unnamed:
+        halt("keys added or removed against the latest edition, not named: "
+             + "; ".join(key_change_lines(unnamed, None, name))
+             + ". Re-run with --accept-key-changes PERIOD for each period to "
+             "apply them")
+
+
+def _common_kept_hashes(cur, spec: EditionSpec, common: dict) -> dict:
+    """{period: md5} of the live rows (every column except the refresh
+    columns, as period_hashes renders them) whose key is in common[period];
+    None for a period with no common key."""
+    ex = ("ARRAY[" + ", ".join(f"'{_ident(c)}'" for c in spec.refresh_cols)
+          + "]::text[]")
+    row = f"(to_jsonb(t) - {ex})::text"
+    by = ", ".join([f"t.{c}" for c in spec.key_cols] + [row])
+    kc = "(" + ", ".join(f"t.{c}" for c in spec.key_cols) + ")"
+    out = {}
+    for p, keys in common.items():
+        if not keys:
+            out[p] = None
+            continue
+        cur.execute(f"""SELECT md5(string_agg({row}, E'\\n' ORDER BY {by}))
+                        FROM public.{spec.live_table} t
+                        WHERE t.{spec.period_col} = %s AND {kc} IN %s""",
+                    (p, tuple(keys)))
+        out[p] = cur.fetchone()[0]
+    return out
+
+
+def _live_keys(cur, spec: EditionSpec, period) -> set:
+    cur.execute(f"SELECT {', '.join(spec.key_cols)} "
+                f"FROM public.{spec.live_table} "
+                f"WHERE {spec.period_col} = %s", (period,))
+    return {tuple(r) for r in cur.fetchall()}
+
+
+def _delete_removed(cur, spec: EditionSpec, period, keys) -> int:
+    """Delete the live rows of `period` whose key is in keys; rows deleted."""
+    if not keys:
+        return 0
+    kc = "(" + ", ".join(spec.key_cols) + ")"
+    cur.execute(f"DELETE FROM public.{spec.live_table} "
+                f"WHERE {spec.period_col} = %s AND {kc} IN %s",
+                (period, tuple(keys)))
+    return cur.rowcount
+
+
+def _insert_added(cur, spec: EditionSpec, period, edition: int, keys) -> int:
+    """Insert the edition's rows of `period` whose key is in keys into live:
+    every data column, the same-named refresh columns that are not data
+    columns (metadata such as source_file) and the refresh_from live columns
+    from their editions columns. Rows inserted."""
+    if not keys:
+        return 0
+    mapped = dict(spec.refresh_from)
+    data = tuple(c for c in spec.data_cols if c not in mapped)
+    meta = tuple(c for c in spec.update_cols if c not in spec.data_cols)
+    live_cols = data + meta + tuple(lc for lc, _ in spec.refresh_from)
+    src = (tuple(f"e.{c}" for c in data + meta)
+           + tuple(f"e.{ec}" for _, ec in spec.refresh_from))
+    kc = "(" + ", ".join(f"e.{c}" for c in spec.key_cols) + ")"
+    cur.execute(f"""INSERT INTO public.{spec.live_table} ({', '.join(live_cols)})
+                    SELECT {', '.join(src)} FROM public.{spec.editions_table} e
+                    WHERE e.{spec.period_col} = %s AND e.edition = %s
+                      AND {kc} IN %s""", (period, edition, tuple(keys)))
+    return cur.rowcount
 
 
 def refresh_counts(cur, spec: EditionSpec, accept_drift=()) -> dict:
@@ -824,6 +988,7 @@ def _source_problems(cur, spec: EditionSpec, pairs) -> list:
 
 
 def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
+                   accept_key_changes: tuple = (),
                    _after_update_hook=None) -> dict:
     """Copy the latest edition into the live table for every period whose
     live rows differ from it (NULL-safe); return a result dict.
@@ -842,6 +1007,17 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
     and is never committed here. A period whose live rows equal no stored
     edition is drift: it halts unless named in accept_drift.
 
+    Key changes (opt-in, spec.refresh_key_changes): a planned period with a
+    key in only one of live and the edition halts unless named in
+    accept_key_changes (the halt lists the keys added and removed); a named
+    one has the live rows whose key the edition lacks deleted and the
+    edition's rows whose key live lacks inserted (_insert_added) before the
+    update. Its kept-column hash is then compared over the keys present
+    before and after only, and afterwards no key may be one-sided and the
+    rows inserted and deleted must equal the plan. accept_key_changes on a
+    spec that has not opted in halts. Not opted in, a one-sided key halts
+    exactly as before.
+
     _after_update_hook(cur, plan), if given, runs after the UPDATE and
     before the after-checks, inside the savepoint: a seam for tests and for
     a loader's own extra checks (S1 plugs its W1-equivalence check in here;
@@ -849,7 +1025,9 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
     only. S1b's extra after-check on all live columns and S1's reproduction
     update stay in those loaders.
 
-    Result: {'updated': {period: rows}, 'rows': n, 'drift_accepted': [...]}.
+    Result: {'updated': {period: rows}, 'rows': n, 'drift_accepted': [...],
+    'inserted': {period: rows}, 'deleted': {period: rows}} (inserted and
+    deleted name only the periods with key changes applied).
     """
     plan, drift = _plan(cur, spec, accept_drift)
     if drift:
@@ -857,16 +1035,20 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
              f"edition for {drift}: changed outside the editions tables. "
              "Load it as an edition, or re-run with --accept-drift PERIOD to "
              "overwrite it with the latest edition")
-    stuck = _unrepairable(plan)
+    accept_kc = tuple(accept_key_changes)
+    check_key_changes(spec, plan, accept_kc)
+    stuck = _unrepairable(plan, spec)
     if stuck:
         halt(f"{stuck} differ from the latest edition in rows present in only "
              "one of them; an update of the refresh columns cannot repair that")
     result = {"updated": {}, "rows": 0,
               "drift_accepted": sorted(p for p, v in plan.items()
-                                       if v["kind"] == "drift")}
+                                       if v["kind"] == "drift"),
+              "inserted": {}, "deleted": {}}
     if not plan:
         return result
     refreshed = set(plan)
+    keyed = key_change_periods(plan) if spec.refresh_key_changes else []
     sets = ", ".join([f"{c} = e.{c}" for c in spec.update_cols]
                      + [f"{lc} = e.{ec}" for lc, ec in spec.refresh_from])
     pc = spec.period_col
@@ -876,6 +1058,16 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
         full_b = period_hashes(cur, spec, "live")
         kept_b = period_hashes(cur, spec, "live", exclude=spec.refresh_cols)
         ed_b = period_hashes(cur, spec, "editions")
+        common = {}
+        for p in keyed:
+            common[p] = sorted(_live_keys(cur, spec, p)
+                               - set(plan[p]["removed"]))
+        common_b = _common_kept_hashes(cur, spec, common)
+        deleted, inserted = {}, {}
+        for p in keyed:
+            v = plan[p]
+            deleted[p] = _delete_removed(cur, spec, p, v["removed"])
+            inserted[p] = _insert_added(cur, spec, p, v["edition"], v["added"])
         cur.execute(f"""UPDATE public.{spec.live_table} l SET {sets}
                         FROM public.{spec.editions_table} e
                         WHERE {_key_join(spec)}
@@ -888,16 +1080,29 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
             _after_update_hook(cur, plan)
         full_a = period_hashes(cur, spec, "live")
         kept_a = period_hashes(cur, spec, "live", exclude=spec.refresh_cols)
-        bad = guard_problems(full_b, full_a, kept_b, kept_a, refreshed)
+        common_a = _common_kept_hashes(cur, spec, common)
+        bad = guard_problems(full_b, full_a, kept_b, kept_a, refreshed,
+                             common_b, common_a)
         if period_hashes(cur, spec, "editions") != ed_b:
             bad.append("guard: the editions table changed during the refresh")
         if n != expected:
             bad.append(f"wrote {n} rows, expected {expected}")
+        for p in keyed:
+            v = plan[p]
+            if deleted[p] != len(v["removed"]):
+                bad.append(f"{p}: deleted {deleted[p]} rows, expected "
+                           f"{len(v['removed'])}")
+            if inserted[p] != len(v["added"]):
+                bad.append(f"{p}: inserted {inserted[p]} rows, expected "
+                           f"{len(v['added'])}")
         for p, v in sorted(plan.items()):
             k = rows_differing(cur, spec, p, v["edition"])
             if k:
                 bad.append(f"{p}: {k} rows still differ from edition "
                            f"{v['edition']} after the refresh")
+            if p in common and _one_sided(cur, spec, p, v["edition"]):
+                bad.append(f"{p}: a key is still in only one of live and "
+                           f"edition {v['edition']} after the refresh")
         if spec.refresh_source_whole_period:
             bad.extend(_source_problems(cur, spec, pairs))
         if bad:
@@ -905,4 +1110,6 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
                  + "; ".join(bad[:6]))
     result["updated"] = {p: v["rows"] for p, v in sorted(plan.items())}
     result["rows"] = n
+    result["inserted"] = inserted
+    result["deleted"] = deleted
     return result
