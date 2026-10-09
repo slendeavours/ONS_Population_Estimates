@@ -621,6 +621,50 @@ class LoaderDB(unittest.TestCase):
             self.assertEqual(rc, "halt", text)
             self.assertIn("identity", text)
 
+    def test_file_older_than_the_tip_halts_and_override_allowed(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur, link=lambda p: rev(p) if p == P2 else orig(p))
+            before = (editions(cur), ledger(cur))
+            f = self.make(orig(P2), P2, bump={CODES[4]: 9})  # older rank
+            for flag in ([], ["--commit"], ["--simulate"]):
+                rc, text, _, _ = self.run_main(
+                    cur, ["load", *flag], file=f)
+                self.assertEqual(rc, "halt", text)
+                self.assertIn("the file given is", text)
+                self.assertIn("--allow-older-file", text)
+                self.assertEqual((editions(cur), ledger(cur)), before)
+            rc, text, _, _ = self.run_main(
+                cur, ["load", "--commit", "--allow-older-file"], file=f)
+            self.assertEqual(rc, 0, text)
+            self.assertIn("NOTE: --allow-older-file given", text)
+            self.assertEqual(editions(cur, P2),
+                             [(1, None, N), (2, 1, N)])
+
+    def test_file_same_or_newer_rank_is_not_halted(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur, link=lambda p: rev(p) if p == P2 else orig(p))
+            same = self.make(rev(P2), P2, bump={CODES[4]: 9})
+            rc, text, _, _ = self.run_main(cur, ["load"], file=same)
+            self.assertEqual(rc, 0, text)
+            self.assertNotIn("--allow-older-file", text)
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)                        # tips are originals
+            newer = self.make(rev(P2), P2, bump={CODES[4]: 9})
+            rc, text, _, _ = self.run_main(cur, ["load", "--commit"],
+                                           file=newer)
+            self.assertEqual(rc, 0, text)
+            self.assertEqual(editions(cur, P2), [(1, None, N), (2, 1, N)])
+
+    def test_file_older_rule_unit(self):
+        self.assertTrue(m.file_older("April-2025.xlsx", None,
+                                     rev(P2)))
+        self.assertFalse(m.file_older("April-2025.xlsx", date(2026, 8, 1),
+                                      rev(P2)))
+        self.assertFalse(m.file_older("April-2025-Revised.xlsx", None,
+                                      rev(P2)))
+        self.assertFalse(m.file_older("April-2025.xlsx", None, orig(P2)))
+        self.assertFalse(m.file_older("April-2025.xlsx", None, None))
+
     def test_unknown_utla_code_halts(self):
         with rolled_back(self.conn) as cur:
             page = self.seed(cur)

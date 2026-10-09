@@ -677,12 +677,19 @@ Run from `ONS_Population_Estimates`, for each of `s9a_drd_editions.py` and
    couple of minutes).
 2. Read the preview. A month with other than the expected number of areas, an
    unexpected code, a negative value, a NULL replacing a number in more than
-   five areas, a Barnsley and Sheffield form that disagrees with
-   `scripts/geography.py`, a 0 to NULL change (or the reverse; release with
-   `--acknowledge PERIOD` after reading it) or an older file than held is
-   rejected and nothing is stored for that month (`--allow-older-file`
-   overrides the last). S9b Performance-to-Final changes are large by nature
-   (100 to 175 changed areas a month) and are read in full, not blocked.
+   five areas, a value revised by more than 50% in more than ten areas (S9a:
+   total bed days), a Barnsley and Sheffield form that disagrees with
+   `scripts/geography.py`, a 0 to NULL change (or the reverse) or an older file
+   than held (page link or `--file`) is rejected and nothing is stored for that
+   month. `--allow-older-file` overrides the older-file stop. `--acknowledge
+   PERIOD` releases every stop condition of that month that can be released:
+   the 0/NULL change, the NULL-in-more-than-five and the more-than-50% stops
+   together, after you have read the whole preview (it prints each message it
+   released). It does not release the structural checks (area count, missing
+   area, code, negative, percentage, duplicate key, file identity, Barnsley and
+   Sheffield form). S9b Performance-to-Final changes are large by nature (100
+   to 175 changed areas a month), so only a move of the national total by more
+   than 50% blocks, and `--acknowledge` releases that too.
 3. `python scripts/<loader> load --commit` stores a new month as edition 1 with
    its live rows in one transaction, and a revised month as the next edition.
 4. If any month was revised, `refresh-latest` previews, then run it again with
@@ -712,9 +719,12 @@ that a newer latest month changes `drd_bed_days_lost`,
 **Never run the old scripts.** `scripts/historical/s9a_drd_build.py`,
 `s9b_crfd_build.py`, `verify_load_drd.py` and `verify_load_crfd.py` upserted rows
 in place (`ON CONFLICT DO UPDATE`), so loading a republished file overwrote held
-rows (the `loaded_at` dates show no held month was in fact rewritten after its
-first load). The S9b build took the file URL and period on the command line and
-ignored the year-end Final files. The two `verify_load_*` scripts loaded June
+rows (as far as `loaded_at` and the files show, no held month was reloaded from
+a different file after its first load; the one exception is that the held S9b
+Barnsley/Sheffield rows were re-keyed in place on 2026-08-14 and 2026-10-01,
+which left `loaded_at` unchanged). The S9b build took the file URL and period on
+the command line and had no Final filter of its own; the year-end Final files
+were kept out by the discovery in `verify_load_crfd.py` and the n8n-era load. The two `verify_load_*` scripts loaded June
 2026 on 2026-08-20 the same way. They now stop with a RETIRED message.
 
 ## What is still manual

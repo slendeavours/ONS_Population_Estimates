@@ -1743,6 +1743,18 @@ def gate_17_older_file_guard(cur):
                 and "--allow-older-file" in text and e.fetched == []
                 and not logged.called)
         unchanged = state(e.cur) == before
+        # --file: the same guard, rank read from the file's own STATUS
+        f_halts = {}
+        for argv in (["load"], ["load", "--commit"], ["load", "--simulate"]):
+            rc, text, _, logged = e.run(argv, file=e.files[perf(P2)])
+            f_halts[" ".join(argv)] = (
+                rc == "halt" and "the file given is" in text
+                and "--allow-older-file" in text and not logged.called)
+        f_unchanged = state(e.cur) == before
+        rc_f_allow, t_f_allow, _, _ = e.run(
+            ["load", "--allow-older-file"], file=e.files[perf(P2)])
+        rc_f_same, t_f_same, _, _ = e.run(
+            ["load"], file=e.files[perf(P3, 2)])
         rc_allow, t_allow, _, _ = e.run(["load", "--allow-older-file"],
                                         page=old_page)
         # v1 after v2 on its own
@@ -1755,10 +1767,12 @@ def gate_17_older_file_guard(cur):
         rc_early_ok, t_early_ok, _, _ = e.run(
             ["load", "--allow-older-file"], page=[perf(P1), final(P2)])
         return (halts, unchanged, rc_allow, t_allow, rc_v, t_v, rc_same,
-                t_same, rc_early, t_early, rc_early_ok, t_early_ok)
+                t_same, rc_early, t_early, rc_early_ok, t_early_ok,
+                (f_halts, f_unchanged, rc_f_allow, t_f_allow, rc_f_same,
+                 t_f_same))
     try:
         (halts, unchanged, rc_allow, t_allow, rc_v, t_v, rc_same, t_same,
-         rc_early, t_early, rc_early_ok, t_early_ok) = scenario(
+         rc_early, t_early, rc_early_ok, t_early_ok, fl) = scenario(
             cur, body, lnk=lambda p: (final(p) if p == P2 else
                                       perf(p, 2) if p == P3 else perf(p)))
     except (psycopg2.Error, SystemExit, RuntimeError) as ex:
@@ -1770,14 +1784,19 @@ def gate_17_older_file_guard(cur):
             and m.link_older(final(P2), final(P2, 2))
             and not m.link_older(perf(P1), None)
             and not m.link_older(perf(P1), "plain-name.csv"))
+    f_halts, f_unchanged, rc_f_allow, t_f_allow, rc_f_same, t_f_same = fl
+    file_ok = (all(f_halts.values()) and f_unchanged and rc_f_allow == 0
+               and "--allow-older-file given" in t_f_allow
+               and rc_f_same == 0 and "--allow-older-file" not in t_f_same)
     ok = (all(halts.values()) and unchanged and rc_allow == 0
           and "--allow-older-file given" in t_allow
           and rc_v == "halt" and "latest file" in t_v
           and rc_same == 0 and "--allow-older-file" not in t_same
           and rc_early == "halt" and "2026-03 is already held" in t_early
           and rc_early_ok == 0 and "--allow-older-file given" in t_early_ok
-          and pure)
-    report(17, name, ok, f"older link in preview/commit/simulate halted "
+          and file_ok and pure)
+    report(17, name, ok, f"older --file halted in preview/commit/simulate "
+           f"with nothing written={file_ok}; older link in preview/commit/simulate halted "
            f"before any download or write={all(halts.values())}; stores "
            f"unchanged={unchanged}; --allow-older-file proceeds ({rc_allow}); "
            f"a v1 after a v2 halts={rc_v == 'halt'}; the current link is "

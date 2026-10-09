@@ -379,6 +379,47 @@ class LoaderDB(unittest.TestCase):
             self.assertEqual(rc, 0, text)
             self.assertIn("NOTE: --allow-older-file given", text)
 
+    def test_file_older_than_the_tip_halts_and_override_allowed(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur, lnk=lambda p: final(p) if p == P2 else perf(p))
+            before = (editions(cur), ledger(cur))
+            f = self.make(perf(P2, 3), P2, values={CODES[0]: 999})
+            for flag in ([], ["--commit"], ["--simulate"]):
+                rc, text, _, _ = self.run_main(
+                    cur, ["load", *flag], file=f)
+                self.assertEqual(rc, "halt", text)
+                self.assertIn("the file given is", text)
+                self.assertIn("--allow-older-file", text)
+                self.assertEqual((editions(cur), ledger(cur)), before)
+            rc, text, _, _ = self.run_main(
+                cur, ["load", "--commit", "--allow-older-file"], file=f)
+            self.assertEqual(rc, 0, text)
+            self.assertIn("NOTE: --allow-older-file given", text)
+            self.assertEqual(editions(cur, P2), [(1, None, N), (2, 1, N)])
+
+    def test_file_same_or_newer_rank_is_not_halted(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur, lnk=lambda p: final(p) if p == P2 else perf(p))
+            same = self.make(final(P2), P2, values={CODES[0]: 999})
+            rc, text, _, _ = self.run_main(cur, ["load"], file=same)
+            self.assertNotEqual(rc, "halt", text)
+            self.assertNotIn("--allow-older-file", text)
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)                      # Performance tips
+            newer = self.make(final(P2), P2, values={CODES[0]: 999})
+            rc, text, _, _ = self.run_main(cur, ["load", "--commit"],
+                                           file=newer)
+            self.assertEqual(rc, 0, text)
+            self.assertEqual(editions(cur, P2), [(1, None, N), (2, 1, N)])
+
+    def test_file_older_rule_unit(self):
+        self.assertTrue(m.file_older(m.PERFORMANCE, 1, final(P2)))
+        self.assertTrue(m.file_older(m.PERFORMANCE, 1, perf(P2, 2)))
+        self.assertFalse(m.file_older(m.FINAL, 1, perf(P2, 3)))
+        self.assertFalse(m.file_older(m.PERFORMANCE, 2, perf(P2, 2)))
+        self.assertFalse(m.file_older(m.PERFORMANCE, 1, None))
+        self.assertFalse(m.file_older(m.PERFORMANCE, 1, "local.zip"))
+
     def test_unchanged_v2_recorded_once_and_not_fetched_again(self):
         with rolled_back(self.conn) as cur:
             self.seed(cur)
@@ -644,7 +685,7 @@ class LoaderDB(unittest.TestCase):
             # a file whose name names another month halts
             wrong = write_data_file(
                 Path(self.tmp.name) / perf_name(P3), P2,
-                [(c, 5) for c in CODES], status="Performance")
+                [(c, 5) for c in CODES], status="Final")
             rc, text, _, _ = self.run_main(cur, ["load", "--commit"],
                                            file=wrong)
             self.assertEqual(rc, "halt", text)

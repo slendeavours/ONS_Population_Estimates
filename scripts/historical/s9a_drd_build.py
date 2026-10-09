@@ -26,7 +26,7 @@ import sys
 
 _RETIRED = (
     "RETIRED: use scripts/s9a_drd_editions.py. "
-    "The old S9a build upserted rows in place (INSERT ... ON CONFLICT DO UPDATE, setting loaded_at), so loading a republished file overwrote held rows; the loaded_at dates show no held month was in fact rewritten after its first load. It had no record of revisions.")
+    "The old S9a build upserted rows in place (INSERT ... ON CONFLICT DO UPDATE, setting loaded_at), so loading a republished file overwrote held rows; as far as loaded_at and the files show, no held month was reloaded from a different file after its first load. It had no record of revisions.")
 if __name__ == "__main__":
     sys.exit(_RETIRED)
 import argparse

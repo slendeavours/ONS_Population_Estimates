@@ -202,6 +202,17 @@ def link_older(chosen: str, tip_file: "str | None") -> bool:
     return a[2] < b[2]
 
 
+def file_older(name: str, cover_revised, tip_file: "str | None") -> bool:
+    """True if a --file ranks below the file a month's latest edition came
+    from. The file has no upload path, so only -Revised is compared: the file
+    is revised if its name says so or its own cover carries a Revised date
+    (cover_revised); an original after a -Revised tip is older."""
+    if not tip_file:
+        return False
+    revised = int(bool(_is_revised(name) or cover_revised))
+    return revised < link_rank(tip_file)[2]
+
+
 def find_month_links(html: str) -> dict:
     """{period: [url, ...]} of the monthly webfile xlsx links on the page (the
     timeseries workbook, CSV files and anything else are left out; periods
@@ -1072,6 +1083,7 @@ def cmd_load(args) -> int:
             stranded = (pe.live_missing_periods(cur, base) if has_ed else [])
 
             html = ""
+            file_cover = {}
             if args.file:
                 path_given = Path(args.file)
                 fp = period_from_link(path_given.name)
@@ -1079,6 +1091,10 @@ def cmd_load(args) -> int:
                     halt(f"--file {path_given.name}: no month in the name; "
                          "nothing stored")
                 page = {fp: path_given.name}
+                try:
+                    file_cover[fp] = read_cover(path_given)
+                except ValueError as e:
+                    halt(f"{path_given.name}: {e}; nothing stored")
                 print("file given: nothing downloaded")
             else:
                 html = fetch_page()
@@ -1136,8 +1152,15 @@ def cmd_load(args) -> int:
                      f"({', '.join(periods) or 'none'})")
             # the older-file guard, per month
             for p in recheck:
-                if not args.file and link_older(page[p], tips.get(p)):
-                    msg = (f"{p}: the page offers {_name(page[p])} but the "
+                if args.file:
+                    older = file_older(page[p], file_cover.get(p, {}).get(
+                        "revised"), tips.get(p))
+                    offers = f"the file given is {_name(page[p])}"
+                else:
+                    older = link_older(page[p], tips.get(p))
+                    offers = f"the page offers {_name(page[p])}"
+                if older:
+                    msg = (f"{p}: {offers} but the "
                            f"month's latest file is {_name(tips[p])}")
                     if args.allow_older_file:
                         print(f"NOTE: --allow-older-file given; {msg}")

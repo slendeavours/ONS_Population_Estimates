@@ -467,8 +467,9 @@ SOURCES = [
             "next edition in nhs_drd_discharge_delays_editions rather than "
             "overwriting (scripts/s9a_drd_editions.py); the live table "
             "holds the latest edition of each month. The old build upserted "
-            "rows in place (ON CONFLICT DO UPDATE); the loaded_at dates show "
-            "no held month was in fact rewritten after its first load. June "
+            "rows in place (ON CONFLICT DO UPDATE); as far as loaded_at and "
+            "the files show, no held month was reloaded from a different file "
+            "after its first load. June "
             "2026 edition 2 is a file-form correction (CSV to webfile, "
             "precision only, below 4e-9), not a publisher revision. Record: "
             "docs/decisions/2026-10-09-s9a-editions-first-load.md."),
@@ -540,9 +541,12 @@ SOURCES = [
             "(scripts/s9b_crfd_editions.py); nhs_mh_crfd holds the latest "
             "edition of each month. The old build upserted rows in place "
             "(ON CONFLICT DO UPDATE) from a file URL and period given on "
-            "the command line, and ignored the Final files; the loaded_at "
-            "dates show no held month was in fact rewritten after its first "
-            "load. The 2026-27 year-end Finals are expected in spring 2027. "
+            "the command line, with no Final filter of its own (the Finals were "
+            "kept out by the discovery in verify_load_crfd.py and the n8n-era "
+            "load); as far as loaded_at and the files show, no held month was "
+            "reloaded from a different file after its first load, except that "
+            "the held Barnsley/Sheffield rows were re-keyed in place on "
+            "2026-08-14 and 2026-10-01 without changing loaded_at. The 2026-27 year-end Finals are expected in spring 2027. "
             "Record: docs/decisions/2026-10-09-s9b-editions-first-load.md."),
         source_name="MHSDS MHS26",
         publisher="NHS Digital",

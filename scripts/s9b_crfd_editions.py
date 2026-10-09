@@ -253,6 +253,16 @@ def link_older(chosen: str, tip_file: "str | None") -> bool:
     return link_rank(chosen) < link_rank(tip_file)
 
 
+def file_older(kind: str, version: int, tip_file: "str | None") -> bool:
+    """True if a --file of this kind (read from the file's own STATUS) and
+    version (from its name, 1 if the name carries none) ranks below the file
+    a month's latest edition came from. A tip that is not a data file name is
+    never newer."""
+    if not tip_file or _link_info(tip_file) is None:
+        return False
+    return (int(kind == FINAL), version) < link_rank(tip_file)
+
+
 def choose_link(links) -> str:
     """The link of highest link_rank; two that tie raise ValueError naming
     both (no winner is guessed)."""
@@ -1266,8 +1276,14 @@ def cmd_load(args) -> int:
                      f"({', '.join(periods) or 'none'})")
             # the older-file guard, per month
             for p in recheck:
-                if not args.file and link_older(page[p], tips.get(p)):
-                    msg = (f"{p}: the page offers {_name(page[p])} but the "
+                if args.file:
+                    older = file_older(offline[1], offline[2], tips.get(p))
+                    offers = f"the file given is {_name(page[p])}"
+                else:
+                    older = link_older(page[p], tips.get(p))
+                    offers = f"the page offers {_name(page[p])}"
+                if older:
+                    msg = (f"{p}: {offers} but the "
                            f"month's latest file is {_name(tips[p])}")
                     if args.allow_older_file:
                         print(f"NOTE: --allow-older-file given; {msg}")

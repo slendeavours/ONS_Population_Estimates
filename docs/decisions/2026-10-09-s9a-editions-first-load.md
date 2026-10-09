@@ -73,11 +73,15 @@ From `ONS_Population_Estimates`:
    `-Revised` file beats the original), skips files already in the ledger, and previews new, unchanged
    and revised months. Nothing is written to the database (downloads go to `data/raw/s9a_drd/`).
 2. Read the preview. The stop conditions are enforced in `load`, with no override flag other than
-   `--allow-older-file` (an older file or earlier latest month than held) and `--acknowledge PERIOD` (a
-   0 to NULL or NULL to 0 change): fewer or more than 153 areas, an area of the held latest month
+   `--allow-older-file` (an older file or earlier latest month than held) and `--acknowledge PERIOD`,
+   which releases every stop condition of that month that can be released (a 0 to NULL or NULL to 0
+   change, NULL replacing a number in more than 5 areas, bed days revised by more than 50% in more
+   than 10 areas) but not the structural ones: fewer or more than 153 areas, an area of the held latest month
    missing, an unexpected code, a negative count, a percentage outside 0 to 1, NULL replacing a number in
    more than 5 areas, bed days revised by more than 50% in more than 10 areas, and a Barnsley and
-   Sheffield form that disagrees. A rejected month stores nothing.
+   Sheffield form that disagrees. Of these the area counts, missing area, code, negative, percentage,
+   duplicate-key, identity and Barnsley/Sheffield stops are structural and cannot be acknowledged. The
+   ACKNOWLEDGED line prints every message it released. A rejected month stores nothing.
 3. `python scripts/s9a_drd_editions.py load --commit` stores new months (edition 1 with live rows) and
    revisions as the next edition.
 4. If anything was revised, `refresh-latest` previews, then `--commit` copies the latest edition to live.

@@ -50,8 +50,8 @@ Gates:
   16 file identity: link month, Cover Sheet and UTLA sheet Period:, Revised:
      against the -Revised name and the title must agree, caught before any
      write
-  17 older-file guard: an older file or an earlier page halts unless
-     --allow-older-file, before anything is downloaded
+  17 older-file guard: an older file (page link or --file) or an earlier page
+     halts unless --allow-older-file, before anything is downloaded
   18 month checks: a short month, a missing UTLA, extra areas, a negative
      count, a percentage above 1, NULL for a number above 5 areas, a bed-days
      revision above 50% in more than 10 areas are rejected (limits pass); a
@@ -1541,6 +1541,17 @@ def gate_17_older_file_guard(cur):
                 and "--allow-older-file" in text and e.fetched == []
                 and not logged.called)
         unchanged = state(e.cur) == before
+        # --file: the same guard, rank read from the file itself
+        f_halts = {}
+        for argv in (["load"], ["load", "--commit"], ["load", "--simulate"]):
+            rc, text, _, logged = e.run(argv, file=e.files[orig(P2)])
+            f_halts[" ".join(argv)] = (
+                rc == "halt" and "the file given is" in text
+                and "--allow-older-file" in text and not logged.called)
+        f_unchanged = state(e.cur) == before
+        rc_f_allow, t_f_allow, _, _ = e.run(
+            ["load", "--allow-older-file"], file=e.files[orig(P2)])
+        rc_f_same, t_f_same, _, _ = e.run(["load"], file=e.files[rev(P2)])
         rc_allow, t_allow, _, _ = e.run(["load", "--allow-older-file"],
                                         page=old_page)
         rc_same, t_same, _, _ = e.run(["load", "--commit"],
@@ -1550,10 +1561,12 @@ def gate_17_older_file_guard(cur):
         rc_early_ok, t_early_ok, _, _ = e.run(
             ["load", "--allow-older-file"], page=[orig(P1), rev(P2)])
         return (halts, unchanged, rc_allow, t_allow, rc_same, t_same,
-                rc_early, t_early, rc_early_ok, t_early_ok)
+                rc_early, t_early, rc_early_ok, t_early_ok,
+                (f_halts, f_unchanged, rc_f_allow, t_f_allow, rc_f_same,
+                 t_f_same))
     try:
         (halts, unchanged, rc_allow, t_allow, rc_same, t_same, rc_early,
-         t_early, rc_early_ok, t_early_ok) = scenario(
+         t_early, rc_early_ok, t_early_ok, fl) = scenario(
             cur, body, link=lambda p: rev(p) if p == P2 else orig(p))
     except (psycopg2.Error, SystemExit, RuntimeError) as ex:
         return report(17, name, False, str(ex).splitlines()[0])
@@ -1563,13 +1576,18 @@ def gate_17_older_file_guard(cur):
             and not m.link_older(orig(P1), None)
             and m.link_older(url(2025, 7, "April-2025-Revised"),
                              url(2026, 7, "April-2025-Revised")))
+    f_halts, f_unchanged, rc_f_allow, t_f_allow, rc_f_same, t_f_same = fl
+    file_ok = (all(f_halts.values()) and f_unchanged and rc_f_allow == 0
+               and "--allow-older-file given" in t_f_allow
+               and rc_f_same == 0 and "--allow-older-file" not in t_f_same)
     ok = (all(halts.values()) and unchanged and rc_allow == 0
           and "--allow-older-file given" in t_allow and rc_same == 0
           and "--allow-older-file" not in t_same
           and rc_early == "halt" and "2026-06 is already held" in t_early
           and rc_early_ok == 0 and "--allow-older-file given" in t_early_ok
-          and pure)
-    report(17, name, ok, f"older link in preview/commit/simulate halted "
+          and file_ok and pure)
+    report(17, name, ok, f"older --file halted in preview/commit/simulate "
+           f"with nothing written={file_ok}; older link in preview/commit/simulate halted "
            f"before any download or write={all(halts.values())}; stores "
            f"unchanged={unchanged}; --allow-older-file proceeds ({rc_allow}); "
            f"the current link is unaffected ({rc_same}); an earlier page "

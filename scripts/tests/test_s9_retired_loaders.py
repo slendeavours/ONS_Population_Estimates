@@ -37,6 +37,17 @@ class RetiredS9(unittest.TestCase):
                 self.assertNotIn("ModuleNotFoundError", r.stderr)
                 self.assertNotIn("Traceback", r.stderr)
 
+    def test_history_wording(self):
+        for name in ("s9a_drd_build.py", "s9b_crfd_build.py"):
+            err = self._run(name).stderr
+            self.assertIn("different file", err)
+            self.assertNotIn("in fact rewritten", err)
+        err = self._run("s9b_crfd_build.py").stderr
+        self.assertIn("2026-08-14", err)
+        self.assertIn("2026-10-01", err)
+        self.assertIn("no Final filter", err)
+        self.assertNotIn("ignored the year-end", err)
+
     def test_retired_even_with_broken_environment(self):
         env = dict(os.environ)
         env["PYTHONPATH"] = str(HIST / "nonexistent")

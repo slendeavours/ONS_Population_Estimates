@@ -29,7 +29,7 @@
 - **Table:** `nhs_mh_crfd` (the latest edition of each month); every edition is kept in `nhs_mh_crfd_editions`, with a ledger of files read in `nhs_mh_crfd_editions_file_checks`
 - **Natural key:** `(reporting_period, lad24cd, measure_id)`
 - **Row count:** 12,136 live (296 LAs × 41 months); 22,792 edition rows
-- **Files:** each month is first a Performance file, later reissued (`vN`) and, for April 2023 to March 2026, replaced by the year-end Final file (36 months revised, 5,038 area values changed, on 2026-10-09). Final files are loaded as edition 2; the old loader ignored them
+- **Files:** each month is first a Performance file, later reissued (`vN`) and, for April 2023 to March 2026, replaced by the year-end Final file (36 months revised, 5,038 area values changed, on 2026-10-09). Final files are loaded as edition 2; the old build script had no Final filter of its own; the Finals were kept out by the discovery in `verify_load_crfd.py` and the n8n-era load
 - **MHS26 is NOT in timeseries files** — only available in individual monthly data files
 
 ## Mapping and Apportionment
@@ -91,7 +91,7 @@ First run with S9 data: **run 10**.
 2. **UTLA Unacceptable sheets excluded** — only UTLA Acceptable sheets loaded. Unacceptable trusts have data quality issues flagged by NHSE.
 3. **May 2024 definitions break** — DRD data definitions changed 27 May 2024. Data prior to April 2024 excluded from loading (not comparable).
 4. **Cohort disaggregation gap** — MHS26 covers MH+LD/autism combined. No disaggregated source identified. Deferred until available, not a design limitation.
-5. **Barnsley/Sheffield recode** — MHSDS publishes E08000016/019 to March 2025 and E08000038/039 from April 2025 (declared 'mixed' in `scripts/geography.py`). The loader resolves both to the old codes; `vw_mh_crfd_lad` also handles the transition via `la_code_lookup`.
+5. **Barnsley/Sheffield recode** — The form is per file, not per month (declared 'mixed' in `scripts/geography.py`, evidence in its `DATASET_FORM`): the year-end Final files carry E08000016/019 to March 2025 and E08000038/039 from April 2025, while the Performance files carry E08000016/019 to May 2025 (so the April and May 2025 Performance files still have the old codes) and E08000038/039 from June 2025. The loader resolves both to the old codes; `vw_mh_crfd_lad` also handles the transition via `la_code_lookup`.
 6. **Apportionment resolution loss** — DRD percentage and average columns pass through at UTLA level for county districts. All districts under a county inherit the same percentage/average.
 
 ## Refresh Procedure
