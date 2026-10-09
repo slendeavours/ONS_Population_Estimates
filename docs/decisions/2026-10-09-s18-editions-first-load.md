@@ -49,8 +49,10 @@ months.
 From `ONS_Population_Estimates`:
 
 1. `python scripts/s18_pipr_editions.py load` downloads the newest workbook, checks its file name, Cover
-   sheet and latest month agree, and previews every held month (new, unchanged or revised, with area and
-   cell counts). Nothing is written.
+   sheet and latest month agree, and previews every held month (new, unchanged or revised, with a count of
+   rows changed; a row is an area in one breakdown block, so 2,646 rows is 294 areas). Nothing is written. A download never
+   replaces an existing `data/raw/pipr_<edition>.xlsx` with different content: it is saved beside it as
+   `pipr_<edition>-<sha8>.xlsx`.
 2. Read the preview. The loader enforces these stop conditions in `load` with no override flag: a month
    with fewer areas than held (294) or a missing breakdown block, a NULL replacing a number in more than 5
    areas of a month, a zero or negative rent, a revision above 50% on more than 10 areas of a month, an
@@ -67,9 +69,13 @@ From `ONS_Population_Estimates`:
 
 ## Notes
 
-- The live `source` column names the first-inserting edition. After `refresh-latest` it is not changed
-  (source and `loaded_at` are kept), so for example August 2026 reads 'ONS PIPR 16september2026 edition'
-  and the earlier months 'ONS PIPR 19august2026 edition', even when a later edition revised their values.
+- The live `source` column names the edition that last wrote the row, which is the first-inserting edition
+  only for rows inserted by the new loader (from 2026-10-09). For the 76,734 legacy rows (2024-03 to
+  2026-07) it names the last old upsert, 'ONS PIPR 19august2026 edition' (`loaded_at` 2026-08-20), although
+  2024-03 to 2026-05 were first inserted by the 17 June 2026 backfill; the old loader overwrote them in
+  place on 22 July and 19 August. August 2026 reads 'ONS PIPR 16september2026 edition'. After
+  `refresh-latest` the column is not changed (source and `loaded_at` are kept), even when a later edition
+  revised the values.
   The edition that supplied the current values is in the editions table (`release_label`, `source_file`,
   `source_sha256`).
 - The first `sync-new` needed `--expected-areas 294`, because no month had editions yet.
@@ -83,5 +89,7 @@ From `ONS_Population_Estimates`:
 - The registry keeps `revises_back_series` true on the strength of the publisher's practice (the latest
   month is provisional and re-published), worded as expected and not yet observed in the held months.
 - The old pipeline (`s18_pipr_fetch.py`, `transform`, `load`, `verify`) is archived in `scripts/historical/`
-  with a RETIRED guard. It inserted new rows and ignored revisions of rows already held
-  (`ON CONFLICT DO NOTHING`); it did not overwrite. `s18_pipr_inspect.py` is kept as a read-only tool.
+  with a RETIRED guard. It upserted rows in place (`ON CONFLICT DO UPDATE`) from 2026-07-12 until commit
+  ab14ef9 (2026-10-01), so the 22 July and 19 August 2026 loads overwrote held rows; after that it inserted
+  new rows only and ignored revisions of rows already held (`ON CONFLICT DO NOTHING`). Its edition came
+  from a command-line argument. `s18_pipr_inspect.py` is kept as a read-only tool.

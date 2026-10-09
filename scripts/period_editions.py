@@ -192,8 +192,9 @@ def check_live_equals_edition(cur, profile: Profile, period: str,
 def compare_period(cur, profile: Profile, period: str, records: list,
                    against: str = "editions") -> dict:
     """{kind, changed, examples, against}: kind 'new' (nothing stored),
-    'unchanged' or 'revised'; changed counts areas whose values differ (an
-    area on one side only counts; NULL equals NULL, NULL differs from 0); up
+    'unchanged' or 'revised'; changed counts keys (areas, or area-rows where the key
+    has more than one column) whose values differ (a
+    key on one side only counts; NULL equals NULL, NULL differs from 0); up
     to three examples. Against the editions, an unchanged period with no
     live rows is LIVE_MISSING: load inserts its live rows (no new edition)."""
     old, label = stored(cur, profile, period, against)
@@ -344,7 +345,7 @@ def load_periods(cur, profile: Profile, periods, fetch, fetched_on: date,
             rest = list(periods[i + 1:])
             if rest:
                 print(f"  not attempted: {', '.join(rest)}")
-            _print_tally(tally)
+            _print_tally(tally, profile)
             return 1
         if stats is not None:
             stats["periods"].append(period)
@@ -367,18 +368,25 @@ def load_periods(cur, profile: Profile, periods, fetch, fetched_on: date,
                       + f"{n_live} live rows (no new edition)")
         else:
             action = ""
-        print(f"  {period}: {kind}, {cmp['changed']} areas "
+        print(f"  {period}: {kind}, {cmp['changed']} {_unit(profile)} "
               f"{'new' if kind == 'new' else 'changed'} (compared with "
               f"{cmp['against']})"
               + ("; " + "; ".join(cmp["examples"]) if cmp["examples"] else "")
               + action + (" COMMITTED" if commit else ""))
-    _print_tally(tally)
+    _print_tally(tally, profile)
     return 0
 
 
-def _print_tally(tally):
+def _unit(profile) -> str:
+    """'areas' when the key is one column (one row per area), else 'rows'
+    (a key such as area x breakdown x category counts rows, not areas)."""
+    return "areas" if len(profile.spec.key_cols) == 1 else "rows"
+
+
+def _print_tally(tally, profile):
+    u = _unit(profile)
     print("  summary: " + ", ".join(
-        f"{k} {n} month(s)/{c} areas" for k, (n, c) in tally.items()))
+        f"{k} {n} month(s)/{c} {u}" for k, (n, c) in tally.items()))
 
 
 def held_periods(cur, profile: Profile, editions_exist: bool) -> list:

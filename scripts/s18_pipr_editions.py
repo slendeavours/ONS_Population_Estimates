@@ -97,10 +97,6 @@ BLOCKS = [
 ]
 BLOCK_KEYS = frozenset((bt, cat) for _, bt, cat in BLOCKS)
 
-# Barnsley and Sheffield: only the default for the pure build_records tests;
-# the loader takes the map from geography.resolve.
-HARD_RECODES = dict(geography.RECODES_FALLBACK)
-
 # Column scales: mean_rent numeric(8,2), rent_index numeric(8,2),
 # annual_pct_change numeric(6,2).
 _Q = Decimal("0.01")
@@ -629,18 +625,39 @@ def fetch_latest_file(session=None, dest=None) -> tuple:
         halt(f"{link}: {len(body)} bytes, expected more than "
              f"{MIN_FILE_BYTES}; nothing written; saw {body[:100]!r}")
     dest.mkdir(parents=True, exist_ok=True)
-    path = dest / f"pipr_{edition}.xlsx"
-    path.write_bytes(body)
+    target = dest / f"pipr_{edition}.xlsx"
+    new_sha = hashlib.sha256(body).hexdigest()
+    tmp = dest / f"pipr_{edition}.download.tmp.xlsx"
+    tmp.write_bytes(body)
     try:
         import openpyxl
-        wb = openpyxl.load_workbook(path, read_only=True)
+        wb = openpyxl.load_workbook(tmp, read_only=True)
         ok = "Table 1" in wb.sheetnames
         wb.close()
         if not ok:
             raise ValueError("no sheet 'Table 1'")
     except Exception as e:  # noqa: BLE001
-        path.unlink()
+        tmp.unlink()
         halt(f"{link}: not a usable workbook ({e}); nothing kept")
+    path = target
+    if target.exists():
+        old_sha = content_sha256(target)
+        if old_sha == new_sha:
+            tmp.unlink()
+            print(f"{target.name} already held with the same content "
+                  f"(sha256 {new_sha[:16]}); kept as it is")
+        else:
+            # ONS re-issued a workbook under the same edition name. The file
+            # already on disk may be cited as evidence, so it is never
+            # replaced: the new one is saved beside it and is the one read.
+            path = dest / f"pipr_{edition}-{new_sha[:8]}.xlsx"
+            tmp.replace(path)
+            print(f"NOTE: {target.name} already exists with different "
+                  f"content (sha256 {old_sha[:16]}, new {new_sha[:16]}); "
+                  f"kept it untouched and saved the new download as "
+                  f"{path.name}")
+    else:
+        tmp.replace(target)
     print(f"downloaded {path.name}: {len(body):,} bytes, sha256 "
           f"{hashlib.sha256(body).hexdigest()[:16]} -> {path}")
     print(f"link: {link} (edition {edition})")

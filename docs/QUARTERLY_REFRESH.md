@@ -613,8 +613,12 @@ Run from `ONS_Population_Estimates`:
 1. `python scripts/s18_pipr_editions.py load` (preview). It reads the dataset
    page, downloads the newest workbook to `data/raw/`, checks that its file
    name, Cover sheet and latest month agree, and compares every held month
-   cell by cell (new, unchanged or revised, with area and cell counts).
-   Nothing is written. To work from a file you already have, add
+   cell by cell (new, unchanged or revised, with a count of rows changed: one
+   row per area and breakdown block, so 2,646 rows is all 294 areas, not 2,646
+   areas). Nothing is written. If a file of that edition name is already in
+   `data/raw/` with different content it is never replaced: the new download
+   is saved beside it as `pipr_<edition>-<sha8>.xlsx`, the message says so, and
+   the new one is the file compared. To work from a file you already have, add
    `--file PATH` (offline).
 2. Read the preview. A month with fewer than 294 areas or a missing breakdown
    block, a NULL replacing a number in more than five areas, a zero or
@@ -645,9 +649,11 @@ an S18 load, including after `refresh-latest --commit`. If a future source or
 export starts to read it, this paragraph needs changing.
 
 **Never run the old scripts.** `scripts/historical/s18_pipr_fetch.py`,
-`s18_pipr_transform.py`, `s18_pipr_load.py` and `s18_pipr_verify.py` inserted
-new rows and ignored revisions of rows already held (`ON CONFLICT DO NOTHING`);
-they now stop with a RETIRED message.
+`s18_pipr_transform.py`, `s18_pipr_load.py` and `s18_pipr_verify.py` upserted
+rows in place (`ON CONFLICT DO UPDATE`) from 2026-07-12 until commit ab14ef9
+(2026-10-01), so the 22 July and 19 August 2026 loads overwrote held rows; after
+that they inserted new rows only and ignored revisions of rows already held
+(`ON CONFLICT DO NOTHING`). They now stop with a RETIRED message.
 
 ## What is still manual
 

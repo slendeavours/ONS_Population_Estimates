@@ -280,8 +280,10 @@ actually came from, so a republished file is visible from the link list alone
 is downloaded. Eleven sources are currently flagged as revising
 (`revises_back_series` true): S1, S1b, S2, S4, S6, S8b, S9a, S15, S18, S22 and S23.
 
-S18 is immune by accident: every edition republishes the full back series, so
-loading the latest edition finalises prior months automatically. S9a is not —
+S18 is no longer immune by accident: every edition republishes the full back
+series, but since 2026-10-01 the loader does not overwrite held rows. A revision
+(including provisional to final) is stored as a new edition and reaches live
+only through `refresh-latest --commit`. S9a is not —
 monthly files, revised in place, no signal in the row count.
 
 ## Build pattern — every target table records its own provenance

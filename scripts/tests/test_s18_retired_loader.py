@@ -22,6 +22,9 @@ class RetiredS18(unittest.TestCase):
                 self.assertIn("RETIRED", r.stderr)
                 self.assertIn("s18_pipr_editions.py", r.stderr)
                 self.assertIn("ON CONFLICT DO NOTHING", r.stderr)
+                self.assertIn("ON CONFLICT DO UPDATE", r.stderr)
+                self.assertIn("2026-10-01", r.stderr)
+                self.assertNotIn("hand-off", r.stderr)
                 self.assertNotIn("ModuleNotFoundError", r.stderr)
                 self.assertNotIn("Traceback", r.stderr)
 

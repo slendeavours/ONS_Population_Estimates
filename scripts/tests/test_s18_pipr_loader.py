@@ -285,7 +285,7 @@ class LoaderDB(unittest.TestCase):
                                     (P2, CODES[3]): -250})
             rc, text, _, _ = self.run_main(cur, ["load", "--commit"], file=f)
             self.assertEqual(rc, 0, text)
-            self.assertIn(f"{P2}: revised, {2 * BLOCKS} areas changed", text)
+            self.assertIn(f"{P2}: revised, {2 * BLOCKS} rows changed", text)
             self.assertEqual(editions(cur, P2),
                              [(1, None, N * BLOCKS), (2, 1, N * BLOCKS)])
             self.assertEqual(editions(cur, P1), [(1, None, N * BLOCKS)])
@@ -311,7 +311,7 @@ class LoaderDB(unittest.TestCase):
             rc, text, _, _ = self.run_main(cur, ["load", "--commit"], file=f)
             self.assertEqual(rc, 0, text)
             # P3's numbers are unchanged; only the provisional flag moved
-            self.assertIn(f"{P3}: revised, {N * BLOCKS} areas changed", text)
+            self.assertIn(f"{P3}: revised, {N * BLOCKS} rows changed", text)
             self.assertIn("provisional " + str(N * BLOCKS), text)
             self.assertEqual(editions(cur, P3),
                              [(1, None, N * BLOCKS), (2, 1, N * BLOCKS)])
@@ -836,6 +836,53 @@ class Fetch(unittest.TestCase):
         self.assertEqual([u for u, _ in s.calls],
                          [m.LANDING, m.BASE_URL + LINK_PATH])
         self.assertTrue(all("User-Agent" in h for _, h in s.calls))
+
+    def _fetch_into(self, d, body):
+        s = _Session({m.LANDING: LANDING_HTML, m.BASE_URL + LINK_PATH: body})
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out),                 mock.patch.object(m, "MIN_FILE_BYTES", 1000):
+            got = m.fetch_latest_file(session=s, dest=Path(d) / "raw")
+        return got, out.getvalue()
+
+    def test_fetch_never_overwrites_an_existing_file_with_different_bytes(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, True))
+        first = self.workbook_bytes()
+        (p1, _, _), _ = self._fetch_into(d, first)
+        self.assertEqual(p1.read_bytes(), first)
+        d2 = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d2, True))
+        other = write_edition(d2, "19august2026", [P1]).read_bytes()
+        self.assertNotEqual(other, first)
+        (p2, edition, _), text = self._fetch_into(d, other)
+        self.assertEqual(p1.read_bytes(), first)          # untouched
+        self.assertNotEqual(p2, p1)
+        self.assertEqual(p2.read_bytes(), other)          # new one kept
+        self.assertEqual(edition, "19august2026")
+        self.assertIn("already exists with different content", text)
+        self.assertIn(p2.name, text)
+        self.assertEqual(sorted(x.name for x in (Path(d) / "raw").iterdir()),
+                         sorted([p1.name, p2.name]))      # no temp left
+
+    def test_fetch_same_bytes_again_keeps_the_one_file(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, True))
+        body = self.workbook_bytes()
+        (p1, _, _), _ = self._fetch_into(d, body)
+        (p2, _, _), text = self._fetch_into(d, body)
+        self.assertEqual(p1, p2)
+        self.assertIn("same content", text)
+        self.assertEqual(len(list((Path(d) / "raw").iterdir())), 1)
+
+    def test_fetch_bad_download_leaves_an_existing_file_alone(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(d, True))
+        body = self.workbook_bytes()
+        (p1, _, _), _ = self._fetch_into(d, body)
+        with self.assertRaises(SystemExit):
+            self._fetch_into(d, b"not a workbook" * 200)
+        self.assertEqual(p1.read_bytes(), body)
+        self.assertEqual(len(list((Path(d) / "raw").iterdir())), 1)
 
     def test_fetch_halts_on_a_changed_layout_or_a_bad_download(self):
         body = self.workbook_bytes()

@@ -766,8 +766,12 @@ SOURCES = [
             "as the next edition in la_private_rents_editions rather than "
             "overwriting (scripts/s18_pipr_editions.py); la_private_rents "
             "holds the latest edition of each month. The old pipeline "
-            "inserted new rows and ignored revisions of rows already held "
-            "(ON CONFLICT DO NOTHING). Record: "
+            "upserted rows in place (ON CONFLICT DO UPDATE) from 2026-07-12 "
+            "until 2026-10-01, overwriting held rows, then inserted new rows "
+            "only (ON CONFLICT DO NOTHING). The live source column names the "
+            "edition that last wrote a row: for the 76,734 legacy rows "
+            "(2024-03 to 2026-07) the 19 August 2026 edition, not the first "
+            "inserting one. Record: "
             "docs/decisions/2026-10-09-s18-editions-first-load.md."),
         source_name="ONS PIPR",
         publisher="ONS",
