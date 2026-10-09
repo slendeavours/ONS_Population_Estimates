@@ -853,6 +853,25 @@ twice on 2026-08-20), added suppressed cells as 0, resolved codes through
 every `la_code_lookup` row (which recoded Bournemouth and Poole 2019 to BCP)
 and recreated its backup table on every run.
 
+## S22 MHCLG Council Taxbase and Live Table 615: each November, and each Table 615 update
+
+`la_council_taxbase_empties` and `la_ctb_exemption_classes` are the latest-edition layers of `*_editions` tables (one Council Taxbase workbook's statement about one taxbase year; main and classes always together, with a ledger of every file read), and `la_vacant_dwellings_615` is the layer of `la_vacant_dwellings_615_editions` (one Table 615 file's statement about one year). MHCLG publishes the Council Taxbase in November and revises the latest year in the following January to May; Table 615 is re-issued two or three times a year (next update November 2026 to February 2027). Record: [S22](decisions/2026-10-09-s22-editions-first-load.md). Source note: [s22_source_structure.md](s22_source_structure.md).
+
+Run from `ONS_Population_Estimates`. `check_sources.py 22` detects a new Council Taxbase release; nothing detects a new Table 615 file.
+
+1. Council Taxbase, each November: `python scripts/s22_ctb_editions.py load` (preview). It finds the newest `Council Taxbase <yyyy> in England` release and its one local authority level attachment through the GOV.UK content API, downloads it to `data/raw/s22_ctb/` (also in a preview; the database is not written), reads the year and release dates from the workbook's own cover, and prints what is new, revised, unchanged or skipped as older. Read the whole preview. A year is REJECTED (nothing stored, exit 1) on an identity, marker, reconciliation or geography failure, or when a new year does not have 296 authorities or loses one the held year had; a revised year is rejected when a national total moves by more than 2% or more than 30 authorities change. An older file than the tip is skipped, and a run of only older files halts (`--allow-older-file` overrides). A 0 to NULL or NULL to 0 flip needs `--acknowledge YEAR`. `--release YYYY` and `--file PATH` take other files with the same checks.
+2. `load --commit` stores a new year as edition 1 with its live rows (main and classes) and ledger row in one transaction, and a revised year as the next edition (main and classes together).
+3. A revised workbook (January to May): the same `load`, then `refresh-latest --part ctb` (preview) and `refresh-latest --part ctb --commit`, which copies the edition into the live tables with the time the edition was stored as `loaded_at`. **Run `refresh-latest --commit` in the same session as `load --commit`, before any W1 run.** If W1 ran in between, the copied `loaded_at` is earlier than that W1 run and `refresh_map.py --check` calls the map current while it still shows the unrevised year.
+4. Table 615, each update: `python scripts/s22_ctb_editions.py load-615` (preview), `load-615 --commit`, then `refresh-latest --part 615` and `--commit`. Every year from 2004 is read; a changed back year is a new edition of that year, a new year is a new period.
+5. `status` should say OK and `python scripts/s22_ctb_editions_verify.py` should pass all 25 gates.
+6. Run `w1_run.py` and `refresh_map.py` **only when the latest taxbase year or its values changed**: Council Taxbase 2026 arrives in November 2026 and becomes W1's year; a revision of the latest year reaches W1 through `refresh-latest`. A Table 615 update does not change W1's input. `refresh_map.py --check` is the test.
+
+**November 2026:** `taxbase_year` 2026 is a new period (edition 1), Table 615 gains a 2026 column and may revise earlier years, and Barnsley and Sheffield are expected as E08000038/39 in both. Table numbers inside the workbook can shift; the loader finds each block by number and title and halts naming what it saw, and the block map is then corrected deliberately.
+
+To go back for a period: `restore-edition ctb|615 PERIOD N` (preview by default) stores edition N's rows as the next edition, then `refresh-latest --commit`. Nothing is deleted from the editions.
+
+**Never run the old scripts.** `scripts/historical/s22_ctb_discover.py`, `s22_ctb_empties_build.py`, `s22_run.py` and `s22_verify.py` now stop with a RETIRED message. They upserted with `INSERT ... ON CONFLICT ... DO UPDATE`, setting `loaded_at`, wrote when run with no preview, and the load ran once, on 2026-08-13 (run-log id 83); the verify step was run at least twice and its duplicate run-log row (id 84) was deleted.
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
@@ -863,6 +882,7 @@ and recreated its backup table on every run.
 - **Running the S9a and S9b monthly checks.** Nothing runs `s9a_drd_editions.py load` or `s9b_crfd_editions.py load` for you; see the S9 section.
 - **Running the S11 monthly check.** Nothing runs `s11_cqc_editions.py load` for you; see the S11 section.
 - **Running the S4 November load.** `check_sources.py 4` detects a new release but nothing runs `s4_care_leaver_editions.py load` for you; see the S4 section.
+- **Running the S22 November load and the Table 615 updates.** `check_sources.py 22` detects a new Council Taxbase release, nothing detects a new Table 615 file, and nothing runs `s22_ctb_editions.py load` or `load-615` for you; see the S22 section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

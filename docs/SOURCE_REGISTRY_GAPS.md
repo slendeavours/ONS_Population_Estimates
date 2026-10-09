@@ -21,9 +21,9 @@ The top of this list is the documentation debt.
 | `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
 | `join_path` | 13 | the build script's geography resolution step |
 | `revises_back_series` | 13 | — |
+| `n8n_workflow_name` | 12 | the n8n workflow that runs the source, where one does |
 | `build_script_path` | 11 | the build script, if it is in the published tree |
 | `detected_period_type` | 11 | — |
-| `n8n_workflow_name` | 11 | the n8n workflow that runs the source, where one does |
 | `revision_note` | 11 | — |
 | `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
 | `publication_window` | 9 | the publisher's stated release window |
@@ -35,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 306 null fields across 26 published sources.
+Total: 307 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -491,12 +491,13 @@ Total: 306 null fields across 26 published sources.
 | `auth_env_var` | the build script, where the source needs a credential |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `detected_period_type` | — |
 
-**Note.** 296 of 296 authorities for taxbase year 2025, complete. Additional tables: la_ctb_exemption_classes, la_vacant_dwellings_615, ctb_series_breaks. Rates are derived in v_la_empty_homes_rates and never stored.
+**Note.** 296 of 296 authorities for taxbase year 2025, complete (edition 1 as held; the workbook is the 21 January 2026 revision). la_ctb_exemption_classes 3,256 rows (11 classes x 296). la_vacant_dwellings_615 7,170 rows for 2004-2025 (353 districts in 2004 down to 296 in 2023-2025). ctb_series_breaks is unchanged. Rates are derived in v_la_empty_homes_rates and never stored.
 
 ### S23
 

@@ -723,6 +723,13 @@ def find_s22():
     if not yrs:
         raise ValueError("no 'Council Taxbase <year> in England' title in the collection")
     best = max(yrs)
+    later = [x["title"] for x in docs
+             if re.match(r"Council Taxbase", x.get("title", ""))
+             and not re.match(r"^Council Taxbase (\d{4}) in England$", x["title"])
+             and any(y > best[0] for y in re.findall(r"(\d{4})", x["title"]))]
+    if later:
+        raise ValueError(f"newest matching title is {best[0]} but the collection lists "
+                         f"{later} with a later year that does not fit the title pattern")
     return status, best[0], f"'{best[1]}' updated {best[2]}"
 
 

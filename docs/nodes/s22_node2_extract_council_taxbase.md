@@ -1,5 +1,7 @@
 # Node 2 — Extract Council Taxbase
 
+> **Superseded 2026-10-09.** The old S22 scripts this note describes (`s22_ctb_discover.py`, `s22_ctb_empties_build.py`, `s22_run.py`, `s22_verify.py`) were loaded once, on 2026-08-13 (run-log id 83; the verify step was run at least twice and its duplicate run-log row, id 84, was deleted), and are retired to `scripts/historical/`, where they stop with a RETIRED message. S22 is now loaded by `scripts/s22_ctb_editions.py`, which finds both files itself, reads each file's identity from its own cover and keeps each file's statement about each year as an edition (`la_council_taxbase_empties_editions`, `la_ctb_exemption_classes_editions`, `la_vacant_dwellings_615_editions`). The source note is `docs/s22_source_structure.md`. The text below is left as written and describes the old method.
+
 ## Type
 
 Code (Python). `scripts/s22_ctb_empties_build.py`, function `extract_council_taxbase`.
@@ -83,7 +85,7 @@ Recode resolution, applied after extraction:
 4. Capture the England row (`E92000001`) separately. It is the reconciliation target for the two measures the release page does not print, and is never loaded as an authority.
 5. For each authority row, read the five totals, derive `empty_under_6_months` as Table 1.18 minus Table 1.19, and sum the eleven unoccupied classes into `unoccupied_exemptions_total`.
 6. Emit one long-format record per authority per exemption class, carrying the class description.
-7. Resolve codes. Any published code held in `la_code_lookup` as `change_type = 'recode'` is mapped to its current code — same area, new number. Abolitions are not resolved here; the Council Taxbase publishes current authorities only.
+7. Resolve codes. Any published code held in `la_code_lookup` as `change_type = 'recode'` is mapped to its current code — a renumbering, resolved under rule 4.5. Abolitions are not resolved here; the Council Taxbase publishes current authorities only.
 8. Check for a recode collision, then check that every resulting code exists in `la_boundaries`. An unresolved code is a hard stop, reported as UNEXPLAINED rather than as expected or harmless.
 
 ## Behaviour

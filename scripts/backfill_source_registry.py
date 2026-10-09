@@ -1103,9 +1103,29 @@ SOURCES = [
     dict(
         source_code="22",
         revises_back_series=True,
-        revision_note=("Tables 1, 2, 3a, 3b and 4 of the 2025 taxbase were revised on "
-            "21 January 2026 after corrections from 22 authorities. The "
-            "release page carries the revision date."),
+        revision_note=("The latest Council Taxbase year is revised after first "
+            "publication; earlier years are not. The 2025 workbook was first "
+            "published on 6 November 2025 and revised on 21 January 2026 "
+            "(\"corrections to data from 22 authorities\", England level "
+            "changed by less than 1%; 11 authorities carry [r] on the tables "
+            "used, 18 on the whole sheet); the cover says \"No revisions have been made to previous "
+            "years\". The November file cannot be recovered (its URL now "
+            "answers 301 to the revised file), so the size of the change per "
+            "cell is not measured; the held workbook is the revised one. "
+            "Table 615, June 2025 to January 2026: the 2025 column was added "
+            "and 2004-2024 did not change (6 Dacorum 2012 cells differ only "
+            "below the ninth decimal); January 2026 to June 2026: 0 cells "
+            "changed on the two sheets loaded. Each file's statement about "
+            "each year is stored as an edition (la_council_taxbase_empties_"
+            "editions with la_ctb_exemption_classes_editions, and "
+            "la_vacant_dwellings_615_editions); the live tables are the "
+            "latest edition of each year and move only through "
+            "refresh-latest --commit. The old build (scripts/historical/"
+            "s22_*.py) upserted by design, but its load ran once, on "
+            "2026-08-13 (run-log id 83), and nothing was overwritten "
+            "(its verify step ran at least twice; the duplicate run-log "
+            "row, id 84, was deleted). "
+            "Record: docs/decisions/2026-10-09-s22-editions-first-load.md."),
         source_name="MHCLG Council Taxbase (CTB form) + Live Table 615",
         publisher="MHCLG",
         series_name=("Local authority Council Taxbase in England; Live Table "
@@ -1115,42 +1135,96 @@ SOURCES = [
         api_endpoint="https://www.gov.uk/api/content",
         acquisition_method="api",
         known_gotchas=(
-            "Both files are resolved at runtime from their publisher landing "
-            "pages via the GOV.UK content API; no file URL is hardcoded. The "
-            "header row is row 6 on every data sheet — row 5 carries the "
-            "table label spanning each block, row 7 the England total and "
-            "rows 8-303 the 296 billing authorities. Column offsets differ "
-            "per table block and are not uniform. Live Table 615 has its own "
-            "landing page: https://www.gov.uk/government/statistical-data-"
-            "sets/live-tables-on-dwelling-stock-including-vacants."),
+            "Both files are found at runtime from the GOV.UK content API (the "
+            "Council Taxbase collection and the live tables page); no file URL "
+            "is hardcoded. A GOV.UK asset URL is not evidence of what the file "
+            "is: the November 2025 workbook's URL (a different file name) now "
+            "answers 301 to the revised file, and an attachment can change "
+            "without a change note (a Tables 1-5 file was found under a new "
+            "media id with different content). The loader records the final "
+            "URL and the sha256 of the bytes read, takes the year and release "
+            "dates from the workbook's own cover, and ranks a file by that "
+            "cover date, never by name or link. Table blocks are found by "
+            "number and title (1.01, 1.11, 1.17, 1.18, 1.19 and 2.01), not "
+            "by position, because block offsets differ and can shift; an "
+            "unexpected layout halts naming what it saw. In Table 615 the "
+            "header row carries one snapshot date per year (06/10/2025 for "
+            "2025) and the loader halts if a year repeats or a date is out "
+            "of its year. Markers [x] and [z] are NULL, never 0; a blank, an "
+            "unknown marker or a non-integer halts, except Dacorum 2012 "
+            "(published 1415.578 and 494.578, held rounded). Live Table 615 "
+            "has its own landing page: https://www.gov.uk/government/"
+            "statistical-data-sets/live-tables-on-dwelling-stock-including-"
+            "vacants."),
         cadence="annual", cadence_months=12,
         publication_window=("November, revised the following January; "
-                            "Table 615 updated with the dwelling "
-                            "stock live tables"),
+                            "Table 615 updated two or three times a year "
+                            "(next update November 2026 to February 2027)"),
         target_table="la_council_taxbase_empties", geography_level="LAD24",
         join_path=("MHCLG publishes Barnsley and Sheffield as E08000038 and "
-                   "E08000039; both resolve through la_code_lookup as "
-                   "change_type = 'recode'."),
-        build_script_path="scripts/s22_ctb_empties_build.py",
+                   "E08000039 in the Council Taxbase 2025; Table 615 carries "
+                   "E08000016/19 numbers for 2004-2024 and E08000038/39 "
+                   "numbers for 2025. Codes resolve through "
+                   "scripts/geography.py (form mixed) and the recode rows of "
+                   "la_code_lookup under rule 4.5. Abolished Table 615 "
+                   "districts stay unmapped, never mapped to successors."),
+        build_script_path="scripts/s22_ctb_editions.py",
         node_docs_path="docs/nodes/s22_node1..s22_node10",
         source_doc_path="docs/s22_source_structure.md",
-        verification_checks={"script": "scripts/s22_verify.py",
-                             "hard_checks": 6, "soft_checks": 4,
-                             "report": "docs/s22_verification.md"},
-        n8n_workflow_name="Workflow 1",
-        caveats=["Only the current year is published in the release workbook, "
-                 "so a single year is loaded; the series is built up one "
-                 "release at a time from November each year.",
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s22_ctb_editions_verify.py",
+            "checks": 24,
+            "first_load": "2026-10-09",
+            "migration_proof": ("migrate-legacy: the loader's parser on the "
+                                "two held files reproduced every held cell "
+                                "(2,368 CTB, 6,512 class and 35,850 Table "
+                                "615 cells), 0 differences; the authorities "
+                                "sum to England in every column and year; "
+                                "615 2025 all-vacants equals CTB empty_total "
+                                "+ unoccupied_exemptions_total for 296 of "
+                                "296 authorities"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an identity, marker, reconciliation or geography "
+                     "failure or an older file"),
+            "retired": ("the old verify-and-log suite (s22_verify.py, "
+                        "6 hard and 4 soft checks) is retired; its run-log "
+                        "row 83 keeps status complete")},
+        caveats=["Each Council Taxbase workbook holds one year, so the "
+                 "series is built up one release at a time from November "
+                 "each year; only 2025 is held.",
                  "Table 615 covers 2004 to 2025, but that series is not "
                  "complete for any single geography over the full period: "
                  "891 rows across 80 published codes are districts abolished "
                  "under local government reorganisation and carry a null "
                  "lad24cd. They are deliberately not aggregated into "
                  "successor unitaries.",
-                 "Long-term empty is not the same as vacant. The Council "
-                 "Taxbase and Table 615 use different definitions and "
-                 "different snapshot dates, and are not reconciled to each "
-                 "other.",
+                 "The Council Taxbase and Table 615 are reconciled by the "
+                 "publisher. Table 615's cover defines October 2025 "
+                 "all-vacants as Line 15 plus exemption classes B, D to L "
+                 "and Q on the CTB form, or CTB tables 1.18 and 2.01, "
+                 "and long-term vacants as Line 18, or table 1.22. The loader "
+                 "checks that 615 2025 all-vacants equals empty_total + "
+                 "unoccupied_exemptions_total for every authority.",
+                 "empty_6_months_plus is table 1.19 (Line 16, every dwelling "
+                 "classed as empty for more than six months), which is not "
+                 "MHCLG's long-term vacant figure. That is Line 18 (table "
+                 "1.22), which leaves out dwellings on empty homes discount "
+                 "class D and flood empties: England 309,889 on 1.19 "
+                 "against 303,185 on 1.22, and 178 of 296 authorities "
+                 "differ (179 rows with England counted). The map's "
+                 "Long-Term Empty Rate uses 1.19 and is unchanged; "
+                 "whether it should move to Line 18 is pending Scott "
+                 "(decision D1).",
+                 "Suppressed values are NULL, never 0: [x] and [z] are NULL "
+                 "with the reason in null_reasons, "
+                 "unoccupied_exemptions_total is NULL unless all 11 classes "
+                 "are published, and empty_under_6_months is NULL unless "
+                 "both parts are. None of the held 2025 values is NULL.",
+                 "Dacorum 2012 in Table 615 is published as 1415.578 and "
+                 "494.578 (non-integers; England and the East region carry "
+                 "the same fraction) and is held rounded half up as 1416 "
+                 "and 495.",
                  "Structural break 2024-04-01: the Empty Homes Premium "
                  "threshold moved from 2 years to 1 year, so "
                  "empty_homes_premium_count is not comparable across that "
@@ -1163,10 +1237,13 @@ SOURCES = [
                  "reach 100: long-term empty starts at six months while the "
                  "premium starts at twelve. It is not a compliance rate."],
         completeness_note=(
-            "296 of 296 authorities for taxbase year 2025, complete. "
-            "Additional tables: la_ctb_exemption_classes, "
-            "la_vacant_dwellings_615, ctb_series_breaks. Rates are derived in "
-            "v_la_empty_homes_rates and never stored."),
+            "296 of 296 authorities for taxbase year 2025, complete (edition "
+            "1 as held; the workbook is the 21 January 2026 revision). "
+            "la_ctb_exemption_classes 3,256 rows (11 classes x 296). "
+            "la_vacant_dwellings_615 7,170 rows for 2004-2025 (353 districts "
+            "in 2004 down to 296 in 2023-2025). ctb_series_breaks is "
+            "unchanged. Rates are derived in v_la_empty_homes_rates and "
+            "never stored."),
         latest_period_loaded="2025",
         refresh_tier="B", status="active",
         publish_github=True, publish_map=True,
@@ -1931,8 +2008,10 @@ def backfill_run_log_source_code(cur, register_codes):
 
 # Fields set to NULL on purpose. S4's n8n_workflow_name said Workflow 1; the
 # loader is scripts/s4_care_leaver_editions.py, not an n8n workflow (W1 only
-# reads its table).
-CLEAR_FIELDS = {"4": ("n8n_workflow_name",)}
+# reads its table). S22 never had an n8n workflow of its own; its row said
+# Workflow 1, which only reads the tables.
+CLEAR_FIELDS = {"4": ("n8n_workflow_name",),
+                "22": ("n8n_workflow_name",)}
 
 
 def upsert_sources(cur, pks, register):

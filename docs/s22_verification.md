@@ -1,5 +1,7 @@
 # S22 — verification suite
 
+> **Superseded 2026-10-09.** This is the report of the old verify-and-log suite (`scripts/historical/s22_verify.py`, retired; it also wrote a run-log row each time it ran). It records the single 2026-08-13 build (run-log id 83). S22 is now checked by `scripts/s22_ctb_editions_verify.py` (25 gates, writes nothing). The text below is left as written. Its closing note about re-running `s22_verify.py` describes the retired script, which now stops with a RETIRED message.
+
 Run 2026-08-13T01:32:19+00:00. Source A Council Taxbase 2025 in England, revised 2026-01-21. Source B Table 615: vacant dwellings by local authority district: England, from 2004.
 
 ## Hard gates

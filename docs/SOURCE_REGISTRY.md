@@ -306,6 +306,16 @@ can change between releases (counties becoming unitary), which
 `--accept-key-changes`. Record:
 `docs/decisions/2026-10-09-s4-editions-first-load.md`.
 
+S22 (MHCLG Council Taxbase and Live Table 615) is on the same engine since
+2026-10-09. The Council Taxbase revises its latest year once or twice after
+first publication (the 2025 workbook was revised on 21 January 2026) and
+says no earlier year is revised; Table 615 is re-issued two or three times a
+year. Each file's statement about each year is stored as an edition, the CTB
+main and class tables together, and reaches live only through
+`refresh-latest --commit`. `check_sources.py` (`find_s22`) reads the newest
+`Council Taxbase <year> in England` release; Table 615 is not detected by
+it. Record: `docs/decisions/2026-10-09-s22-editions-first-load.md`.
+
 S11 (the CQC register) is on the same engine since 2026-10-09 but is
 snapshots, not revisions: each monthly file is a dated copy of the register
 (the period is the as-at date on the file's README sheet), stored as its own
@@ -459,7 +469,11 @@ Gate 12 found a fourth suite on its first run: `s22_verify.py` was writing run
 status `complete`/`failed`, which the new `pipeline_run_log` constraint would
 have rejected outright on its next execution. It now logs `success` only and
 reports failure without recording it, matching the convention the log has
-always followed.
+always followed. That suite, `s22_verify.py`, is retired (moved to
+`scripts/historical/` with a RETIRED guard on 2026-10-09; S22 is now checked
+by `scripts/s22_ctb_editions_verify.py`, which writes nothing). Its one
+run-log row, id 83, keeps status `complete`, which
+`verify_source_registry.py` still allows.
 
 ## Precedent — widening a CHECK constraint by drop-and-add
 

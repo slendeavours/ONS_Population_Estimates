@@ -121,10 +121,14 @@ DATASET_FORM = {
            "edition) carries E08000038/39 only (registry known_gotchas "
            "agrees)."),
     "22": ("mixed",
-           "Council Taxbase 2025 workbook (data/raw/s22_ctb and data/"
-           "reference) carries E08000038/39 only; Live Table 615 "
-           "(la_vacant_dwellings_615.published_la_code) carries E08000016/19 "
-           "for 2004-2024 and E08000038/39 for 2025, one form per year."),
+           "Read 2026-10-09 from the files in data/raw/s22_ctb: the Council "
+           "Taxbase 2025 local authority level workbook "
+           "(2025_Local_Authority_Drop_Down.xlsx) carries E08000038/39 only; "
+           "Live Table 615 (Live_Table_615.ods, 2004 to 2025) lists all four "
+           "codes, but the codes with numbers are E08000016/19 for "
+           "2004-2024 and E08000038/39 for 2025 (each published [x] in the "
+           "other years), one form per year. scripts/s22_ctb_editions.py "
+           "passes only the codes with a number in each year."),
     "23": ("old",
            "RP_COMBINED_TOOL_2025_FINAL_V1.1.xlsx (data/raw/s23_rsh) and "
            "rsh_rp_stock_by_la.publisher_la_code (stock date 2025-03-31) "

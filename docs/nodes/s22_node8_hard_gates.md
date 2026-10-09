@@ -1,5 +1,7 @@
 # Node 8 — Hard Gates
 
+> **Superseded 2026-10-09.** The old S22 scripts this note describes (`s22_ctb_discover.py`, `s22_ctb_empties_build.py`, `s22_run.py`, `s22_verify.py`) were loaded once, on 2026-08-13 (run-log id 83; the verify step was run at least twice and its duplicate run-log row, id 84, was deleted), and are retired to `scripts/historical/`, where they stop with a RETIRED message. S22 is now loaded by `scripts/s22_ctb_editions.py`, which finds both files itself, reads each file's identity from its own cover and keeps each file's statement about each year as an edition (`la_council_taxbase_empties_editions`, `la_ctb_exemption_classes_editions`, `la_vacant_dwellings_615_editions`). The source note is `docs/s22_source_structure.md`. The text below is left as written and describes the old method.
+
 ## Type
 
 Postgres — Execute Query, run inside the load transaction. `scripts/s22_run.py`, function `run`.

@@ -4,9 +4,20 @@ Re-states every hard gate against the committed database, runs the soft
 checks, writes build_reports/s22_verification.md and logs the run to
 pipeline_run_log.
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s22_ctb_editions.py. The old S22 build (s22_ctb_discover.py, '
+    's22_ctb_empties_build.py, s22_run.py, s22_verify.py) was loaded once, on 2026-08-13 (run-log id '
+    '83); the verify step was run at least twice and its duplicate run-log row (id 84) was '
+    'deleted. No earlier S22 load existed, so nothing was overwritten in practice. This is the verify '
+    'step: it also wrote a run-log row each time it ran (it was run at least twice, and the '
+    'second run added a duplicate, id 84, which was deleted). Use scripts/s22_ctb_editions.py (load, load-615, refresh-latest) instead.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import datetime
 import json
-import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))

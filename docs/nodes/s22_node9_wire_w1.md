@@ -1,5 +1,7 @@
 # Node 9 — Wire W1 and Re-run
 
+> **Superseded 2026-10-09.** This note describes wiring the S22 columns into Workflow 1 in n8n with `scripts/s22_w1_wire.py` (now in `scripts/historical/`). W1 now runs from this repository (`sql/w1`, `scripts/w1_run.py`), and S22 is loaded by `scripts/s22_ctb_editions.py`, which keeps each file's statement about each year as an edition. The source note is `docs/s22_source_structure.md`. The text below is left as written and describes the old method.
+
 ## Type
 
 Postgres — Execute Query, plus a write to the n8n workflow store. `scripts/s22_w1_wire.py`.
