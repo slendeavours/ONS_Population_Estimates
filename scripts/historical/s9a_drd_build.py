@@ -21,6 +21,14 @@ Usage:
     python scripts/s9a_drd_build.py --load          # upsert the live table
     python scripts/s9a_drd_build.py --load --from 2026-06-01
 """
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s9a_drd_editions.py. "
+    "The old S9a build upserted rows in place (INSERT ... ON CONFLICT DO UPDATE, setting loaded_at), so loading a republished file overwrote held rows; the loaded_at dates show no held month was in fact rewritten after its first load. It had no record of revisions.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import argparse
 import re
 import sys

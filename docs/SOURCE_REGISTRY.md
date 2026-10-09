@@ -283,8 +283,12 @@ is downloaded. Eleven sources are currently flagged as revising
 S18 is no longer immune by accident: every edition republishes the full back
 series, but since 2026-10-01 the loader does not overwrite held rows. A revision
 (including provisional to final) is stored as a new edition and reaches live
-only through `refresh-latest --commit`. S9a is not —
-monthly files, revised in place, no signal in the row count.
+only through `refresh-latest --commit`. S9a and S9b are the same since
+2026-10-09: one file per month, a revised file (S9a `-Revised`; S9b Final or
+`vN`) is found by link, stored as the next edition and reaches live only
+through `refresh-latest --commit`, and a ledger of every file read means an
+unchanged reissue is not downloaded again. There is no signal in the row
+count, which is why the link and the file identity are the evidence.
 
 ## Build pattern — every target table records its own provenance
 
@@ -298,7 +302,7 @@ It has now paid for itself twice on two unrelated problems:
   published link list establishes whether an already-loaded period has been
   republished, without downloading anything. That is how S9a was cleared
   across all 26 loaded periods.
-- **Reconstruction.** When S9a and S9b had to be rebuilt from scratch, the
+- **Reconstruction.** When S9a and S9b had to be rebuilt from scratch (2026-08-14), the
   recorded URLs let the rebuild be pointed at the files that produced the live
   data rather than at whatever the publisher serves today. Exact reproduction
   would not have been provable otherwise.
@@ -373,7 +377,14 @@ S9a and S9b were in that state until 2026-08-14: 15,226 rows live, wired into
 Workflow 1 and driving the `mental_health` and `learning_disability` tenant
 types, with no code path back to them. Both were reconstructed from their node
 documentation and verified by **exact reproduction** — rebuilt into a staging
-table and diffed cell by cell against the live table.
+table and diffed cell by cell against the live table. That evidence is
+historical: the staging tables were dropped on 2026-10-09
+([record](decisions/2026-10-09-s9-repro-tables-dropped.md)), and both sources are
+now loaded by editions loaders (`scripts/s9a_drd_editions.py`,
+`scripts/s9b_crfd_editions.py`), where reproducibility is the editions tables
+and their file-check ledgers: every file read is recorded with its URL and
+sha256, and each verify script re-parses the raw files and compares them with
+the held editions.
 
 | | Rows | Periods | Key differences | Cell differences |
 | --- | ---: | ---: | ---: | ---: |

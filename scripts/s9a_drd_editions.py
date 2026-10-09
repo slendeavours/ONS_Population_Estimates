@@ -183,11 +183,11 @@ def _is_revised(url: str) -> bool:
 
 
 def link_rank(url: str) -> tuple:
-    """(upload year, upload month, 1 if -Revised else 0): the upload path
+    """(upload year, upload month, 1 for a -Revised link, else zero): the upload path
     YYYY/MM first, then -Revised. A link with no upload path ranks (0, 0, r)."""
     m = _UPLOAD_RE.search(url or "")
     y, mo = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
-    return (y, mo, 1 if _is_revised(url or "") else 0)
+    return (y, mo, 1 if _is_revised(url or "") else 0)  # not a source value
 
 
 def link_older(chosen: str, tip_file: "str | None") -> bool:

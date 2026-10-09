@@ -18,6 +18,14 @@ Usage:
     python scripts/s9b_crfd_build.py --reproduce
     python scripts/s9b_crfd_build.py --load --url <file-url> --period YYYY-MM-01
 """
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s9b_crfd_editions.py. "
+    "The old S9b build upserted rows in place (INSERT ... ON CONFLICT DO UPDATE, setting loaded_at), so loading a republished file overwrote held rows; the loaded_at dates show no held month was in fact rewritten after its first load. It took the file URL and period on the command line and ignored the year-end Final files.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import argparse
 import csv
 import io

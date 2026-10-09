@@ -17,7 +17,7 @@ Found by scanning all 40 tables carrying lad24cd:
     la_statutory_homelessness   split      TA NULL for both from 2025Q2
     la_rough_sleeping           new only   rough sleeping NULL for both, always
     nhs_mh_crfd                 split      masked by vw_mh_crfd_lad
-    nhs_mh_crfd_repro           split      reproduction mirror of the above
+    nhs_mh_crfd_repro           split      reproduction mirror of the above (dropped 2026-10-09)
 
 Why nhs_mh_crfd is recoded too
 ------------------------------
@@ -113,9 +113,18 @@ def main():
     conn = get_conn()
     cur = conn.cursor()
     try:
+        # A table that no longer exists is skipped (nhs_mh_crfd_repro was
+        # dropped on 2026-10-09, see docs/decisions/2026-10-09-s9-repro-tables-dropped.md).
+        tables = {}
+        for t, k in TABLES.items():
+            cur.execute("SELECT to_regclass(%s)", (t,))
+            if cur.fetchone()[0] is None:
+                print(f"  {t}: table does not exist, skipped")
+            else:
+                tables[t] = k
         print("Pending recodes and collision test:")
         blocked, work = [], {}
-        for table, keycols in TABLES.items():
+        for table, keycols in tables.items():
             todo = pending(cur, table)
             coll = collisions(cur, table, keycols)
             work[table] = todo
@@ -136,7 +145,7 @@ def main():
             print("--check only, nothing written.")
             return 0
 
-        for table in TABLES:
+        for table in tables:
             cur.execute(f"""
                 UPDATE {table} t
                 SET lad24cd = l.new_code
@@ -147,7 +156,7 @@ def main():
             print(f"  {table:<28} {cur.rowcount:>4} row(s) recoded")
 
         problems = []
-        for table in TABLES:
+        for table in tables:
             left = pending(cur, table)
             if left:
                 problems.append(f"{table} still has unresolved codes: {left}")
@@ -161,7 +170,7 @@ def main():
                      "\n  ".join(problems))
 
         conn.commit()
-        print("\nAll four tables resolve to la_boundaries. COMMITTED")
+        print("\nAll tables checked resolve to la_boundaries. COMMITTED")
         return 0
     except Exception:
         conn.rollback()

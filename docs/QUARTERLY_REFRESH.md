@@ -655,6 +655,68 @@ rows in place (`ON CONFLICT DO UPDATE`) from 2026-07-12 until commit ab14ef9
 that they inserted new rows only and ignored revisions of rows already held
 (`ON CONFLICT DO NOTHING`). They now stop with a RETIRED message.
 
+## S9 Discharge delays (S9a) and mental health delayed discharge (S9b): the monthly check
+
+`nhs_drd_discharge_delays` (S9a, NHS England Discharge Ready Date, by upper-tier
+authority) and `nhs_mh_crfd` (S9b, MHSDS measure MHS26, by local authority) each
+have an append-only editions table (`..._editions`) and a ledger of every file
+read (`..._editions_file_checks`). The live table holds the latest edition of
+each month. Both publish one file per month. Records:
+[S9a](decisions/2026-10-09-s9a-editions-first-load.md),
+[S9b](decisions/2026-10-09-s9b-editions-first-load.md).
+
+Run from `ONS_Population_Estimates`, for each of `s9a_drd_editions.py` and
+`s9b_crfd_editions.py`:
+
+1. `python scripts/<loader> load` (preview). It reads the publication pages,
+   picks each month's current file (S9a: a `-Revised` webfile beats the
+   original; S9b: Final beats Performance, then the higher `vN`), skips files
+   already in the ledger and previews new, unchanged and revised months.
+   Nothing is written to the database; downloads go to `data/raw/s9a_drd/` or
+   `data/raw/s9b_mhsds/` (an S9b preview can read around 40 files and take a
+   couple of minutes).
+2. Read the preview. A month with other than the expected number of areas, an
+   unexpected code, a negative value, a NULL replacing a number in more than
+   five areas, a Barnsley and Sheffield form that disagrees with
+   `scripts/geography.py`, a 0 to NULL change (or the reverse; release with
+   `--acknowledge PERIOD` after reading it) or an older file than held is
+   rejected and nothing is stored for that month (`--allow-older-file`
+   overrides the last). S9b Performance-to-Final changes are large by nature
+   (100 to 175 changed areas a month) and are read in full, not blocked.
+3. `python scripts/<loader> load --commit` stores a new month as edition 1 with
+   its live rows in one transaction, and a revised month as the next edition.
+4. If any month was revised, `refresh-latest` previews, then run it again with
+   `--commit`; this also moves live `source` to the new file URL.
+5. `status` should say OK, and `python scripts/s9a_drd_editions_verify.py` and
+   `python scripts/s9b_crfd_editions_verify.py` should each pass all 24 gates.
+
+`load --recheck-all` reads every held month again. Do it occasionally for S9a,
+whose publisher revises in waves (the files carry a `Revised:` date on the
+cover sheet).
+
+**When revisions arrive.** S9a: a wave each July (2025-07-10, 2026-07-09), so
+run `load --recheck-all` in July. S9b: the year-end Final files for the
+financial year just ended appear around September to spring; the 2026-27 Finals
+are expected in spring 2027. Check in September for any Finals and v-number
+reissues, which the ordinary `load` finds by itself.
+
+**First time on a table with no editions.** The first `sync-new` needs
+`--expected-areas 153` (S9a) or `--expected-areas 296` (S9b).
+
+**The map and W1.** W1 reads the latest month only. Run `w1_run.py`, then
+`refresh_map.py`, only if the latest month changed (a new month was loaded);
+a Final revision of an older month changes no ranking and needs neither. Note
+that a newer latest month changes `drd_bed_days_lost`,
+`drd_pct_delayed_1plus_days` and `crfd_days`.
+
+**Never run the old scripts.** `scripts/historical/s9a_drd_build.py`,
+`s9b_crfd_build.py`, `verify_load_drd.py` and `verify_load_crfd.py` upserted rows
+in place (`ON CONFLICT DO UPDATE`), so loading a republished file overwrote held
+rows (the `loaded_at` dates show no held month was in fact rewritten after its
+first load). The S9b build took the file URL and period on the command line and
+ignored the year-end Final files. The two `verify_load_*` scripts loaded June
+2026 on 2026-08-20 the same way. They now stop with a RETIRED message.
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
@@ -662,6 +724,7 @@ that they inserted new rows only and ignored revisions of rows already held
 - **Running the S19 monthly check.** Nothing runs `s19_pip_editions.py load` for you; see the S19 section.
 - **Running the S15 monthly check.** Nothing runs `s15_hpi_editions.py load` for you; see the S15 section.
 - **Running the S18 monthly check.** Nothing runs `s18_pipr_editions.py load` for you; see the S18 section.
+- **Running the S9a and S9b monthly checks.** Nothing runs `s9a_drd_editions.py load` or `s9b_crfd_editions.py load` for you; see the S9 section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

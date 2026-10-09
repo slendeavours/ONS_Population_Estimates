@@ -357,7 +357,8 @@ class Misc(unittest.TestCase):
             p.write_bytes(b"abc")
             self.assertEqual(
                 m.content_sha256(p),
-                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+                "ba7816bf8f01cfea414140de5dae2223"
+                "b00361a396177a9cb410ff61f20015ad")
 
     def test_plan_months(self):
         held = ["2026-05-01", "2026-06-01", "2026-07-01"]
