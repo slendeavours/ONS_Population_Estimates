@@ -121,6 +121,22 @@ class VerifyGates(unittest.TestCase):
         ok, detail = v.real_edition1_present(self.cur, ZZ)
         self.assertFalse(ok)
 
+    def test_refreshed_month_must_carry_one_source_on_every_row(self):
+        base = v.recs(v.P1)
+        v.apply(self.cur, v.P1, base)
+        v.apply(self.cur, v.P1, v.with_cell(
+            base, 5, "total_bed_days_lost",
+            base[5]["total_bed_days_lost"] + 1000), link=v.rev(v.P1))
+        core.refresh_latest(self.cur, ZZ)
+        ok, detail = v.real_latest_equals_live(self.cur, ZZ)
+        self.assertTrue(ok, detail)
+        # one row left on the older file (the old mixed-source state) fails
+        self.cur.execute(f"UPDATE public.{ZZ.live_table} SET source = %s "
+                         "WHERE utla_code = %s", (v.orig(v.P1), v.CODES[0]))
+        ok, detail = v.real_latest_equals_live(self.cur, ZZ)
+        self.assertFalse(ok)
+        self.assertIn("not uniformly", detail)
+
     def test_missing_edition_1_for_a_live_month_fails(self):
         v.apply(self.cur, v.P1, v.recs(v.P1))
         self.cur.execute(

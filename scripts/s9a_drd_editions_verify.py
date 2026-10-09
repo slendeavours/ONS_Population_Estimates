@@ -653,14 +653,12 @@ def real_edition1_present(cur, spec=SPEC):
 
 def real_latest_equals_live(cur, spec=SPEC):
     """The latest edition equals live (values and labels, row for row); a
-    month whose tip is edition 1 carries the tip's source_file on every row;
-    otherwise every row's source is a file of the month (a refresh moves the
-    rows that changed)."""
+    month carries the tip's source_file on every row, whatever its tip (a
+    refresh sets the source of the whole month, so a mixed month fails)."""
     periods = _live_periods(cur, spec)
     if not periods:
         return False, "no live periods to check (an empty state is not a pass)"
     bad = load_checks.check_latest_equals_live(cur, spec)
-    mixed = 0
     for p in periods:
         try:
             files, tip = _source_files(cur, spec, p)
@@ -675,11 +673,11 @@ def real_latest_equals_live(cur, spec=SPEC):
         elif tip > 1 and not src <= set(files.values()):
             bad.append(f"{p}: live source names no file of the month")
         elif tip > 1 and src != {files[tip]}:
-            mixed += 1
+            bad.append(f"{p}: live source {sorted(map(str, src))[:3]} is not "
+                       f"uniformly the tip's file {files[tip]!r}")
     return not bad, "; ".join(bad[:4]) if bad else (
-        f"{len(periods)} months match row for row; live source is the tip's "
-        f"file" + (f" ({mixed} revised month(s) keep an older file on rows "
-                   "the revision did not change)" if mixed else ""))
+        f"{len(periods)} months match row for row; every row of every month "
+        "carries the tip's source_file")
 
 
 def real_coverage(cur, spec=SPEC, valid=None):
@@ -1020,8 +1018,8 @@ def gate_7_total_discharges(cur):
 
 def gate_8_seeded_revision(cur):
     name = ("seeded revision: edition 2 with one changed cell, refresh_latest "
-            "updates only that month's changed row, moves its source, keeps "
-            "loaded_at")
+            "writes only that month's changed value, sets the source of the whole "
+            "month, keeps loaded_at")
 
     def snapshot(cur, period):
         cur.execute(f"""SELECT utla_code, utla_name, {', '.join(VALUE_COLS)},
@@ -1052,22 +1050,26 @@ def gate_8_seeded_revision(cur):
     except (psycopg2.Error, SystemExit) as e:
         return report(8, name, False, str(e).splitlines()[0])
     updated = {_s(k): v for k, v in res["updated"].items()}
-    one = len(diff) == 1
     iv, isrc, ilo = (2 + VALUE_COLS.index("total_bed_days_lost"),
                      2 + len(VALUE_COLS), 3 + len(VALUE_COLS))
-    only = one and all(
+    # source is set on EVERY row of the refreshed month; the value on one
+    all_src = (len(diff) == N
+               and all(y[isrc] == rev(P1) and x[isrc] == orig(P1)
+                       for x, y in diff))
+    valued = [(x, y) for x, y in diff if x[iv] != y[iv]]
+    one = len(valued) == 1
+    only = all_src and all(
         all(x[i] == y[i] for i in range(len(x)) if i not in (iv, isrc))
         for x, y in diff)
     ok = (before_ok and kind == "revised" and plan == {P1: 1}
           and updated == {P1: 1} and res["rows"] == 1 and p2_same and one
-          and only and diff[0][0][iv] != diff[0][1][iv]
-          and diff[0][1][isrc] == rev(P1) and diff[0][0][isrc] == orig(P1)
-          and diff[0][0][ilo] == diff[0][1][ilo]
+          and only and all(x[ilo] == y[ilo] for x, y in diff)
           and [e[0] for e in b_eds] == [1] and after == [])
     report(8, name, ok, f"edition 2 stored ({kind}); plan {plan}; updated "
            f"{updated} ({res['rows']} row); {P2} untouched={p2_same}; live "
-           f"cells changed in {P1}: {len(diff)}, only total_bed_days_lost and "
-           f"source (source now the revised link, loaded_at kept)={only}; "
+           f"rows changed in {P1}: {len(diff)} (source on all, value on "
+           f"{len(valued)}; only total_bed_days_lost and source, loaded_at "
+           f"kept)={only}; "
            f"latest equals live after={after == []}")
 
 

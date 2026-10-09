@@ -295,14 +295,12 @@ class LoaderDB(unittest.TestCase):
             self.assertEqual(rc, 0, text)
             self.assertEqual(live(cur, P2)[CODES[0]],
                              int(base_value(0, P2) * 1.6))
-            # the engine writes the rows that changed, source included; an
-            # unchanged row keeps its older source (engine behaviour, see the
-            # task report: for a Final month that is 10 of 160 rows here)
+            # values are written only where they changed, but the source is
+            # the Final file's on every row of the refreshed month
             cur.execute("SELECT source, COUNT(*) FROM public.zz_s9b_live "
                         "WHERE reporting_period = %s GROUP BY 1 ORDER BY 2",
                         (P2,))
-            self.assertEqual(cur.fetchall(), [(perf(P2), 10),
-                                              (final(P2), 150)])
+            self.assertEqual(cur.fetchall(), [(final(P2), 160)])
             self.assertTrue(m.status(cur, ZZ)["ok"])
             # rerun: nothing fetched, no new edition
             self.fetched.clear()
@@ -811,6 +809,7 @@ class SpecTests(unittest.TestCase):
                                                "measure_name", "source"))
         self.assertEqual(m.SPEC.as_loaded_source_col, "source")
         self.assertEqual(m.SPEC.refresh_from, (("source", "source_file"),))
+        self.assertTrue(m.SPEC.refresh_source_whole_period)
         self.assertTrue(m.PROFILE.file_checks)
         self.assertEqual(m.PROFILE.savepoint, "s9b_period")
         self.assertEqual(m.PROFILE.run_agent, "Source 9b - MHSDS MHS26 CRFD")

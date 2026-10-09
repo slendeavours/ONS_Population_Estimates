@@ -512,6 +512,7 @@ SPEC = core.EditionSpec(
     refresh_cols=VALUE_COLUMNS + ("utla_name", "source"),
     refresh_from=(("source", "source_file"),),
     as_loaded_source_col="source",
+    refresh_source_whole_period=True,   # one source per refreshed month
     key_types=(("reporting_period", "date NOT NULL"),
                ("utla_code", "varchar NOT NULL")),
     fk_la_boundaries=False,

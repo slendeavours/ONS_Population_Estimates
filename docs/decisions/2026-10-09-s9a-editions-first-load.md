@@ -61,7 +61,9 @@ Live `source` holds the URL of the file that supplied the row. After a partly re
 mixed (some rows from the original, some from the revised file) because the old loader upserted. In this
 load June 2026 was rewritten in full by `refresh-latest`, so each of June, July and August 2026 now has
 one uniform `source` (the webfile URL), and `source` equals the editions table's `source_file` for the
-latest edition of every month. The views and `check_sources.py` read `source`.
+latest edition of every month. From the same date `refresh-latest` sets `source` for every row of a
+refreshed month (an opt-in engine setting that S9a and S9b turn on), so a partly revised month no longer
+carries mixed sources; values are still only rewritten where they changed. The views and `check_sources.py` read `source`.
 
 ## The monthly check
 

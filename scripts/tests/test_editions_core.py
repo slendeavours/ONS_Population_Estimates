@@ -401,6 +401,96 @@ class EditionsCoreDB(unittest.TestCase):
             # nothing left to do: a second refresh writes nothing
             self.assertEqual(core.refresh_latest(cur, SPEC)["rows"], 0)
 
+    def _source_spec(self, whole):
+        return dataclasses.replace(
+            SPEC, refresh_cols=("value", "source"),
+            refresh_from=(("source", "source_file"),),
+            as_loaded_source_col="source", refresh_source_whole_period=whole)
+
+    def _source_setup(self, cur, spec):
+        cur.execute("ALTER TABLE public.zz_core_live ADD COLUMN source text")
+        core.create_schema(cur, spec)
+        rows = [{"lad24cd": "E06000001", "value": 10},
+                {"lad24cd": "E06000002", "value": 20}]
+        for r in rows:
+            cur.execute("INSERT INTO public.zz_core_live (lad24cd, period, "
+                        "value, source) VALUES (%s, '2025Q1', %s, 'old.csv')",
+                        (r["lad24cd"], r["value"]))
+        core.sync_new(cur, spec, expected_authorities_n=2)
+        # edition 2: one value revised, other row unchanged; new file
+        core.insert_edition(
+            cur, spec, [{"lad24cd": "E06000001", "value": 11},
+                        {"lad24cd": "E06000002", "value": 20}], "2025Q1",
+            release_label="test", published_date=date(2026, 2, 1),
+            source_file="new.csv", source_sha256="b", supersedes=1)
+
+    def _sources(self, cur):
+        cur.execute("SELECT lad24cd, value, source FROM public.zz_core_live "
+                    "ORDER BY 1")
+        return cur.fetchall()
+
+    def test_refresh_source_default_off_leaves_mixed_source(self):
+        spec = self._source_spec(False)
+        with rolled_back(self.conn) as cur:
+            self._source_setup(cur, spec)
+            core.refresh_latest(cur, spec)
+            self.assertEqual(self._sources(cur), [
+                ("E06000001", 11, "new.csv"), ("E06000002", 20, "old.csv")])
+
+    def test_refresh_source_whole_period_sets_every_row(self):
+        spec = self._source_spec(True)
+        with rolled_back(self.conn) as cur:
+            self._source_setup(cur, spec)
+            res = core.refresh_latest(cur, spec)
+            self.assertEqual(res["updated"], {"2025Q1": 1})
+            self.assertEqual(res["rows"], 1)
+            self.assertEqual(self._sources(cur), [
+                ("E06000001", 11, "new.csv"), ("E06000002", 20, "new.csv")])
+            self.assertTrue(core.status(cur, spec)["ok"])
+            self.assertEqual(core.refresh_latest(cur, spec)["rows"], 0)
+
+    def test_refresh_source_whole_period_other_period_untouched(self):
+        spec = self._source_spec(True)
+        with rolled_back(self.conn) as cur:
+            self._source_setup(cur, spec)
+            for lad in ("E06000001", "E06000002"):
+                cur.execute("INSERT INTO public.zz_core_live (lad24cd, "
+                            "period, value, source) VALUES (%s, '2025Q2', 5, "
+                            "'q2.csv')", (lad,))
+            core.sync_new(cur, spec, expected_authorities_n=2)
+            q2 = core.period_hashes(cur, spec, "live")["2025Q2"]
+            core.refresh_latest(cur, spec)
+            self.assertEqual(core.period_hashes(cur, spec, "live")["2025Q2"], q2)
+
+    def test_refresh_source_guard_still_catches_other_period_change(self):
+        spec = self._source_spec(True)
+        with rolled_back(self.conn) as cur:
+            self._source_setup(cur, spec)
+            for lad in ("E06000001", "E06000002"):
+                cur.execute("INSERT INTO public.zz_core_live (lad24cd, "
+                            "period, value, source) VALUES (%s, '2025Q2', 5, "
+                            "'q2.csv')", (lad,))
+            core.sync_new(cur, spec, expected_authorities_n=2)
+
+            def hook(c, plan):
+                c.execute("UPDATE public.zz_core_live SET source = 'x' "
+                          "WHERE period = '2025Q2'")
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, spec, _after_update_hook=hook)
+            self.assertIn("guard: 2025Q2 changed", str(cm.exception))
+            cur.execute("SELECT period, source FROM public.zz_core_live "
+                        "ORDER BY period, lad24cd")
+            self.assertEqual(cur.fetchall(), [
+                ("2025Q1", "old.csv"), ("2025Q1", "old.csv"),
+                ("2025Q2", "q2.csv"), ("2025Q2", "q2.csv")])
+
+    def test_refresh_source_whole_period_needs_a_mapped_source(self):
+        with self.assertRaises(ValueError):
+            dataclasses.replace(SPEC, refresh_source_whole_period=True)
+        with self.assertRaises(ValueError):
+            dataclasses.replace(SPEC, refresh_source_whole_period=True,
+                                as_loaded_source_col="value")
+
     def test_refresh_halts_on_drift(self):
         with rolled_back(self.conn) as cur:
             self.two_periods_synced(cur)

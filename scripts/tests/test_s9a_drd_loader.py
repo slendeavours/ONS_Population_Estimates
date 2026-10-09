@@ -337,14 +337,14 @@ class LoaderDB(unittest.TestCase):
             self.assertEqual(rc, 0, text)
             self.assertEqual(live(cur, P2)[CODES[1]], before[CODES[1]] + 500)
             self.assertEqual(live(cur, P2)[CODES[3]], before[CODES[3]] - 250)
-            # the engine writes the rows that changed, source included (an
-            # unchanged row of a revised month keeps its older source: see
-            # the task report)
+            # values are written only where they changed, but the source is
+            # the latest edition's on EVERY row of the refreshed month
             cur.execute("SELECT utla_code, source FROM public.zz_s9a_live "
                         "WHERE reporting_period = %s", (P2,))
             src = dict(cur.fetchall())
-            self.assertEqual(src[CODES[1]], rev(P2))
-            self.assertEqual(src[CODES[3]], rev(P2))
+            self.assertEqual(len(src), N)
+            self.assertEqual(set(src.values()), {rev(P2)})
+            self.assertEqual(live_source(cur, P3), [(orig(P3),)])
             self.assertTrue(m.status(cur, ZZ)["ok"])
             # rerun: idempotent, nothing to fetch, no new edition
             self.fetched.clear()
@@ -751,6 +751,7 @@ class SpecTests(unittest.TestCase):
         self.assertEqual(m.SPEC.as_loaded_source_col, "source")
         self.assertEqual(m.SPEC.refresh_from, (("source", "source_file"),))
         self.assertFalse(m.SPEC.fk_la_boundaries)
+        self.assertTrue(m.SPEC.refresh_source_whole_period)
         self.assertTrue(m.PROFILE.file_checks)
         self.assertEqual(m.PROFILE.savepoint, "s9a_period")
 
