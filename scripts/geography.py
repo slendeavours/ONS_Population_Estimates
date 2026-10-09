@@ -141,11 +141,16 @@ DATASET_FORM = {
            "and no recode is recorded, but no source file is on disk. At "
            "the next load, record the codes NOMIS returns for Barnsley and "
            "Sheffield."),
-    "4": ("unverified",
-          "DfE care leaver files (new_la_code) are not on disk; "
-          "verify/rebuild_care_leavers.py resolves every code through "
-          "la_code_lookup, so either form would load. At the next load, "
-          "record which code new_la_code gives for Barnsley and Sheffield."),
+    "4": ("old",
+          "The five DfE care leaver LA files in data/raw/s4_cla (read "
+          "2026-10-09: 17-21 accommodation of the 2023, 2024 and 2025 "
+          "releases, 22-25 suitability of the 2024 and 2025 releases; "
+          "reporting years 2019-2025) carry E08000016/19 only in "
+          "new_la_code. The November 2026 release (reporting year 2026, "
+          "after 1 April 2025) may switch to E08000038/39, possibly "
+          "back-applied as North Yorkshire was; scripts/"
+          "s4_care_leaver_editions.py then stops and this is corrected "
+          "deliberately (new or mixed)."),
     "5": ("old",
           "File_10_-_IoD2025_Local_Authority_District_Summaries__lower-tier__"
           "v2.xlsx and imd_2025_la_summary.csv (data/reference) carry "
