@@ -436,6 +436,120 @@ class EngineDateCommands(unittest.TestCase):
             self.assertTrue(pe.status(cur, self.pd)["ok"])
 
 
+class EngineKeyChangeCommands(unittest.TestCase):
+    """run_refresh_latest with key changes: --accept-key-changes PERIOD
+    (strings), the keys added and removed printed in preview, the opt-in."""
+
+    NEW = "E09000099"
+
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = get_conn()
+        cls.kc = P.with_spec(dataclasses.replace(P.spec,
+                                                 refresh_key_changes=True))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.conn.rollback()
+        cls.conn.close()
+
+    def _refresh(self, cur, profile, writing, accept_kc=None, plain=False):
+        if plain:   # a namespace with no accept_key_changes at all
+            args = mock.Mock(spec=["commit", "simulate", "accept_drift"],
+                             commit=False, simulate=writing, accept_drift=None)
+        else:
+            args = mock.Mock(commit=False, simulate=writing, accept_drift=None,
+                             accept_key_changes=accept_kc)
+        out = io.StringIO()
+        cur.execute("SAVEPOINT t")
+        try:
+            with contextlib.redirect_stdout(out):
+                try:
+                    rc = pe.run_refresh_latest(
+                        profile, args, connect=lambda w: _Borrowed(cur),
+                        table_exists=lambda c, t: True)
+                except SystemExit as e:
+                    return "halt", str(e.code), out.getvalue()
+            return rc, None, out.getvalue()
+        finally:
+            cur.execute("ROLLBACK TO SAVEPOINT t")
+
+    def _keys_changed(self, cur):
+        for p in ("202604", "202605"):
+            pe.apply_period(cur, P, p, recs(p), fetched_on=FETCHED)
+        tip = recs("202604", n=N - 1) + [
+            {"lad24cd": self.NEW, "period": "202604", "v1": 1, "v2": None}]
+        core.insert_edition(cur, P.spec, tip, "202604", release_label="t",
+                            published_date=FETCHED, source_file="t",
+                            source_sha256="h2", supersedes=1)
+        return tip
+
+    def test_preview_prints_keys_added_and_removed(self):
+        with rolled_back(self.conn) as cur:
+            self._keys_changed(cur)
+            rc, msg, out = self._refresh(cur, self.kc, False)
+            self.assertEqual(rc, 0, msg)
+            self.assertIn(f"202604: keys added 1 ({self.NEW}); removed 1 "
+                          f"({CODES[N - 1]})", out)
+            self.assertIn("not named in --accept-key-changes", out)
+            self.assertIn("DRY RUN", out)
+            rc, msg, out = self._refresh(cur, self.kc, False, ["202604"])
+            self.assertEqual(rc, 0, msg)
+            self.assertNotIn("not named", out)
+
+    def test_unnamed_period_halts_naming_it_as_a_string(self):
+        with rolled_back(self.conn) as cur:
+            self._keys_changed(cur)
+            rc, msg, out = self._refresh(cur, self.kc, True)
+            self.assertEqual(rc, "halt")
+            self.assertIn("202604", msg)
+            self.assertIn(self.NEW, msg)
+            self.assertIn("--accept-key-changes", msg)
+
+    def test_named_period_is_refreshed(self):
+        with rolled_back(self.conn) as cur:
+            tip = self._keys_changed(cur)
+            may = live(cur, "202605")
+            rc, msg, out = self._refresh(cur, self.kc, True, ["202604"])
+            self.assertEqual(rc, 0, msg)
+            # the kept rows are unchanged: only keys move (no row to update)
+            self.assertIn("0 live rows refreshed in ['202604']; key changes "
+                          "1 inserted, 1 deleted in ['202604']", out)
+            # inside the command's own run (the savepoint is undone after);
+            # run once more without the savepoint to see the result
+            args = mock.Mock(commit=False, simulate=True, accept_drift=None,
+                             accept_key_changes=["202604"])
+            with quiet():
+                pe.run_refresh_latest(self.kc, args,
+                                      connect=lambda w: _Borrowed(cur),
+                                      table_exists=lambda c, t: True)
+            self.assertEqual(live(cur, "202604"), as_live(tip))
+            self.assertEqual(live(cur, "202605"), may)
+            self.assertTrue(pe.status(cur, self.kc)["ok"])
+
+    def test_opted_out_profile_unchanged_and_refuses_the_option(self):
+        with rolled_back(self.conn) as cur:
+            self._keys_changed(cur)
+            rc, msg, out = self._refresh(cur, P, False, plain=True)
+            self.assertEqual(rc, 0, msg)
+            self.assertNotIn("keys added", out)
+            rc, msg, out = self._refresh(cur, P, True, plain=True)
+            self.assertEqual(rc, "halt")
+            self.assertIn("present in only one of them", msg)
+            rc, msg, out = self._refresh(cur, P, True, ["202604"])
+            self.assertEqual(rc, "halt")
+            self.assertIn("does not opt in", msg)
+
+    def test_accept_of_a_period_without_key_changes_halts(self):
+        with rolled_back(self.conn) as cur:
+            self._keys_changed(cur)
+            for accept, named in ((["202604", "202605"], "['202605']"),
+                                  (["202604", "209901"], "['209901']")):
+                rc, msg, out = self._refresh(cur, self.kc, True, accept)
+                self.assertEqual(rc, "halt", accept)
+                self.assertIn(f"--accept-key-changes {named}", msg)
+
+
 class EngineControl(unittest.TestCase):
     """Transaction control and commands on a mock connection."""
 

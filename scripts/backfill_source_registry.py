@@ -173,10 +173,21 @@ SOURCES = [
         detected_period_type="reference_period",
         revises_back_series=True,
         revision_note=("Each annual release republishes several prior years "
-            "with revisions applied, so the newer edition must be loaded "
-            "first. The pre-2026-08-20 build deduplicated first-occurrence-"
-            "wins with the older file at index 0 and retained superseded "
-            "figures for 7 rows across 2020-2023."),
+            "with revisions applied: 2023 to 2024 changed 230 cells (17-21, "
+            "2020-2023), 2024 to 2025 changed 293 (2021-2024) and 195 of "
+            "4,928 22-25 cells, with about 100 cells a release going between "
+            "0 and c (rule 1.10). Each release's statement about each "
+            "reporting year is stored as an edition in "
+            "care_leaver_accommodation_editions (both cohorts of a release "
+            "together), live care_leaver_accommodation is the latest edition "
+            "of each year and moves only through refresh-latest --commit. "
+            "2020 was revised from the 2024 release on 2026-10-09 (edition "
+            "3; 23 cells in 10 authorities). The old builds overwrote the "
+            "17-21 rows: the n8n workflow upserted on 2026-03-31 (loaded "
+            "twice) and scripts/verify/rebuild_care_leavers.py (now "
+            "scripts/historical/s4_rebuild_care_leavers.py) upserted with ON "
+            "CONFLICT DO UPDATE at least twice on 2026-08-20. Record: "
+            "docs/decisions/2026-10-09-s4-editions-first-load.md."),
         source_name="DfE Children Looked After (SSDA903) care leaver accommodation",
         publisher="DfE",
         series_name=("Children looked after in England including adoptions: "
@@ -186,65 +197,97 @@ SOURCES = [
                           "including-adoptions"),
         acquisition_method="api",
         known_gotchas=(
-            "A new EES dataset UUID is issued per release for the 17-21 "
-            "accommodation file; the 22-25 suitability file is persistent. "
-            "The 2025 release renamed columns from age/accommodation_type/"
-            "number to care_leaver_age/breakdown/care_leaver_count. Code "
-            "reading the old names against the new file matches no category, "
-            "routes every row to 'other' and returns zero for every bucket "
-            "WITHOUT raising an error, so any edition change needs a column-"
-            "name assertion that fails loudly. EES exposes no working content "
-            "API for this publication and the data catalogue is a JavaScript "
-            "app, so UUIDs must be taken from the release data guidance page."),
+            "Both datasets get a new EES dataset id each release, the 22-25 "
+            "suitability one too (a96ea38e in 2024, bd5240e0 in 2025), and "
+            "their titles change, so nothing is hardcoded. The CSV file name "
+            "is the same every release. The publication content API works "
+            "(latestRelease and nextReleaseDate) but its release endpoints "
+            "return 404; the ids come from the release's data guidance page, "
+            "whose embedded __NEXT_DATA__ JSON lists the datasets, and "
+            "scripts/s4_care_leaver_editions.py halts if that block is "
+            "missing or lists other than one candidate per cohort, with a "
+            "manual fallback (--release, --dataset-17-21, --dataset-22-25). "
+            "There are three header schemas: the 2023 and 2024 17-21 files "
+            "use age, accommodation_type and number, the 2024 22-25 file has "
+            "its own wording, and the 2025 files use care_leaver_age, "
+            "breakdown and care_leaver_count. An unknown header halts with "
+            "the columns listed, never a silent zero. Release rank is the "
+            "file's own maximum time_period, never its name or link, and an "
+            "older release never replaces a newer tip. Barnsley and Sheffield "
+            "are on E08000016/19 in all five files on disk (declared 'old' "
+            "in scripts/geography.py); the loader halts on E08000038/39."),
         cadence="annual", cadence_months=12,
         publication_window="November, for the reporting year ending 31 March",
         target_table="care_leaver_accommodation",
         geography_level="UTLA",
-        join_path=("lad24cd via la_code_lookup for unitary and metropolitan "
-                   "authorities. County councils have no LAD24 successor and "
-                   "are carried on their own E10 code; they do not join "
-                   "la_boundaries."),
-        node_docs_path="docs/nodes/s4_node1_fetch_1721_2023.md",
+        join_path=("Codes resolve through scripts/geography.py and the "
+                   "one-to-one new_unitary rows of la_code_lookup for the "
+                   "counties that became unitary (E10000023 and E10000027 "
+                   "to E06000065 and E06000066). Remaining county councils "
+                   "are carried on their own E10 code and do not join "
+                   "la_boundaries; Bournemouth and Poole 2019 and the "
+                   "Northamptonshire predecessors are declared predecessors."),
+        build_script_path="scripts/s4_care_leaver_editions.py",
+        node_docs_path="docs/nodes/s4_node1..s4_node7",
         source_doc_path="docs/s4_care_leaver_source.md",
         verification_checks={
-            "rebuild_date": "2026-08-20",
-            "replication": ("808 of 815 rows reproduced exactly under the "
-                            "documented bucketing rule against source CSVs"),
-            "replication_exceptions": ("7 rows, all overlapping years where "
-                                       "the older edition had been retained"),
-            "published_column": ("semi_independent_published matches DfE at "
-                                 "155/155 authorities for reporting year "
-                                 "2025, zero mismatches"),
+            "method": "editions",
+            "script": "scripts/s4_care_leaver_editions_verify.py",
+            "checks": 23,
+            "first_load": "2026-10-09",
+            "migration_proof": ("migrate-legacy: 5,289 non-NULL corrected "
+                                "17-21 cells equal the held cells, 0 "
+                                "differences; 396 of 396 held 22-25 rows "
+                                "equalled the file's age-25 row; every "
+                                "dropped or added key accounted for"),
+            "gate": ("all gates must pass; the loader halts before any "
+                     "write on an identity, header, marker or geography "
+                     "failure, an older release or a year outside the stop "
+                     "conditions"),
         },
         caveats=["semi_independent is a pipeline aggregate of three DfE "
                  "categories (semi-independent transitional, foyers, "
-                 "supported lodgings) and is not DfE's published category. "
-                 "External documents must quote semi_independent_published.",
-                 "From reporting year 2024 the DfE category means Ofsted-"
-                 "registered supported accommodation only; before 2024 it "
-                 "included unregistered provision. Counts must not be "
-                 "trended across that boundary.",
-                 "Suppressed cells (c/k/z/x) are added as zero on the 17-21 "
-                 "path, so bucket counts and total_care_leavers are minima. "
-                 "total_published carries DfE's own Total row.",
-                 "DfE publishes 155 upper-tier authorities including 24 "
-                 "county councils. Until 2026-08-20 an inner join on "
-                 "la_code_lookup dropped all 24 counties silently, so England "
-                 "totals and national ranks were computed over 132 of 155.",
-                 "Point-in-time count at 31 March, not a flow. Annual need is "
-                 "higher.",
-                 "The 22-25 cohort covers only those who contacted the "
-                 "authority and requested support, so figures are partial."],
+                 "supported lodgings), NULL unless all six parts (three "
+                 "categories, two age bands) are published. It is not DfE's "
+                 "published category and W1 and the map no longer read it: "
+                 "they read semi_independent_published. In 2025 the "
+                 "aggregate has a value for 17 mapped areas and the "
+                 "published category for 121 of 296.",
+                 "Suppressed cells (c, z, x) are NULL, never 0 (a k or a "
+                 "blank halts the loader): a bucket "
+                 "built from parts is NULL unless every part is published, "
+                 "total_care_leavers is NULL unless every bucket is, and the "
+                 "reason is in null_reasons. total_published carries DfE's "
+                 "own Total row. Rows that are all z are not stored. Nine "
+                 "2023-2025 22-25 rows with every stored column NULL are "
+                 "stored: DfE publishes some figures for them, but each "
+                 "column sums four ages and at least one age is suppressed or not available.",
+                 "DfE publishes upper-tier authorities only, including "
+                 "county councils: 24 in 2019, 23 in 2020 and 2021, 22 in "
+                 "2022 and 2023, 21 in 2024 and 2025 (17-21).",
+                 "The 22-25 cohort is the whole 22-25 band (the four single "
+                 "ages summed); before 2026-10-09 the table held age 25 "
+                 "only. It covers only those who contacted the authority and "
+                 "requested support, so figures are partial.",
+                 "For the 17-21 cohort DfE's 2024 and 2025 data guidance "
+                 "describes the count as measured on or around the care "
+                 "leaver's birthday, not on 31 March (the loader does not "
+                 "check it). The 22-25 suitability measure is taken at "
+                 "latest contact during the year. Annual need is higher."],
         ucws_lens="context", hss_lens="primary",
         completeness_note=(
-            "155 of 155 upper-tier authorities for reporting years 2019-2025 "
-            "(17-21 accommodation), including the 24 county councils restored "
-            "on 2026-08-20. 22-25 suitability covers 2023-2025."),
+            "Mechanics established: the content API publication endpoint "
+            "and the data guidance page's embedded JSON give the release "
+            "and both dataset ids. 17-21 accommodation, reporting years "
+            "2019-2025: 152, 151, 151, 152, 152, 153, 153 authorities. 22-25 "
+            "suitability, 2023-2025: 152, 153, 153. 1,522 live rows (1,064 "
+            "and 458); editions 1 as held, 2 the rule 1 correction for every "
+            "year, 3 for 2020 from the 2024 release."),
         metrics=["Care leavers in supported accommodation (published DfE "
                  "category)",
                  "Care leavers in supported accommodation (wider pipeline "
                  "aggregate)"],
-        refresh_tier="C", status="active",
+        refresh_tier="B", status="active",
         publish_github=True, publish_map=True,
     ),
     dict(
@@ -1526,21 +1569,31 @@ TIER_C_FINDINGS = {
               "machine-readable. Cadence makes this close to academic: the "
               "next census is 2031, so detection will not fire for years.")),
     "4": dict(
-        tier="C", method="api",
+        tier="B", method="api",
         url=("https://explore-education-statistics.service.gov.uk/"
              "find-statistics/children-looked-after-in-england-including-"
              "adoptions"),
         ptype="reference_period",
-        note=("Mechanics established 2026-08-20, superseding the 2026-08-14 "
-              "check. The release was previously misidentified as SEN2 / "
-              "Children in Need; it is the SSDA903 Children Looked After "
-              "return. Dataset CSVs are retrievable without auth from "
-              "/data-catalogue/data-set/{uuid}/csv, so acquisition is an API "
-              "rather than manual. Tier C stands because the UUID changes "
-              "each release and must be read by hand from the release data "
-              "guidance page: the data catalogue front end is a JavaScript "
-              "app and EES exposes no content API path for this "
-              "publication.")),
+        note=("Mechanics established 2026-08-20 and replaced on 2026-10-09. "
+              "The release was previously misidentified as SEN2 / Children "
+              "in Need; it is the SSDA903 Children Looked After return. The "
+              "content API publication endpoint gives the latest release, "
+              "the release's data guidance page carries both dataset ids in "
+              "its embedded JSON, and the CSVs download without auth from "
+              "/data-catalogue/data-set/{id}/csv, so "
+              "scripts/s4_care_leaver_editions.py finds and loads a new "
+              "release itself. Tier B: check_sources.py detects a new "
+              "release automatically (find_s4) and the load is gated by the "
+              "preview. The earlier statement that the ids have to be read "
+              "by hand, that the 22-25 id is persistent and that no content "
+              "API works was wrong."),
+        completeness_extra=(
+            " Coverage: 17-21 accommodation, reporting years 2019-2025, "
+            "152, 151, 151, 152, 152, 153 and 153 authorities; 22-25 "
+            "suitability, 2023-2025, 152, 153 and 153; 1,522 live rows "
+            "(1,064 and 458). Edition 1 is the table as held, edition 2 the "
+            "rule 1 correction for every year, edition 3 revises 2020 from "
+            "the 2024 release.")),
     "5": dict(
         tier="B", method="landing_page",
         url=("https://www.gov.uk/government/collections/"
@@ -1876,6 +1929,12 @@ def backfill_run_log_source_code(cur, register_codes):
     return resolved, unresolved, already
 
 
+# Fields set to NULL on purpose. S4's n8n_workflow_name said Workflow 1; the
+# loader is scripts/s4_care_leaver_editions.py, not an n8n workflow (W1 only
+# reads its table).
+CLEAR_FIELDS = {"4": ("n8n_workflow_name",)}
+
+
 def upsert_sources(cur, pks, register):
     """Upsert every registry row. Never overwrites a non-null with a null."""
     rows = []
@@ -1947,6 +2006,12 @@ def upsert_sources(cur, pks, register):
            f"VALUES ({placeholders}) "
            f"ON CONFLICT (source_code) DO UPDATE SET {updates}")
     psycopg2.extras.execute_batch(cur, sql, rows)
+    # COALESCE cannot clear a value, so a field that is wrong and must be
+    # empty is named in CLEAR_FIELDS and set to NULL explicitly.
+    for code, cols in CLEAR_FIELDS.items():
+        for col in cols:
+            cur.execute(f"UPDATE source_registry SET {col} = NULL "
+                        f"WHERE source_code = %s", (code,))
     return len(rows), lossy
 
 

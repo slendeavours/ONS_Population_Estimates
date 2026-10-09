@@ -1,5 +1,7 @@
 # S4 Node 5 — Create care_leaver_accommodation Table
 
+> **Superseded 2026-10-09.** The n8n S4 workflow this note describes, and the `scripts/verify/rebuild_care_leavers.py` rebuild that followed it (now `scripts/historical/s4_rebuild_care_leavers.py`, which stops with a RETIRED message), are replaced by `scripts/s4_care_leaver_editions.py`, which keeps each release's figures for each year as an edition (`care_leaver_accommodation_editions`) and finds the latest release and both dataset ids itself. The source note is `docs/s4_care_leaver_source.md`. The text below is left as written and describes the old method.
+
 **Type:** Postgres — Execute Query
 
 ## Purpose
@@ -40,7 +42,7 @@ CREATE TABLE IF NOT EXISTS care_leaver_accommodation (
 | `lad24cd` | LAD24CD for unitary and metropolitan authorities. County councils are carried on their own `E10` code and will not join `la_boundaries` |
 | `reporting_year` | Year ending 31 March, stored as integer |
 | `age_group` | `17-21` or `22-25` |
-| `semi_independent` | Pipeline aggregate: semi-independent transitional + Foyers + Supported lodgings. From 2024, the underlying DfE category means Ofsted-registered provision only |
+| `semi_independent` | Pipeline aggregate: semi-independent transitional + Foyers + Supported lodgings |
 | `semi_independent_published` | DfE's published `Semi-independent, transitional accommodation` alone. **Use this for anything external** |
 | `total_care_leavers` | Sum of buckets, so a minimum where suppression is present |
 | `total_published` | DfE's own Total row. The correct total to quote |

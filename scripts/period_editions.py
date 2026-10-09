@@ -699,17 +699,36 @@ def _accept_periods(cur, spec, accept) -> tuple:
     return tuple(drifted[a] for a in accept)
 
 
-def _refresh_guard(cur, spec, accept) -> None:
-    """editions_core.refresh_latest's two refusals before it writes
-    (unaccepted drift; rows only on one side), made here first so the
-    message names periods as strings; the wording is the core's."""
+def _accept_key_change_args(args) -> tuple:
+    """--accept-key-changes PERIOD (repeatable) as given, or () when the
+    loader's parser does not define it (every loader before S4)."""
+    given = getattr(args, "accept_key_changes", None)
+    return tuple(given) if isinstance(given, (list, tuple)) else ()
+
+
+def _accept_key_change_periods(cur, spec, accept_kc) -> tuple:
+    """The --accept-key-changes strings as the database's own period values
+    (as _accept_periods), so editions_core compares like with like. A
+    string matching no live period is kept as given: check_key_changes
+    then refuses it as having nothing to accept."""
+    tips, _, _ = core.latest_map(cur, spec)
+    known = {_p(p): p for p in tips}
+    return tuple(known.get(a, a) for a in accept_kc)
+
+
+def _refresh_guard(cur, spec, accept, accept_kc=()) -> None:
+    """editions_core.refresh_latest's refusals before it writes (unaccepted
+    drift; key changes not opted in, not named or named without cause; rows
+    only on one side), made here first so the message names periods as
+    strings; the wording is the core's."""
     plan, drift = core._plan(cur, spec, accept)
     if drift:
         halt("live differs from the latest edition and matches no stored "
              f"edition for {[_p(x) for x in drift]}: changed outside the "
              "editions tables. Load it as an edition, or re-run with "
              "--accept-drift PERIOD to overwrite it with the latest edition")
-    stuck = core._unrepairable(plan)
+    core.check_key_changes(spec, plan, accept_kc, name=_p)
+    stuck = core._unrepairable(plan, spec)
     if stuck:
         halt(f"{[_p(x) for x in stuck]} differ from the latest edition in rows "
              "present in only one of them; an update of the refresh columns "
@@ -718,12 +737,17 @@ def _refresh_guard(cur, spec, accept) -> None:
 
 def run_refresh_latest(profile: Profile, args, *, connect=connect,
                        table_exists=table_exists, preflight=None) -> int:
-    """refresh-latest [--commit | --simulate] [--accept-drift PERIOD]: copy
-    each period's latest edition into the live table, under the core's
-    before/after hash guard."""
+    """refresh-latest [--commit | --simulate] [--accept-drift PERIOD]
+    [--accept-key-changes PERIOD]: copy each period's latest edition into
+    the live table, under the core's before/after hash guard. With a spec
+    that opts in to refresh_key_changes, the preview also prints the keys
+    added and removed per period, and a period with key changes is applied
+    only when named in --accept-key-changes (the loader's parser defines
+    it, action='append'); otherwise the output is as before."""
     spec, table = profile.spec, profile.spec.editions_table
     writing = args.commit or args.simulate
     accept = tuple(args.accept_drift or ())
+    accept_kc = _accept_key_change_args(args)
     conn = connect(writing)
     try:
         with conn.cursor() as cur:
@@ -732,23 +756,36 @@ def run_refresh_latest(profile: Profile, args, *, connect=connect,
             if preflight is not None:
                 preflight(cur)
             accept = _accept_periods(cur, spec, accept)
+            accept_kc = _accept_key_change_periods(cur, spec, accept_kc)
             counts = core.refresh_counts(cur, spec, accept)
             print("rows refresh-latest would write: "
                   + (", ".join(f"{p}={n}" for p, n in counts.items()) or "none")
                   + f" (total {sum(counts.values())})")
+            if spec.refresh_key_changes:
+                plan, _ = core._plan(cur, spec, accept)
+                lines = core.key_change_lines(plan, accept_kc, name=_p)
+                print("keys added and removed:" + ("" if lines
+                                                   else " none"))
+                for line in lines:
+                    print(f"  {line}")
             if not writing:
                 print("DRY RUN: nothing written (use --commit or --simulate)")
                 return 0
-            _refresh_guard(cur, spec, accept)
-            res = core.refresh_latest(cur, spec, accept)
+            _refresh_guard(cur, spec, accept, accept_kc)
+            res = core.refresh_latest(cur, spec, accept, accept_kc)
             if res["updated"]:
                 bad = load_checks.check_latest_equals_live(
                     cur, spec, sorted(res["updated"]))
                 if bad:
                     halt("refresh-latest: live differs from the latest edition "
                          "after the refresh, rolled back: " + "; ".join(bad[:6]))
+        keys = ""
+        if res["inserted"] or res["deleted"]:
+            keys = (f"; key changes {sum(res['inserted'].values())} inserted, "
+                    f"{sum(res['deleted'].values())} deleted in "
+                    f"{sorted(_p(x) for x in res['inserted'])}")
         finish(conn, args, f"{res['rows']} live rows refreshed in "
-                           f"{sorted(_p(x) for x in res['updated'])}; "
+                           f"{sorted(_p(x) for x in res['updated'])}{keys}; "
                            "before/after guard "
                            "passed")
         return 0

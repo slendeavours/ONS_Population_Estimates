@@ -1,5 +1,7 @@
 # S4 Node 3 — Fetch 22-25 Accommodation Suitability CSV 2023–2025
 
+> **Superseded 2026-10-09.** The n8n S4 workflow this note describes, and the `scripts/verify/rebuild_care_leavers.py` rebuild that followed it (now `scripts/historical/s4_rebuild_care_leavers.py`, which stops with a RETIRED message), are replaced by `scripts/s4_care_leaver_editions.py`, which keeps each release's figures for each year as an edition (`care_leaver_accommodation_editions`) and finds the latest release and both dataset ids itself. The source note is `docs/s4_care_leaver_source.md`. **Wrong in the text below:** the 22-25 dataset is not persistent. Its id was a96ea38e in 2024 and bd5240e0 in 2025, and its title changes, so a re-run does not pick up the next release automatically. The text below is left as written.
+
 **Type:** HTTP Request
 
 ## Purpose

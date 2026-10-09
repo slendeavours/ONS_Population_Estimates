@@ -1,5 +1,7 @@
 # S4 Node 4 — Process CLA Data
 
+> **Superseded 2026-10-09.** The n8n S4 workflow this note describes, and the `scripts/verify/rebuild_care_leavers.py` rebuild that followed it (now `scripts/historical/s4_rebuild_care_leavers.py`, which stops with a RETIRED message), are replaced by `scripts/s4_care_leaver_editions.py`, which keeps each release's figures for each year as an edition (`care_leaver_accommodation_editions`) and finds the latest release and both dataset ids itself. The source note is `docs/s4_care_leaver_source.md`. **Wrong or incomplete in the text below:** (1) on the 22-25 path the workflow kept only the last age row it saw for each authority and year, so all 396 stored 22-25 rows equalled the file's age-25 row (Liverpool 2025: 117 held, the 22-25 total is 634); the new loader sums the four ages. (2) The 17-21 path added suppressed cells as 0 (`|| 0`); the new loader stores NULL. The text below is left as written.
+
 **Type:** Code (JavaScript)
 
 ## Purpose

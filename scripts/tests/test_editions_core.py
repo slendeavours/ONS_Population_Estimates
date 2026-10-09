@@ -551,6 +551,159 @@ class EditionsCoreDB(unittest.TestCase):
             self.assertIn("present in only one", str(cm.exception))
             self.assertEqual(live_values(cur), before)
 
+    # ------------------------------------- refresh with key changes (opt-in)
+
+    KC = dataclasses.replace(SPEC, refresh_key_changes=True)
+    TIP2 = [{"lad24cd": "E06000001", "value": 11},
+            {"lad24cd": "E06000003", "value": 30}]
+
+    def keys_changed(self, cur):
+        """Both periods synced, then edition 2 of 2025Q1 drops E06000002,
+        adds E06000003 and revises E06000001 (10 -> 11)."""
+        self.two_periods_synced(cur)
+        ins(cur, "b", 1, rows=self.TIP2)
+
+    def test_plan_lists_keys_added_and_removed(self):
+        with rolled_back(self.conn) as cur:
+            self.keys_changed(cur)
+            plan, _ = core._plan(cur, SPEC)
+            self.assertEqual(sorted(plan), ["2025Q1"])
+            v = plan["2025Q1"]
+            self.assertEqual(v["added"], [("E06000003",)])
+            self.assertEqual(v["removed"], [("E06000002",)])
+            self.assertEqual(v["one_sided"], 2)
+            self.assertEqual(v["rows"], 1)
+
+    def test_key_changes_opted_out_halts_as_today(self):
+        with rolled_back(self.conn) as cur:
+            self.keys_changed(cur)
+            before = live_values(cur)
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, SPEC)
+            self.assertIn("present in only one", str(cm.exception))
+            self.assertEqual(live_values(cur), before)
+            # naming the period does not help a spec that has not opted in
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, SPEC, accept_key_changes=("2025Q1",))
+            self.assertIn("does not opt in", str(cm.exception))
+            self.assertEqual(live_values(cur), before)
+
+    def test_key_changes_unnamed_period_halts_listing_keys(self):
+        with rolled_back(self.conn) as cur:
+            self.keys_changed(cur)
+            before = live_values(cur)
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, self.KC)
+            msg = str(cm.exception)
+            self.assertIn("2025Q1", msg)
+            self.assertIn("E06000003", msg)
+            self.assertIn("E06000002", msg)
+            self.assertIn("--accept-key-changes", msg)
+            self.assertEqual(live_values(cur), before)
+
+    def test_key_changes_named_period_inserted_deleted_equals_tip(self):
+        with rolled_back(self.conn) as cur:
+            self.keys_changed(cur)
+            q2_before = core.period_hashes(cur, SPEC, "live")["2025Q2"]
+            ed_before = core.period_hashes(cur, SPEC, "editions")
+            plan, _ = core._plan(cur, self.KC)
+            res = core.refresh_latest(cur, self.KC,
+                                      accept_key_changes=("2025Q1",))
+            self.assertEqual(res["updated"], {"2025Q1": 1})
+            self.assertEqual(res["inserted"], {"2025Q1": 1})
+            self.assertEqual(res["deleted"], {"2025Q1": 1})
+            self.assertEqual(res["rows"], 1)
+            # counts equal the plan
+            self.assertEqual(res["inserted"]["2025Q1"],
+                             len(plan["2025Q1"]["added"]))
+            self.assertEqual(res["deleted"]["2025Q1"],
+                             len(plan["2025Q1"]["removed"]))
+            self.assertEqual(res["updated"]["2025Q1"], plan["2025Q1"]["rows"])
+            self.assertEqual(live_values(cur), [
+                ("2025Q1", "E06000001", 11), ("2025Q1", "E06000003", 30),
+                ("2025Q2", "E06000001", 10), ("2025Q2", "E06000002", None)])
+            self.assertEqual(core.rows_differing(cur, SPEC, "2025Q1", 2), 0)
+            self.assertEqual(core._one_sided(cur, SPEC, "2025Q1", 2), 0)
+            # a period not named and not planned is unchanged
+            self.assertEqual(core.period_hashes(cur, SPEC, "live")["2025Q2"],
+                             q2_before)
+            self.assertEqual(core.period_hashes(cur, SPEC, "editions"),
+                             ed_before)
+            self.assertTrue(core.status(cur, SPEC)["ok"])
+            again = core.refresh_latest(cur, self.KC)
+            self.assertEqual((again["rows"], again["inserted"],
+                              again["deleted"]), (0, {}, {}))
+
+    def test_key_changes_insert_copies_refresh_from_columns(self):
+        spec = dataclasses.replace(
+            SPEC, refresh_cols=("value", "source"),
+            refresh_from=(("source", "source_file"),),
+            as_loaded_source_col="source", refresh_source_whole_period=True,
+            refresh_key_changes=True)
+        with rolled_back(self.conn) as cur:
+            self._source_setup(cur, spec)
+            core.insert_edition(
+                cur, spec, [{"lad24cd": "E06000001", "value": 11},
+                            {"lad24cd": "E06000004", "value": 40}], "2025Q1",
+                release_label="test", published_date=date(2026, 3, 1),
+                source_file="third.csv", source_sha256="c", supersedes=2)
+            res = core.refresh_latest(cur, spec,
+                                      accept_key_changes=("2025Q1",))
+            self.assertEqual((res["inserted"], res["deleted"], res["updated"]),
+                             ({"2025Q1": 1}, {"2025Q1": 1}, {"2025Q1": 1}))
+            self.assertEqual(self._sources(cur), [
+                ("E06000001", 11, "third.csv"), ("E06000004", 40, "third.csv")])
+            self.assertTrue(core.status(cur, spec)["ok"])
+
+    def test_key_changes_accept_of_a_period_without_key_changes_halts(self):
+        with rolled_back(self.conn) as cur:
+            self.keys_changed(cur)
+            before = live_values(cur)
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, self.KC,
+                                    accept_key_changes=("2025Q1", "2025Q2"))
+            self.assertIn("--accept-key-changes ['2025Q2']", str(cm.exception))
+            self.assertEqual(live_values(cur), before)
+
+    def test_key_changes_wrong_insert_fails_after_check_and_rolls_back(self):
+        with rolled_back(self.conn) as cur:
+            self.keys_changed(cur)
+            before = live_values(cur)
+
+            def wrong(c, plan):
+                c.execute("UPDATE public.zz_core_live SET value = 99 "
+                          "WHERE period = '2025Q1' AND lad24cd = 'E06000003'")
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, self.KC, accept_key_changes=("2025Q1",),
+                                    _after_update_hook=wrong)
+            self.assertIn("still differ", str(cm.exception))
+            self.assertEqual(live_values(cur), before)
+
+            def extra(c, plan):
+                c.execute("INSERT INTO public.zz_core_live (lad24cd, period, "
+                          "value) VALUES ('E06000009', '2025Q1', 1)")
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, self.KC, accept_key_changes=("2025Q1",),
+                                    _after_update_hook=extra)
+            self.assertIn("rolled back", str(cm.exception))
+            self.assertEqual(live_values(cur), before)
+
+    def test_key_changes_guard_catches_kept_column_change_on_a_common_key(self):
+        with rolled_back(self.conn) as cur:
+            self.keys_changed(cur)
+            before = live_values(cur)
+
+            def touch(c, plan):
+                c.execute("UPDATE public.zz_core_live SET loaded_at = "
+                          "loaded_at - interval '1 day' "
+                          "WHERE period = '2025Q1' AND lad24cd = 'E06000001'")
+            with self.assertRaises(SystemExit) as cm:
+                core.refresh_latest(cur, self.KC, accept_key_changes=("2025Q1",),
+                                    _after_update_hook=touch)
+            self.assertIn("guard: 2025Q1 changed outside the refresh columns",
+                          str(cm.exception))
+            self.assertEqual(live_values(cur), before)
+
     def test_status_flags_fork(self):
         with rolled_back(self.conn) as cur:
             core.create_schema(cur, SPEC)
@@ -696,6 +849,42 @@ class GuardRule(unittest.TestCase):
             full, full, kept, {"A": "z", "B": "k2"}, {"A"})[0])
         self.assertIn("C changed", core.guard_problems(
             full, dict(full, C="3"), kept, kept, set())[0])
+
+    def test_guard_over_common_keys_for_key_change_periods(self):
+        full = {"A": "1", "B": "2"}
+        kept = {"A": "k1", "B": "k2"}
+        # A's row count moved, so its whole-period kept hash differs; over
+        # the keys present before and after it is unchanged: no problem
+        self.assertEqual(core.guard_problems(
+            full, {"A": "x", "B": "2"}, kept, {"A": "moved", "B": "k2"},
+            {"A"}, common_before={"A": "c1"}, common_after={"A": "c1"}), [])
+        self.assertIn("A changed outside the refresh columns",
+                      core.guard_problems(
+                          full, {"A": "x", "B": "2"}, kept,
+                          {"A": "moved", "B": "k2"}, {"A"},
+                          common_before={"A": "c1"},
+                          common_after={"A": "c2"})[0])
+        # a period outside the refresh is still checked in full
+        self.assertIn("B changed", core.guard_problems(
+            full, {"A": "x", "B": "y"}, kept, kept, {"A"},
+            common_before={"A": "c1"}, common_after={"A": "c1"})[0])
+
+
+class Unrepairable(unittest.TestCase):
+    """_unrepairable without a database (pure function)."""
+
+    PLAN = {"A": {"rows": 1, "one_sided": 0},
+            "B": {"rows": 0, "one_sided": 2},
+            "C": {"rows": 3, "one_sided": 1},
+            "D": {"rows": 0, "one_sided": 0}}
+
+    def test_default_refuses_one_sided_and_no_row(self):
+        self.assertEqual(core._unrepairable(self.PLAN), ["B", "C", "D"])
+        self.assertEqual(core._unrepairable(self.PLAN, SPEC), ["B", "C", "D"])
+
+    def test_opted_in_ignores_one_sided_keys(self):
+        kc = dataclasses.replace(SPEC, refresh_key_changes=True)
+        self.assertEqual(core._unrepairable(self.PLAN, kc), ["D"])
 
 
 class SpecValidation(unittest.TestCase):

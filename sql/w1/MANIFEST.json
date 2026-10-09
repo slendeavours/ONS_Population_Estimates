@@ -12,10 +12,10 @@
     "sha256": "b74c892db690d1b942556a2895ea70f446786baa955f490877fb2e1930b426ee"
   },
   "05_la_signals.sql": {
-    "sha256": "153b07974c35a5dc3147f5483c24045cbada90b9c6cc5a7119c46daf4d3f88cf"
+    "sha256": "f13c8e6d4fd19bc79ed61f1c99f845723b8ab7921adf2a1ed70f1ecf22b6d074"
   },
   "06_tenant_type_rankings.sql": {
-    "sha256": "3d2f1e85d7e63c1d05517ea7af55de7c59d12f0d2512be4a29a1a20fc34032c4"
+    "sha256": "074bebd43e3662dff68d34cfbc18ff264d8ea8b54bfaa9de8049076ebd0c62c6"
   },
   "07_section_3_top_3_las.sql": {
     "sha256": "669e9e516853fa749a64fdc4fc982ccc2f58f5b836cb47f43549456fd2d8dfe5"
