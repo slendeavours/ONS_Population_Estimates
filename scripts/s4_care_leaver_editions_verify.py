@@ -105,7 +105,7 @@ LEDGER = pe.file_checks_table(m.PROFILE)
 ZZ = tl.ZZ
 ZL, ZE, ZLEDGER = ZZ.live_table, ZZ.editions_table, tl.LEDGER
 CODES, N = tl.CODES, tl.N
-NOTE = (HERE.parent.parent / "docs" / "decisions"
+NOTE = (HERE.parent / "docs" / "decisions"
         / "2026-10-09-s4-editions-first-load.md")
 NOT_YET = f"{TABLE} does not exist yet (not yet migrated)"
 RESULTS = []
@@ -680,7 +680,9 @@ def real_codes(cur, spec=SPEC):
 
 def real_one_row(cur, spec=SPEC):
     """One row per authority, cohort and year (per edition in the editions
-    table); no row whose every count is NULL in live or the tip edition."""
+    table); no row whose every count is NULL without a null_reasons entry in
+    live or the tip edition (a row DfE publishes with every figure suppressed
+    is real data under rule 1; an unexplained all-NULL row is not)."""
     years = _live_years(cur, spec)
     if not years:
         return False, EMPTY
@@ -693,20 +695,21 @@ def real_one_row(cur, spec=SPEC):
         if cur.fetchone()[0]:
             bad.append(f"{table}: an authority twice in one year and cohort")
     allnull = " AND ".join(f"{c} IS NULL" for c in m.COUNT_COLUMNS)
+    allnull += " AND null_reasons IS NULL"
     cur.execute(f"SELECT COUNT(*) FROM public.{spec.live_table} WHERE "
                 + allnull)
     if cur.fetchone()[0]:
-        bad.append("live: a row whose every count is NULL")
+        bad.append("live: a row whose every count is NULL, with no reason")
     for y in years:
         tip = core.chain_tip(cur, spec, str(y))
         cur.execute(f"SELECT COUNT(*) FROM public.{spec.editions_table} "
                     "WHERE reporting_year = %s AND edition = %s AND "
                     + allnull, (y, tip))
         if cur.fetchone()[0]:
-            bad.append(f"{y} ed{tip}: a row whose every count is NULL")
+            bad.append(f"{y} ed{tip}: a row whose every count is NULL, with no reason")
     return not bad, "; ".join(bad[:3]) if bad else (
         f"{len(years)} years: one row per authority, cohort and year in live "
-        "and every edition; no all-NULL row in live or the tip editions")
+        "and every edition; no unexplained all-NULL row in live or the tip editions")
 
 
 def _tip_rows(cur, spec, cols, where=""):

@@ -170,6 +170,16 @@ class VerifyGates(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("every count is NULL", detail)
 
+    def test_an_all_null_row_with_reasons_is_real_data(self):
+        self.seed()
+        sets = ", ".join(f"{c} = NULL" for c in m.COUNT_COLUMNS)
+        self.cur.execute(f"UPDATE public.{ZL} SET {sets}, null_reasons = "
+                         "'total_care_leavers=suppressed' WHERE lad24cd = %s "
+                         "AND reporting_year = 2024 AND age_group = '17-21'",
+                         (CODES[0],))
+        ok, detail = v.real_one_row(self.cur, ZZ)
+        self.assertTrue(ok, detail)
+
     def test_null_vs_zero_catches_an_unexplained_null_and_a_written_pct(self):
         self.seed()
         self.cur.execute(f"UPDATE public.{ZL} SET foyers = NULL WHERE "
