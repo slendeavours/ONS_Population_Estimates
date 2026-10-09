@@ -49,6 +49,9 @@ ALLOW = [
     # A JSON line holding only a file checksum, as in scripts/s1_editions_manifest.json.
     # A sha256 is a public file digest, not a secret; this matches nothing else.
     re.compile(r'^\s*[-+]?\s*"sha256":\s*"[0-9a-f]{64}",?$'),
+    # A decision note's before-state hash line: a public row digest that a
+    # verify gate reads back; the whole line must be exactly this shape.
+    re.compile(r'^before-state(-all)? \S+ \d{4}-\d{2}-\d{2} rows=\d+ sha256=[0-9a-f]{64}$'),
 ]
 
 
