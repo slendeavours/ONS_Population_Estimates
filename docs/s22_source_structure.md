@@ -1,6 +1,6 @@
 # S22 — MHCLG Council Taxbase and Live Table 615
 
-Source note, rewritten 2026-10-09 when S22 moved to the editions loader. The earlier version of this file was the structure report written by the retired `scripts/historical/s22_ctb_discover.py` on 2026-08-13. Every definition below is taken from the publisher's own notes in the two files held in `data/raw/s22_ctb` (git-ignored); nothing is taken from another source.
+Source note, rewritten 2026-10-09 when S22 moved to the editions loader. The earlier version of this file was the structure report written by the retired `scripts/historical/s22_ctb_discover.py` on 2026-08-13. Every definition below is taken from the publisher's own notes in the two files held in `data/raw/s22_ctb` (git-ignored), except the two structural-break dates (1 April 2024 and 1 April 2025), which come from the release's technical notes on GOV.UK and are in neither file.
 
 | Field | Value |
 |---|---|
@@ -48,7 +48,7 @@ Classes A and C are published as "category not in use". `empty_under_6_months` i
 - **Table 615, All vacants:** "empty properties as classified for council tax purposes", including empties liable for council tax and empties that receive an exemption. For October 2025 "the equivalent of Line 15 and the exemption classes B,D,E,F,G,H,I,J,K,L and Q on the CTB form, or tables 1.18 and 2.01 from the CTB release". Before 2013 classes A and C were also included; since 2013 they are in the Line 15 equivalent.
 - **Table 615, All long-term vacants:** "properties liable for council tax that have been empty for more than six months and that are not subject to Empty Homes Discount class D or empty due to specific flooding events", for October 2025 "Line 18 ... or table 1.22".
 
-So the two files are reconciled by the publisher, and the earlier statement in this repository that they use different definitions and snapshot dates and are not reconciled was wrong (corrected 2026-10-09). The measure the map shows, table 1.19, differs from MHCLG's long-term vacant figure (table 1.22): England 309,889 against 303,185, and 179 of 296 authorities differ. That choice stays as it is, and the label describes Line 16 accurately.
+So the two files are reconciled by the publisher, and the earlier statement in this repository that they use different definitions and snapshot dates and are not reconciled was wrong (corrected 2026-10-09). The measure the map shows, table 1.19, differs from MHCLG's long-term vacant figure (table 1.22): England 309,889 against 303,185, and 178 of 296 authorities differ (179 rows if England is counted). The map's measure is unchanged while Scott's decision D1 on it is pending, and the label describes Line 16 accurately.
 
 ## Markers (publisher's own notes)
 
@@ -75,7 +75,7 @@ CTB 2025 uses E08000038 and E08000039 only. Table 615 carries numbers under E080
 
 ## Structural breaks stated by the publisher
 
-Recorded in `ctb_series_breaks` (unchanged) and cited to the release's technical notes:
+Recorded in `ctb_series_breaks` (unchanged). The dates are from the release's technical notes on GOV.UK, not from the two files:
 
 - **1 April 2024:** authorities could charge an Empty Homes Premium of up to 100% on properties empty for between 1 and 2 years (previously only 2 or more). `empty_homes_premium_count` is not comparable across this date.
 - **1 April 2025:** authorities could charge a Second Homes Premium of up to 100%. `second_homes` is affected by reclassification from this date.
@@ -84,7 +84,7 @@ The 2025 CTB cover adds that some authorities could not split the 1 to 2 and 2 t
 
 ## Editions and revisions
 
-An edition is what one file says about one period. The CTB main and class tables of a year are always stored together with the same edition number (one file, one savepoint). Edition 1 of 2025 (296 main rows, 3,256 class rows) and of each of the 22 Table 615 years (7,170 rows) is the data exactly as held on 2026-10-09, proved equal to a re-read of the held files (0 differences). A revised file is read, compared with the tip and stored as the next edition; the live table moves only through `refresh-latest --commit`, which copies the edition's `loaded_at` so `refresh_map.py` sees a revision of the year W1 reads.
+An edition is what one file says about one period. The CTB main and class tables of a year are always stored together with the same edition number (one file, one savepoint). Edition 1 of 2025 (296 main rows, 3,256 class rows) and of each of the 22 Table 615 years (7,170 rows) is the data exactly as held on 2026-10-09, proved equal to a re-read of the held files (0 differences). A revised file is read, compared with the tip and stored as the next edition; the live table moves only through `refresh-latest --commit`, which copies the time the edition was stored into the live `loaded_at`. `refresh_map.py --check` compares that with the latest W1 run, so run `refresh-latest --commit` in the same session as `load --commit` and before any W1 run: if W1 ran in between, the copied time is earlier than W1's run and the map is called current while it still shows the unrevised year.
 
 The CTB cover says "No revisions have been made to previous years", so a revision is a re-issued workbook for the latest year. The 2025 workbook was revised on 21 January 2026 after "corrected data from 22 authorities"; the November original cannot be recovered, so the change per cell is not measured. Table 615: June 2025 to January 2026 added the 2025 column and changed nothing in 2004 to 2024; January 2026 to June 2026 changed nothing on the two sheets loaded. A back-year change in 615 would be stored as a new edition of that year.
 
@@ -94,4 +94,4 @@ See the S22 section of `docs/QUARTERLY_REFRESH.md`. In short: each November `pyt
 
 ## History
 
-The first build (2026-08-13) was four scripts, now in `scripts/historical/` with RETIRED guards. They upserted (`INSERT ... ON CONFLICT DO UPDATE`, setting `loaded_at`), wrote when run with no preview, and were run once (run-log id 83); nothing was overwritten in practice. Its total of the unoccupied exemption classes would have counted a suppressed class as 0; it never did on the 2025 file, where all 11 classes are published for every authority.
+The first build (2026-08-13) was four scripts, now in `scripts/historical/` with RETIRED guards. They upserted (`INSERT ... ON CONFLICT DO UPDATE`, setting `loaded_at`), wrote when run with no preview, and the load ran once (run-log id 83); the verify step was run at least twice and its duplicate run-log row (id 84) was deleted. Nothing was overwritten in practice. Its total of the unoccupied exemption classes would have counted a suppressed class as 0; it never did on the 2025 file, where all 11 classes are published for every authority.

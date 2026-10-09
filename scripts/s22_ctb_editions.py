@@ -332,6 +332,17 @@ def latest_release(collection_json) -> tuple:
                          "the collection; titles seen: "
                          f"{[_norm(d.get('title')) for d in _documents(collection_json)][:20]}")
     year = max(cands)
+    stray = [_norm(d.get("title")) for d in _documents(collection_json)
+             if not DOC_TITLE_RE.fullmatch(_norm(d.get("title")))
+             and re.match(r"Council Taxbase", _norm(d.get("title")))
+             and any(int(y) > year for y in re.findall(
+                 r"([0-9]{4})", _norm(d.get("title"))))]
+    if stray:
+        raise ValueError(f"newest matching release is {year}, but the "
+                         "collection lists a Council Taxbase document with a "
+                         f"later year whose title does not fit 'Council "
+                         f"Taxbase <yyyy> in England': {stray}; not choosing "
+                         "an older release over it")
     if len(cands[year]) != 1:
         raise ValueError(f"{len(cands[year])} documents for the newest year "
                          f"{year}: {[t for t, _ in cands[year]]}; refusing "
@@ -1324,6 +1335,23 @@ def zero_null_flips(new, tip) -> int:
     return len(_flips(new, tip))
 
 
+def tip_as_loaded(info) -> bool:
+    """True when a period's tip (a tip_info entry) is edition 1 'as loaded'
+    by migrate-legacy. The old build wrote no null_reasons, so the reasons
+    the parser now writes for a published [x] are not a change the publisher
+    made: a file whose values equal that edition is unchanged."""
+    return bool(info) and info.get("edition") == 1 and str(
+        info.get("source_file") or "").startswith("as loaded:")
+
+
+def _value_cols(prof, as_loaded) -> tuple:
+    """prof.value_cols for a comparison; without null_reasons against an
+    as-loaded tip (see tip_as_loaded)."""
+    if not as_loaded:
+        return tuple(prof.value_cols)
+    return tuple(c for c in prof.value_cols if c != "null_reasons")
+
+
 def _differs(new, old, cols) -> bool:
     nk, ok = _by_key(new), _by_key(old)
     if set(nk) != set(ok):
@@ -1583,8 +1611,13 @@ def _forced(kind):
     return lambda *a, **kw: kind
 
 
+def _narrow(prof, as_loaded):
+    """prof comparing without null_reasons against an as-loaded tip."""
+    return dataclasses.replace(prof, value_cols=_value_cols(prof, as_loaded))
+
+
 def apply_ctb_year(cur, prof_main, prof_cls, period, main, classes, *,
-                   fetched_on, info) -> str:
+                   fetched_on, info, as_loaded=False) -> str:
     """Both specs' pe.apply_period for one taxbase year, then the ledger
     row, inside the caller's per-period savepoint (s22_year): a new year's
     edition 1 (main and classes), live rows and ledger row commit or roll
@@ -1593,8 +1626,9 @@ def apply_ctb_year(cur, prof_main, prof_cls, period, main, classes, *,
     check_records = prof_cls.check_records or (
         lambda r, p: _check_unique(r, p, prof_cls.spec.period_col))
     check_records(classes, period)
-    km = pe.classify_period(cur, prof_main, period, main)
-    kc = pe.classify_period(cur, prof_cls, period, classes)
+    km = pe.classify_period(cur, _narrow(prof_main, as_loaded), period, main)
+    kc = pe.classify_period(cur, _narrow(prof_cls, as_loaded), period,
+                            classes)
     kind = pair_kind(km, kc, period)
     if kind == "revised":
         km = kc = "revised"
@@ -1619,13 +1653,18 @@ def apply_ctb_year(cur, prof_main, prof_cls, period, main, classes, *,
     return kind
 
 
-def apply_615_year(cur, profile, period, records, *, fetched_on, info) -> str:
+def apply_615_year(cur, profile, period, records, *, fetched_on, info,
+                   as_loaded=False) -> str:
     """pe.apply_period for one 615 year, then its ledger row, inside the
-    caller's per-period savepoint (s22_615_year)."""
+    caller's per-period savepoint (s22_615_year). as_loaded: the tip is an
+    as-loaded edition 1, compared without null_reasons (tip_as_loaded)."""
     prof = dataclasses.replace(profile, release_label=lambda d: info.label)
-    kind = pe.apply_period(cur, prof, period, records, fetched_on=fetched_on,
-                           source_file=info.source_file,
-                           insert=_late("insert_live"))
+    narrow = _narrow(profile, as_loaded)
+    kind = pe.apply_period(
+        cur, prof, period, records, fetched_on=fetched_on,
+        source_file=info.source_file, insert=_late("insert_live"),
+        classify=lambda c, _p, per, recs: pe.classify_period(c, narrow, per,
+                                                             recs))
     tip = core.chain_tip(cur, prof.spec, period)
     for src, file_sha in info.files:
         pe.record_file_check(cur, prof, period, src, file_sha, kind, tip)
@@ -1914,8 +1953,18 @@ def status_lines(cur, prof) -> list:
                         f"MIN(source_publication) FROM public.{s.live_table} "
                         f"WHERE {s.period_col} = %s", (y,))
             n, src = cur.fetchone()
+            tip_src = t["source_file"]
+            as_loaded = tip_as_loaded(t)
+            if as_loaded:
+                # edition 1 carries the 'as loaded: ...; file dated ...'
+                # wrapper around the live value (gate 4 strips it too)
+                m_ = re.fullmatch(r"as loaded: (.*); file dated \d{4}-\d{2}-"
+                                  r"\d{2}", str(tip_src or ""), re.S)
+                tip_src = m_.group(1) if m_ else tip_src
             line += ("; live source_publication "
-                     + ("uniform, the tip's" if n == 1 and src == t["source_file"]
+                     + ("uniform, the tip's"
+                        + (" (as loaded)" if as_loaded else "")
+                        if n == 1 and src == tip_src
                         else f"{n} value(s), not the tip's"))
         if not have_nr:
             line += "; null_reasons column absent (run ddl)"
@@ -2303,7 +2352,6 @@ def _run_periods(args, conn, cur, part, profs, has_ed, src, file, by_year,
     latest = max(held) if held else None
     bounds = _boundaries(cur) if not ctb else None
     main_spec = profs[0].spec
-    drop = () if has_ed else ("null_reasons",)
     problems, acked, infos = {}, {}, {}
     for y in periods:
         data = by_year.get(y)
@@ -2338,11 +2386,11 @@ def _run_periods(args, conn, cur, part, profs, has_ed, src, file, by_year,
                     print(f"  {y}: ACKNOWLEDGED (--acknowledge): {msg}")
                 else:
                     bad.append(msg + f"; read them, then --acknowledge {y}")
-            cols_m = [c for c in profs[0].value_cols if c not in drop]
+            nr = not has_ed or tip_as_loaded(tips.get(y))
+            cols_m = _value_cols(profs[0], nr)
             differs = _differs(newm, tipm, cols_m)
             if ctb and not differs:
-                differs = _differs(newc, tipc, [c for c in profs[1].value_cols
-                                                if c not in drop])
+                differs = _differs(newc, tipc, _value_cols(profs[1], nr))
             if differs and ranks.get(y) == rank:
                 bad.append(f"the file is dated {rank}, the same date as the "
                            "file of the held tip, but its content differs: "
@@ -2366,12 +2414,17 @@ def _run_periods(args, conn, cur, part, profs, has_ed, src, file, by_year,
     main_of = (lambda p: by_year[int(p)]["main"]) if ctb else \
         (lambda p: by_year[int(p)])
     if ok and has_ed:
+        def narrowed(prof, p):
+            """prof, without null_reasons against an as-loaded tip."""
+            return dataclasses.replace(prof, value_cols=_value_cols(
+                prof, tip_as_loaded(tips.get(int(p)))))
+
         if ctb:
             cls_prof = profs[1]
 
             def compare(c, prof, p, recs, against):
-                a = pe.compare_period(c, prof, p, recs, against)
-                b = pe.compare_period(c, cls_prof, p,
+                a = pe.compare_period(c, narrowed(prof, p), p, recs, against)
+                b = pe.compare_period(c, narrowed(cls_prof, p), p,
                                       by_year[int(p)]["classes"], against)
                 kind = pair_kind(a["kind"], b["kind"], p)
                 ex = list(a["examples"])
@@ -2383,14 +2436,18 @@ def _run_periods(args, conn, cur, part, profs, has_ed, src, file, by_year,
             def apply(c, prof, p, recs, *, fetched_on, source_file=None):
                 return _late("apply_ctb_year")(
                     c, prof, cls_prof, p, recs, by_year[int(p)]["classes"],
-                    fetched_on=fetched_on, info=infos[int(p)])
+                    fetched_on=fetched_on, info=infos[int(p)],
+                    as_loaded=tip_as_loaded(tips.get(int(p))))
         else:
-            compare = None
+            def compare(c, prof, p, recs, against):
+                return pe.compare_period(c, narrowed(prof, p), p, recs,
+                                         against)
 
             def apply(c, prof, p, recs, *, fetched_on, source_file=None):
-                return _late("apply_615_year")(c, prof, p, recs,
-                                               fetched_on=fetched_on,
-                                               info=infos[int(p)])
+                return _late("apply_615_year")(
+                    c, prof, p, recs, fetched_on=fetched_on,
+                    info=infos[int(p)],
+                    as_loaded=tip_as_loaded(tips.get(int(p))))
         rc = pe.load_periods(cur, profs[0], [str(y) for y in ok], main_of,
                              rank, args.commit, simulate=args.simulate,
                              against="editions", stats=stats,
@@ -2431,8 +2488,11 @@ def _run_periods(args, conn, cur, part, profs, has_ed, src, file, by_year,
         # a partial run that committed anything (an edition, live rows or
         # only ledger rows) is logged too
         if rc == 0 or stats["periods"]:
+            left = sorted(y for y in periods if y not in problems
+                          and str(y) not in stats["periods"])
             partial = (f"PARTIAL RUN (exit 1): rejected "
-                       f"{sorted(problems) or 'none'}; a period that failed "
+                       f"{sorted(problems) or 'none'}; failed or not "
+                       f"attempted {left or 'none'}; a period that failed "
                        "is not in the counts below; " if rc else "")
             notes = (partial + f"{part} file {src['where']} sha256 {sha[:16]}"
                      f" dated {rank} ({src['how']}): "

@@ -293,6 +293,36 @@ class Discovery(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.latest_release(collection("Unrelated"))
 
+    def test_a_newer_council_taxbase_title_that_does_not_fit_raises(self):
+        # review M6: not 'nothing to do' on the older matching release
+        c = collection("Council Taxbase 2025 in England",
+                       "Council Taxbase 2026 in England: provisional")
+        with self.assertRaisesRegex(ValueError, "later year.*2026"):
+            m.latest_release(c)
+        c = collection("Council Taxbase 2025 in England",
+                       "Council Taxbase statistics 2026")
+        with self.assertRaises(ValueError):
+            m.latest_release(c)
+        # an older stray title does not matter
+        c = collection("Council Taxbase 2025 in England",
+                       "Council Taxbase 2009 England (summary)")
+        self.assertEqual(m.latest_release(c)[0], 2025)
+
+    def test_tip_as_loaded_only_for_the_as_loaded_edition_1(self):
+        self.assertTrue(m.tip_as_loaded(
+            {"edition": 1, "source_file": "as loaded: x; file dated "
+             "2026-06-25"}))
+        self.assertFalse(m.tip_as_loaded(
+            {"edition": 2, "source_file": "as loaded: x; file dated "
+             "2026-06-25"}))
+        self.assertFalse(m.tip_as_loaded(
+            {"edition": 1, "source_file": "https://x/y.ods (file dated "
+             "2026-06-25; years 2023)"}))
+        self.assertFalse(m.tip_as_loaded(None))
+        prof = m.profiles("615")[0]
+        self.assertIn("null_reasons", m._value_cols(prof, False))
+        self.assertNotIn("null_reasons", m._value_cols(prof, True))
+
     def test_la_attachment_exactly_one_with_or_without_revised(self):
         u = "https://assets.example/media/1/x.xlsx"
         a = m.la_attachment(release_page(2025, [

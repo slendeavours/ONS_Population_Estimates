@@ -8,8 +8,9 @@ import sys
 
 _RETIRED = (
     'RETIRED: use scripts/s22_ctb_editions.py. The old S22 build (s22_ctb_discover.py, '
-    's22_ctb_empties_build.py, s22_run.py, s22_verify.py) was run once, on 2026-08-13 (run-log id '
-    '83); no earlier S22 load existed, so nothing was overwritten in practice. This is the phase '
+    's22_ctb_empties_build.py, s22_run.py, s22_verify.py) was loaded once, on 2026-08-13 (run-log id '
+    '83); the verify step was run at least twice and its duplicate run-log row (id 84) was '
+    'deleted. No earlier S22 load existed, so nothing was overwritten in practice. This is the phase '
     'runner: it ran the load and the hard gates and wrote when run, with no preview and no '
     '--commit. Use scripts/s22_ctb_editions.py (load, load-615, refresh-latest) instead.'
 )

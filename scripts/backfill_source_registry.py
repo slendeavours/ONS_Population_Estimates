@@ -1107,8 +1107,8 @@ SOURCES = [
             "publication; earlier years are not. The 2025 workbook was first "
             "published on 6 November 2025 and revised on 21 January 2026 "
             "(\"corrections to data from 22 authorities\", England level "
-            "changed by less than 1%; 18 authorities carry [r] on the tables "
-            "used); the cover says \"No revisions have been made to previous "
+            "changed by less than 1%; 11 authorities carry [r] on the tables "
+            "used, 18 on the whole sheet); the cover says \"No revisions have been made to previous "
             "years\". The November file cannot be recovered (its URL now "
             "answers 301 to the revised file), so the size of the change per "
             "cell is not measured; the held workbook is the revised one. "
@@ -1121,8 +1121,10 @@ SOURCES = [
             "la_vacant_dwellings_615_editions); the live tables are the "
             "latest edition of each year and move only through "
             "refresh-latest --commit. The old build (scripts/historical/"
-            "s22_*.py) upserted by design, but it was run once, on "
-            "2026-08-13 (run-log id 83), and nothing was overwritten. "
+            "s22_*.py) upserted by design, but its load ran once, on "
+            "2026-08-13 (run-log id 83), and nothing was overwritten "
+            "(its verify step ran at least twice; the duplicate run-log "
+            "row, id 84, was deleted). "
             "Record: docs/decisions/2026-10-09-s22-editions-first-load.md."),
         source_name="MHCLG Council Taxbase (CTB form) + Live Table 615",
         publisher="MHCLG",
@@ -1209,9 +1211,11 @@ SOURCES = [
                  "MHCLG's long-term vacant figure. That is Line 18 (table "
                  "1.22), which leaves out dwellings on empty homes discount "
                  "class D and flood empties: England 309,889 on 1.19 "
-                 "against 303,185 on 1.22, and 179 of 296 authorities "
-                 "differ. The map's Long-Term Empty Rate uses 1.19; that "
-                 "choice is unchanged.",
+                 "against 303,185 on 1.22, and 178 of 296 authorities "
+                 "differ (179 rows with England counted). The map's "
+                 "Long-Term Empty Rate uses 1.19 and is unchanged; "
+                 "whether it should move to Line 18 is pending Scott "
+                 "(decision D1).",
                  "Suppressed values are NULL, never 0: [x] and [z] are NULL "
                  "with the reason in null_reasons, "
                  "unoccupied_exemptions_total is NULL unless all 11 classes "

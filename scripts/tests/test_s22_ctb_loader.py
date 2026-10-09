@@ -508,6 +508,18 @@ class LoadCTB(Fixture):
             argv += ["--file", str(path)]
         return self.run_main(cur, argv)
 
+    def test_discovery_fails_loudly_on_a_newer_title_that_does_not_fit(self):
+        with rolled_back(self.conn) as cur:
+            self.seed_ctb(cur)
+            self.api[COLL] = collection(
+                "Council Taxbase 2025 in England",
+                "Council Taxbase 2026 in England: provisional")
+            rc, text, logged = self.run_main(cur, ["load"])
+            self.assertEqual(rc, "halt", text)
+            self.assertIn("later year", text)
+            self.assertNotIn("nothing to do", text)
+            logged.assert_not_called()
+
     def test_an_older_file_is_skipped_and_halts_on_every_path(self):
         for extra, by_file in (([], False), (["--release", "2025"], False),
                                ([], True)):
@@ -692,6 +704,7 @@ class Load615(Fixture):
             logged.assert_called_once()
             self.assertIn("PARTIAL RUN", logged.call_args[0][2])
             self.assertIn("[2025]", logged.call_args[0][2])
+            self.assertIn("failed or not attempted", logged.call_args[0][2])
             # the pair is held for 2023 and 2024 but not 2025: the rerun
             # reads the file again (and rejects 2025 again)
             calls = []
@@ -744,15 +757,17 @@ class Load615(Fixture):
 
 class Migrate(Fixture):
 
-    def seed_legacy(self, cur):
-        """Held-style live rows built from fixture files, one loaded_at."""
+    def seed_legacy(self, cur, extra615=None):
+        """Held-style live rows built from fixture files, one loaded_at.
+        extra615: more Table 615 cell values (a published [x], say)."""
         ctb = self.ctb(register=False)
         # 615 2025 all vacants = CTB empty_total + the 11 classes, as
         # published (write_ctb's values: 1200 + 10i and 80 + 110i)
         t615 = self.t615((2023, 2024, 2025), register=False,
                          codes=T615_CODES + ["E06000003"],
-                         values={("All_vacants", c, 2025): 1280 + 120 * i
-                                 for i, c in enumerate(CODES)})
+                         values={**{("All_vacants", c, 2025): 1280 + 120 * i
+                                    for i, c in enumerate(CODES)},
+                                 **(extra615 or {})})
         fc = m.read_ctb(ctb)
         fc["source"] = "u"
         rmap, problems = m.resolve_codes(cur, m.codes_with_numbers(fc))
@@ -826,6 +841,56 @@ class Migrate(Fixture):
             self.assertIn("nothing parsed", text)
             text, _ = self.ok(cur, ["refresh-latest"])
             self.assertEqual(text.count("would write: none"), 3)
+
+    def test_a_held_615_file_with_a_published_x_rechecks_unchanged(self):
+        # review I1: the old build wrote no null_reasons, the parser writes
+        # one for a published [x]; the same file read again must be
+        # unchanged for every year, and a later identical file must not
+        # store a false edition 2
+        with rolled_back(self.conn) as cur:
+            blank = {("All_vacants", "E06000001", 2023): "[x]"}
+            ctb, t615, files = self.seed_legacy(cur, extra615=blank)
+            cur.execute("UPDATE public.zz_s22_615_live SET null_reasons = "
+                        "NULL")
+            with quiet():
+                m.migrate_legacy(cur, ctb, t615, write=True,
+                                 legacy=self.legacy(cur), files=files)
+            cur.execute("SELECT COUNT(*) FROM public.zz_s22_615_editions "
+                        "WHERE year = 2023 AND vacant_dwellings IS NULL "
+                        "AND null_reasons IS NULL")
+            self.assertEqual(cur.fetchone()[0], 1)
+            # the file as a --file path: every year unchanged, exit 0
+            for flag in ((), ("--commit",)):
+                text, _ = self.ok(cur, ["load-615", "--file", str(t615),
+                                        *flag])
+                for y in (2023, 2024, 2025):
+                    self.assertIn(f"{y}: unchanged", text)
+                self.assertNotIn("REJECTED", text)
+            for y in ("2023", "2024", "2025"):
+                self.assertEqual(len(editions(cur, ZZ_615, y)), 1)
+            # a newer file with the same numbers and a 2026 column: the
+            # blank year is unchanged, no edition 2
+            codes = T615_CODES + ["E06000003"]
+            self.t615((2023, 2024, 2025, 2026), latest="30 June 2026",
+                      codes=codes, values={**blank,
+                              **{("All_vacants", c, 2025): 1280 + 120 * i
+                                 for i, c in enumerate(CODES)}})
+            self.ok(cur, ["load-615", "--commit"])
+            self.assertEqual(len(editions(cur, ZZ_615, "2023")), 1)
+            # a real change in the blank year is still a revision, stored
+            # with its reasons
+            self.t615((2023, 2024, 2025), latest="1 July 2026", codes=codes,
+                      values={**blank,
+                              ("All_long_term_vacants", "E06000002", 2023):
+                              115,
+                              **{("All_vacants", c, 2025): 1280 + 120 * i
+                                 for i, c in enumerate(CODES)}})
+            self.ok(cur, ["load-615", "--commit"])
+            self.assertEqual(len(editions(cur, ZZ_615, "2023")), 2)
+            cur.execute("SELECT null_reasons FROM public.zz_s22_615_editions "
+                        "WHERE year = 2023 AND edition = 2 AND "
+                        "vacant_dwellings IS NULL")
+            self.assertIn("vacant_dwellings", cur.fetchone()[0])
 
     def test_a_planted_held_difference_stops_and_rolls_back(self):
         with rolled_back(self.conn) as cur:

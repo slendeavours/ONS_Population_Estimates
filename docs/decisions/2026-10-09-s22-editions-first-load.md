@@ -2,7 +2,7 @@
 
 Status: done 2026-10-09. Works like [S4](2026-10-09-s4-editions-first-load.md) and
 [S11](2026-10-09-s11-editions-first-load.md). Loader: `scripts/s22_ctb_editions.py` (three editions specs in one
-module); gates: `scripts/s22_ctb_editions_verify.py` (24 gates, all PASS, exit 0). Design:
+module); gates: `scripts/s22_ctb_editions_verify.py` (25 gates, all PASS, exit 0). Design:
 `docs/superpowers/specs/2026-10-09-s22-editions-design.md` (audit record, not approval).
 
 No held value changed. The three live tables are exactly as they were, apart from a new `null_reasons` column
@@ -36,10 +36,10 @@ Four scripts, committed together in 8c472a1 on 2026-08-13: `s22_ctb_discover.py`
 - It was written to overwrite: `INSERT ... ON CONFLICT DO UPDATE ... loaded_at = now()` on all three tables. It
   had no preview and no `--commit` (it wrote when run), kept a same-named raw download whatever its content, and
   took file identity from the landing page rather than the file.
-- **It ran once.** Run-log row 83, status `complete`, 2026-08-13 01:18:50 to 01:25:04 UTC, 10,724 rows written
+- **The load ran once.** Run-log row 83, status `complete`, 2026-08-13 01:18:50 to 01:25:04 UTC, 10,724 rows written
   (296 + 3,256 + 7,170 + 2). Every held row carries one `loaded_at`, 2026-08-13 01:19:03.996 UTC, so nothing has
   been rewritten since. No earlier S22 load existed, so **nothing was overwritten in practice**; the code
-  would have overwritten on a second run.
+  would have overwritten on a second run. The verify step is another matter: `build_reports/s22_verification.md` records that `s22_verify.py` was run again (the report was regenerated while hardening `scripts/_db.py`), that the second run inserted a duplicate run-log row (id 84) and that the row was deleted; the run-log ids go 83, then 85. So the build's verify step ran at least twice, and the single `loaded_at` shows only that the data was loaded once.
 - `build_reports/s22_build_state.json` records gate 4 (a second full load in a second transaction, sums compared)
   as PASS with identical sums before and after.
 - **The code that ran differed in small ways from the code committed.** The committed `s22_verify.py` writes status
@@ -84,8 +84,9 @@ before it is loaded.
 ## The January 2026 revision of the 2025 workbook
 
 The 2025 workbook was first published on 6 November 2025 and revised on 21 January 2026: "corrections to data
-from 22 authorities", England level changed "by less than 1%". Eighteen authorities carry `[r]` on the tables
-used. The held workbook (9fd74444) is the revised one. **The November file cannot be recovered** (its URL, a
+from 22 authorities", England level changed "by less than 1%". Eighteen authorities carry `[r]` in the Notes column of the
+`Council Taxbase Data` sheet; only 11 of those notes name a table that is loaded (1.11, 1.17, 1.18, 1.19), and the other 7
+name only tables 1.26 to 1.35. The held workbook (9fd74444) is the revised one. **The November file cannot be recovered** (its URL, a
 different file name, now answers 301 to the revised file, and no archive holds it), so the size of the change per
 cell is not measured. The ledger records the final URL after redirects and the sha of the bytes read.
 
@@ -113,19 +114,19 @@ The wrong sentences were not corrected in the commit that loaded this. They were
 refresh procedure and geography sentence were corrected with them):
 
 - `docs/METHODOLOGY.md` line 83
-- `docs/S22_BUILD_SUMMARY.md` line 139 and its copy `outputs/S22_BUILD_SUMMARY.md` line 139
-- the registry caveat in `scripts/backfill_source_registry.py` (about line 1152)
+- `docs/S22_BUILD_SUMMARY.md` line 141 and its copy `outputs/S22_BUILD_SUMMARY.md` line 141
+- the registry caveat in `scripts/backfill_source_registry.py` (about line 1202)
 
 ## The long-term-empty measure (Scott's decision D1)
 
 The map's "Long-Term Empty Rate" and "Dwellings empty 6+ months" use CTB table 1.19 (Line 16, every dwelling
 classed as empty for more than six months). MHCLG's own "long term vacant" figure (615, dwelling stock release) is
 Line 18 (table 1.22), which excludes empties on the class D discount and flood empties. England: 309,889 here
-against 303,185 for MHCLG; 179 of 296 councils differ. The label describes Line 16 accurately.
+against 303,185 for MHCLG; 178 of 296 councils differ (179 rows if England is counted). The label describes Line 16 accurately.
 
-**Recorded ruling: option (a), keep the map's measure as it is.** Nothing changed in W1, the view or the map. The
-source documentation will say how the measure differs from MHCLG's. Option (b), a new Line 18 column read by the
-view and W1, was not taken and can follow if Scott asks.
+**D1 is pending Scott; the map is unchanged.** Nothing changed in W1, the view or the map. The source documentation
+says how the measure differs from MHCLG's. Option (a), keep the map's measure, or option (b), a new Line 18 column
+read by the view and W1, is Scott's to choose; (b) is not built.
 
 ## What was written (2026-10-09)
 
@@ -146,6 +147,12 @@ view and W1, was not taken and can follow if Scott asks.
 - W1, `refresh_map.py`, the export, `push.py` and `git push` were not run. No W1 input value changed;
   `refresh_map.py --check` should still say the map is current for S22 (not run here).
 
+## Re-reading the held Table 615 file (found in the final review, fixed)
+
+The first version rejected the held Table 615 file read again: 2004 was REJECTED ("two files claim the same date") although the file is byte-identical. Wandsworth 2004 all vacants is published `[x]`, so the parser writes `null_reasons` for it, and edition 1 "as loaded" holds none (the old build wrote none, and gate 7 exempts edition 1). `null_reasons` was among the compared columns, so 2004 looked changed. The same defect would have stored a false edition 2 of 2004 at the next Table 615 update, labelled as a back-year revision the publisher never made.
+
+Fix: against a tip that is edition 1 "as loaded", the comparison, the equal-date stop and the classification when storing leave out `null_reasons` (the value columns still compare in full; a real change in any value is still a revision and is stored with its reasons). The CTB uses the same rule; it has no published blank, so it never differed. The engine is unchanged. Proof: `load-615 --file data/raw/s22_ctb/Live_Table_615.ods` (a preview) now reports 22 unchanged and exits 0; loader tests re-read a seeded held file with a `[x]` (all years unchanged, no edition stored, a later identical file with a 2026 column stores no edition 2, a real change in the blank year still stores edition 2 with its reasons); verify gate 24 does the same.
+
 ## Each November (CTB)
 
 From `ONS_Population_Estimates`:
@@ -159,7 +166,10 @@ From `ONS_Population_Estimates`:
    `python scripts/s22_ctb_editions_verify.py` (exit 0).
 3. A revised file for the same year (January to May) is read the same way: if it differs it is stored as the next
    edition (main and classes together) and reaches the live table only through `refresh-latest`, which copies the
-   edition's `loaded_at` so `refresh_map.py` sees it.
+   time the edition was stored into the live `loaded_at`. Run `refresh-latest --commit` in the same session as `load
+   --commit`, before any W1 run: if W1 ran in between, the copied time is earlier than W1's run date and
+   `refresh_map.py --check` would call the map current while it still shows the unrevised year (the engine's
+   behaviour, not changed here; S4 has the same pattern).
 4. A 0 to NULL or NULL to 0 flip against the tip needs `--acknowledge YEAR`.
 
 ## Each Table 615 update
@@ -185,6 +195,8 @@ state, restore edition 1 and refresh. Nothing is ever deleted from the editions 
 
 ## Notes
 
+- Known engine quirk, not fixed here: `pe.log_run` writes `now()` (the transaction start) as `completed_at`, so a run that takes time can show `completed_at` earlier than `started_at`. Run 270 (migrate-legacy) shows it by 15 milliseconds; S4's run 244 the same.
+- Discovery now stops, rather than saying "nothing to do", when the collection lists a Council Taxbase document with a later year whose title does not fit the pattern (`check_sources.py 22` does the same). A partial run's log note names the periods that failed or were not attempted.
 - The old scripts (`s22_ctb_discover.py`, `s22_ctb_empties_build.py`, `s22_run.py`, `s22_verify.py`) were not retired
   in the commit that loaded this; they were retired afterwards, in the commit `refactor: retire the old S22 build;
   docs, registry, RULES` (now in `scripts/historical/`, each with a RETIRED guard and a subprocess test).

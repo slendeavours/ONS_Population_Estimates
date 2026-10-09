@@ -25,8 +25,9 @@ import sys
 
 _RETIRED = (
     'RETIRED: use scripts/s22_ctb_editions.py. The old S22 build (s22_ctb_discover.py, '
-    's22_ctb_empties_build.py, s22_run.py, s22_verify.py) was run once, on 2026-08-13 (run-log id '
-    '83); no earlier S22 load existed, so nothing was overwritten in practice. This is the step '
+    's22_ctb_empties_build.py, s22_run.py, s22_verify.py) was loaded once, on 2026-08-13 (run-log id '
+    '83); the verify step was run at least twice and its duplicate run-log row (id 84) was '
+    'deleted. No earlier S22 load existed, so nothing was overwritten in practice. This is the step '
     'that upserted: INSERT ... ON CONFLICT ... DO UPDATE on la_council_taxbase_empties, '
     'la_ctb_exemption_classes and la_vacant_dwellings_615, setting loaded_at, so a second run would '
     'have overwritten the held rows. It wrote when run, with no preview and no --commit. Its '

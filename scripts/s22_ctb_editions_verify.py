@@ -54,7 +54,10 @@ Gates:
  21  rerun idempotent
  22  stranded period repair
  23  restore-edition round trip
- 24  no network, no secret in source or output, no write outside the
+ 24  the held Table 615 file read again (a published [x], edition 1 with
+     no null_reasons) is unchanged for every year; a later identical file
+     stores no edition 2 (seeded)
+ 25  no network, no secret in source or output, no write outside the
      transaction
 
 Usage:
@@ -2487,6 +2490,58 @@ def gate_23_restore(cur):
 
 # --------------------------------------------------------------- gate 24
 
+def gate_24_held_file_recheck(cur):
+    name = ("the held Table 615 file read again is unchanged for every year "
+            "although it has a published [x] and edition 1 holds no "
+            "null_reasons; a later identical file stores no edition 2")
+    problems = []
+
+    def body(e):
+        blank = {("All_vacants", "E06000001", 2023): "[x]"}
+        files = e.seed_legacy(e.cur, extra615=blank)
+        # the old build wrote no null_reasons
+        e.cur.execute(f"UPDATE public.{Z_615.live_table} SET null_reasons "
+                      "= NULL")
+        rc, text, _ = e.migrate_cmd(files)
+        if rc != 0:
+            problems.append(f"migrate-legacy: {text[-120:]}")
+            return
+        e.cur.execute(f"SELECT COUNT(*) FROM public.{Z_615.editions_table} "
+                      "WHERE year = 2023 AND vacant_dwellings IS NULL AND "
+                      "null_reasons IS NULL")
+        if e.cur.fetchone()[0] != 1:
+            problems.append("edition 1 does not hold the published [x] as "
+                            "NULL without a reason")
+        t615 = files[1]
+        before = tl.count(e.cur, Z_615.editions_table)
+        for flag in ((), ("--commit",)):
+            rc, text, _ = e.cmd(["load-615", "--file", str(t615), *flag])
+            bad = [y for y in (2023, 2024, 2025)
+                   if f"{y}: unchanged" not in text]
+            if rc != 0 or bad or "REJECTED" in text:
+                problems.append(f"re-read {flag or 'preview'}: rc {rc}, not "
+                                f"unchanged {bad}: {text[-100:]}")
+        if tl.count(e.cur, Z_615.editions_table) != before:
+            problems.append("the re-read stored an edition")
+        # a newer file, same numbers, one more year
+        codes = e.codes615 + [e.extra]
+        e.t615((2023, 2024, 2025, 2026), latest="30 June 2026", codes=codes,
+               values={**blank, **{("All_vacants", c, 2025): 1280 + 120 * i
+                                   for i, c in enumerate(e.codes)}})
+        rc, text, _ = e.cmd(["load-615", "--commit"])
+        if rc != 0 or len(tl.editions(e.cur, Z_615, "2023")) != 1:
+            problems.append(f"a later identical file: rc {rc}, 2023 "
+                            f"editions {tl.editions(e.cur, Z_615, '2023')}")
+    scenario(cur, body)
+    report(24, name, not problems, "the seeded held file (a [x], edition 1 "
+           "without reasons) read again by --file, in preview and with "
+           "--commit, is unchanged for all years with no edition stored; a "
+           "later file with the same numbers stores no edition 2"
+           if not problems else "; ".join(problems[:3]))
+
+
+# --------------------------------------------------------------- gate 25
+
 def secret_values():
     """Values of environment/.env entries that look like secrets (names with
     PASSWORD, KEY, TOKEN or SECRET), for the leak check only. Never printed."""
@@ -2499,7 +2554,7 @@ def secret_values():
     return out
 
 
-def gate_24_no_network_no_secrets(cur):
+def gate_25_no_network_no_secrets(cur):
     name = ("no network, no secret in source or output, nothing written "
             "outside the rolled-back transaction; a download never "
             "overwrites a same-named file with different content")
@@ -2546,7 +2601,7 @@ def gate_24_no_network_no_secrets(cur):
     try:
         rc, rc6, rc_s, rc_r, kept = _in_savepoint(cur, body)
     except Exception as ex:  # a blocked socket or any other failure
-        return report(24, name, False, f"{type(ex).__name__}: {ex}")
+        return report(25, name, False, f"{type(ex).__name__}: {ex}")
     cur.execute("SELECT COUNT(*) FROM public.pipeline_run_log")
     runs_after = cur.fetchone()[0]
     cur.execute("SELECT " + ", ".join(
@@ -2564,7 +2619,7 @@ def gate_24_no_network_no_secrets(cur):
     ok = (not attempts and rc == rc6 == rc_s == rc_r == 0 and kept
           and runs == runs_after and real_before == real_after
           and not literal and not in_src and not in_out)
-    report(24, name, ok, f"socket attempts {len(attempts)}; load, load-615, "
+    report(25, name, ok, f"socket attempts {len(attempts)}; load, load-615, "
            f"status and refresh-latest through stubs returned "
            f"{rc}/{rc6}/{rc_s}/{rc_r}; a same-named different download was "
            f"saved beside it, the first untouched={kept}; run-log rows "
@@ -2586,7 +2641,8 @@ GATES = (gate_1_table_shape_and_immutability, gate_2_edition1_and_latest,
          gate_14_one_transaction, gate_15_ledger, gate_16_preview,
          gate_17_revision_and_refresh, gate_18_before_state_hash,
          gate_19_migration_proof, gate_20_w1, gate_21_rerun,
-         gate_22_stranded, gate_23_restore, gate_24_no_network_no_secrets)
+         gate_22_stranded, gate_23_restore, gate_24_held_file_recheck,
+         gate_25_no_network_no_secrets)
 
 
 def run_gate(cur, gate):
