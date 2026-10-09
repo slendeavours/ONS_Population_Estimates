@@ -106,12 +106,20 @@ Two measures are held on `care_leaver_accommodation` and they are not interchang
 
 | Column | Definition | Use |
 |---|---|---|
-| `semi_independent_published` | DfE's published `Semi-independent, transitional accommodation` alone | **External documents.** Reproducible directly from DfE |
-| `semi_independent` | The above plus foyers plus supported lodgings | Internal analysis only, and only when labelled as a combined measure with its components named |
+| `semi_independent_published` | DfE's published `Semi-independent, transitional accommodation` alone | **External documents, W1 and the map.** Reproducible directly from DfE |
+| `semi_independent` | The above plus `foyers` plus `supported_lodgings`; NULL unless all six DfE parts (three categories, two age bands) are published | A pipeline aggregate, **not read by W1 or the map** since 2026-10-09. Cite only when labelled as a combined measure with its components named |
 
-Liverpool 2025 is 188 on the published definition and 208 on the aggregate, ranking 11th and 20th of 155 respectively. The gap is material and quoting the wrong one is a reputational risk.
+In 2025 the aggregate has a value for 17 of the 296 mapped authorities and the published category for 121. Liverpool 2025: 188 published; the aggregate held before the correction (208, which was 188 plus two partial sums of 10) is NULL because foyers and supported lodgings are suppressed for one age band. W1 run 25 mapped 208 for Liverpool; the next run maps 188.
 
-Suppressed cells are added as zero on the 17-21 path, so `semi_independent` and `total_care_leavers` are minima. `suppressed_flag` marks affected rows and `total_published` carries DfE's own Total.
+### Suppression, NULL and the editions tables
+
+Suppressed cells (`c`), not-applicable cells (`z`) and not-available cells (`x`) are NULL, never 0 (rule 1). A column built from several DfE categories is NULL unless every part is published, so `total_care_leavers` is NULL unless every bucket is; `total_published` carries DfE's own Total row. `null_reasons` (text) holds `column=reason` pairs separated by `;`, for example `foyers=suppressed;semi_independent=suppressed`, with the reasons `suppressed`, `not_applicable` and `not_available`. `suppressed_flag` marks a row where a cell contributing to the aggregate was suppressed. `unsuitable_pct` is no longer written: it is NULL in the live table and in editions 2 and 3; edition 1 keeps the 143 values the old workflow had written. Rows that are all `z` are not stored. The 22-25 rows hold the whole cohort (ages 22 to 25 summed); the table held age 25 only until 2026-10-09.
+
+| Table | What it holds |
+|---|---|
+| `care_leaver_accommodation` | Live layer, the latest edition of each reporting year, keyed (`lad24cd`, `reporting_year`, `age_group`). W1 reads 17-21 for the latest year; the map export reads `MAX(reporting_year)`. `loaded_at` is the edition's, so a revision is visible to `refresh_map.py` |
+| `care_leaver_accommodation_editions` | Append-only: one release's figures for one reporting year, both cohorts of that release, keyed (`lad24cd`, `age_group`, `reporting_year`, `edition`). Edition 1 of every year is the table exactly as held before 2026-10-09, edition 2 the rule 1 correction, and edition 3 for 2020 is the 2024 release's revision |
+| `care_leaver_accommodation_editions_file_checks` | Append-only ledger of every file read |
 
 From reporting year 2024 the DfE category means Ofsted-registered supported accommodation only. Do not trend across 2023/2024.
 

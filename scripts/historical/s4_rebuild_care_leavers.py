@@ -14,6 +14,20 @@ Implements the agreed decision:
 Also loads reporting year 2025 and the 24 county councils previously dropped by
 the la_code_lookup inner join.
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s4_care_leaver_editions.py. This rebuild upserted with INSERT ... ON CONFLICT '
+    '(lad24cd, reporting_year, age_group) DO UPDATE, setting loaded_at, so it overwrote the 17-21 rows '
+    'already held; it was run at least twice on 2026-08-20. It added suppressed cells as 0 (n = v or 0), '
+    'so bucket counts and total_care_leavers were sums of the published parts, not published figures. '
+    'It resolved codes through every la_code_lookup row, which recoded Bournemouth and Poole 2019 to BCP '
+    "(where the held 2019 BCP row was all zeros), and it dropped and recreated the "
+    'care_leaver_accommodation_bak_20260820 backup table on every run, so that table is the state after '
+    'the first run and not the earlier state.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import os
 import pandas as pd
 import psycopg2

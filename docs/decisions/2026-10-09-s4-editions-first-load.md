@@ -164,8 +164,10 @@ The backup table `care_leaver_accommodation_bak_20260820` was not touched.
 
 ## Notes
 
-- `scripts/verify/rebuild_care_leavers.py` is not retired here (a later task). W1, `refresh_map.py`, the
-  export, `push.py` and `git push` were not run.
+- `scripts/verify/rebuild_care_leavers.py` was not retired in the commit that loaded this; it was retired
+  afterwards, in the commit `refactor: retire the old S4 rebuild; docs, registry, RULES` (it is now
+  `scripts/historical/s4_rebuild_care_leavers.py`, with a RETIRED guard and a subprocess test). W1,
+  `refresh_map.py`, the export, `push.py` and `git push` were not run.
 - `status` on a fresh database says "run sync-new" before `migrate-legacy`; that wording is the engine's, and S4
   has no `sync-new`.
 - Two small fixes to the verify script were made while running it on the real tables: the decision note path

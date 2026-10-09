@@ -783,6 +783,69 @@ values). The July and August 2026 snapshots were rebuilt from the files on
 `cqc_unresolved_locations` on every run with no preview; the fetch step
 overwrote a same-named download and took the date from the file name.
 
+## S4 DfE care leaver accommodation: each November
+
+`care_leaver_accommodation` is the latest-edition layer of
+`care_leaver_accommodation_editions` (one release's figures for one reporting
+year, both cohorts of that release: 17-21 accommodation and 22-25
+suitability), with a ledger of every file read
+(`care_leaver_accommodation_editions_file_checks`). DfE publishes once a year,
+in November, for the year ending 31 March, and restates earlier years each
+time. Record: [S4](decisions/2026-10-09-s4-editions-first-load.md). Source
+note: [s4_care_leaver_source.md](s4_care_leaver_source.md).
+
+Run from `ONS_Population_Estimates`, once a year (`check_sources.py 4` says
+when a new release is out):
+
+1. `python scripts/s4_care_leaver_editions.py load` (preview). It reads the
+   latest release from the content API, the two dataset ids from the release's
+   data guidance page, downloads both files to `data/raw/s4_cla/` (also in a
+   preview) and prints, per year, whether it is new, revised, unchanged or
+   skipped as older than the tip, and the cells that change. Nothing is
+   written to the database.
+2. Read the preview. A year is REJECTED (nothing stored, exit 1) on an
+   identity or header mismatch, an unknown marker (`k`, a blank), a Barnsley
+   or Sheffield new code, an authority that cannot be resolved or declared, an
+   authority with a published number missing from the release, a revised year
+   whose `total_published` moves by more than 25% in more than three
+   authorities or whose national total moves by more than 5%, a year covered
+   for one cohort only, or an older release than the tip (also with `--file-17-21`/`--file-22-25`; `--allow-older-file` overrides).
+   About 100 cells a release go between 0 and NULL (rule 1.10): after reading
+   them, repeat the command with `--acknowledge YEAR` for each year.
+3. `load --commit` (with the same `--acknowledge` options) stores new years as
+   edition 1 and revised years as the next edition, with their live rows and
+   ledger rows in one transaction per year.
+4. `refresh-latest` (preview), then `refresh-latest --commit` to copy the
+   latest editions into the live table. If a year gains or loses authorities
+   the preview lists them and the command halts until that year is named:
+   `refresh-latest --commit --accept-key-changes YEAR` (repeat for each year).
+5. `status` should say OK and `python scripts/s4_care_leaver_editions_verify.py`
+   should pass all 23 gates.
+6. Run `w1_run.py` and `refresh_map.py` **only if the latest reporting year
+   changed** (a November release brings a new year, so it normally does). W1
+   reads `semi_independent_published`, 17-21, for the latest year.
+
+**November 2026** (reporting year 2026): 2026 is a new year; 2022 to 2025 are
+republished as revised editions; the dataset ids, titles and header schema may
+change (the loader halts and lists the columns); Barnsley and Sheffield may
+arrive as E08000038/39 (the loader halts, and `DATASET_FORM['4']` in
+`scripts/geography.py` is then corrected deliberately). If the page's embedded
+JSON changes shape, give the ids by hand:
+`load --release YYYY --dataset-17-21 ID --dataset-22-25 ID` (every file check
+still applies).
+
+To go back for a year: `restore-edition YEAR N` (preview by default) stores
+edition N's rows as the next edition, then `refresh-latest --commit
+--accept-key-changes YEAR`. Nothing is deleted from the editions.
+
+**Never run the old rebuild.** `scripts/historical/s4_rebuild_care_leavers.py`
+(formerly `scripts/verify/rebuild_care_leavers.py`) now stops with a RETIRED
+message. It upserted with `INSERT ... ON CONFLICT ... DO UPDATE`, setting
+`loaded_at`, so it overwrote the 17-21 rows already held (it ran at least
+twice on 2026-08-20), added suppressed cells as 0, resolved codes through
+every `la_code_lookup` row (which recoded Bournemouth and Poole 2019 to BCP)
+and recreated its backup table on every run.
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
@@ -792,6 +855,7 @@ overwrote a same-named download and took the date from the file name.
 - **Running the S18 monthly check.** Nothing runs `s18_pipr_editions.py load` for you; see the S18 section.
 - **Running the S9a and S9b monthly checks.** Nothing runs `s9a_drd_editions.py load` or `s9b_crfd_editions.py load` for you; see the S9 section.
 - **Running the S11 monthly check.** Nothing runs `s11_cqc_editions.py load` for you; see the S11 section.
+- **Running the S4 November load.** `check_sources.py 4` detects a new release but nothing runs `s4_care_leaver_editions.py load` for you; see the S4 section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

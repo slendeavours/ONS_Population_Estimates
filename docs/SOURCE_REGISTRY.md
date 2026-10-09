@@ -129,11 +129,15 @@ unattended job loading a file it does not understand.
 That default is a placeholder, not an answer, and it was cleared on
 2026-08-14. Eleven sources sat at C because their mechanics were undocumented;
 establishing them moved seven to B and one to A, and left three at C on
-evidence:
+evidence. One of the three, S4 (DfE), was found on 2026-10-09 to be
+discoverable after all: the Explore Education Statistics content API gives the
+latest release, and the release's data guidance page carries both dataset ids
+in its embedded JSON, so the earlier "no working content API path" finding was
+wrong and S4 moved to B (it is loaded by `scripts/s4_care_leaver_editions.py`).
+The two left at C:
 
 | Source | Why it stays manual |
 | --- | --- |
-| S4 DfE | Publishes through Explore Education Statistics, not GOV.UK. The entry point responds but no working content API path was found and the specific release was not pinned down. Checked and not established — which is not the same as unchecked. |
 | S12 MHCLG EFS / S.114 | The EFS half resolves through the GOV.UK content API. The S.114 half cannot: notices are issued by individual authorities with no central register. Automating only the detectable half would report the source as checked while the manual half went unwatched. |
 | S17 SafeLives | A third-party charity publishing to its own site, no API, no stable file-URL pattern. The 6–9 month lag makes frequent checking pointless anyway. |
 
@@ -289,6 +293,18 @@ only through `refresh-latest --commit`. S9a and S9b are the same since
 through `refresh-latest --commit`, and a ledger of every file read means an
 unchanged reissue is not downloaded again. There is no signal in the row
 count, which is why the link and the file identity are the evidence.
+
+S4 (DfE care leavers) is on the same engine since 2026-10-09. Each release
+restates several earlier years (about 230 to 290 cells a release, and about
+100 cells going between 0 and `c`), so each release's statement about a
+reporting year is stored as an edition, both cohorts of a release together,
+and reaches live only through `refresh-latest --commit`. `check_sources.py`
+(`find_s4`) reads the latest release from the content API; the loader reads
+the dataset ids from the release's data guidance page. A year's authorities
+can change between releases (counties becoming unitary), which
+`refresh-latest` applies only when the year is named with
+`--accept-key-changes`. Record:
+`docs/decisions/2026-10-09-s4-editions-first-load.md`.
 
 S11 (the CQC register) is on the same engine since 2026-10-09 but is
 snapshots, not revisions: each monthly file is a dated copy of the register
