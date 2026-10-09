@@ -1,5 +1,7 @@
 # Node 6 - Deactivation sweep
 
+> **Superseded 2026-10-09.** The old S11 scripts this note describes are retired to `scripts/historical/`. S11 is now loaded by `scripts/s11_cqc_editions.py`, which keeps each monthly file as a dated snapshot (`cqc_location_snapshots`) instead of upserting `cqc_locations`, which is now a view. The text below is left as written and describes the old method.
+
 ## Type
 Postgres update, one operation (`scripts/s11_cqc_load.py`, node 6 step)
 

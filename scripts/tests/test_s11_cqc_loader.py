@@ -834,13 +834,18 @@ class SpecTests(unittest.TestCase):
         conn = get_conn()
         try:
             cur = conn.cursor()
-            cur.execute("SELECT column_name, data_type, "
-                        "character_maximum_length, numeric_precision, "
-                        "numeric_scale, is_nullable FROM "
-                        "information_schema.columns WHERE table_schema = "
-                        "'public' AND table_name = 'cqc_locations' ORDER BY "
-                        "ordinal_position")
-            legacy = cur.fetchall()
+            # After the migration cqc_locations is a view (all columns
+            # nullable); the old base table is cqc_locations_legacy.
+            for table in ("cqc_locations_legacy", "cqc_locations"):
+                cur.execute("SELECT column_name, data_type, "
+                            "character_maximum_length, numeric_precision, "
+                            "numeric_scale, is_nullable FROM "
+                            "information_schema.columns WHERE table_schema = "
+                            "'public' AND table_name = %s ORDER BY "
+                            "ordinal_position", (table,))
+                legacy = cur.fetchall()
+                if legacy:
+                    break
         finally:
             conn.rollback()
             conn.close()

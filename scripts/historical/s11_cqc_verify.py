@@ -11,6 +11,17 @@ Purpose : Runs the gate checks against cqc_locations after a load:
 Inputs  : data/processed/cqc_locations_mapped.csv, exempt_pipeline tables
 Outputs : PASS/FAIL per check on stdout, non-zero exit on any FAIL.
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s11_cqc_editions.py. The old S11 load step upserted with INSERT ... '
+    'ON CONFLICT (location_id) DO UPDATE, setting loaded_at, so each new file overwrote every '
+    "location's previous snapshot; the July and August 2026 snapshots survive only in the files "
+    'on disk (rebuilt as snapshots on 2026-10-09). This script checked the table that upsert '
+    'left; use scripts/s11_cqc_editions_verify.py.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import os
 import sys
 from pathlib import Path

@@ -290,6 +290,18 @@ through `refresh-latest --commit`, and a ledger of every file read means an
 unchanged reissue is not downloaded again. There is no signal in the row
 count, which is why the link and the file identity are the evidence.
 
+S11 (the CQC register) is on the same engine since 2026-10-09 but is
+snapshots, not revisions: each monthly file is a dated copy of the register
+(the period is the as-at date on the file's README sheet), stored as its own
+snapshot and kept for good, and a newer file does not restate an older one. A
+published file has not been seen reissued, so `revises_back_series` is left
+NULL; if CQC did reissue a file for a date already held, `load --recheck`
+stores it as the next edition. Every file read is recorded in the ledger
+`cqc_location_snapshots_editions_file_checks`, so an unchanged file is not
+downloaded again. The old loader upserted each location in place, so the July
+and August 2026 snapshots were overwritten and were rebuilt from the files on
+disk. Record: `docs/decisions/2026-10-09-s11-editions-first-load.md`.
+
 ## Build pattern — every target table records its own provenance
 
 **A new target table must store the resolved source URL on every row, not just

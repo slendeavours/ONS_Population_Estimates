@@ -17,6 +17,16 @@ Inputs  : data/processed/cqc_locations_mapped.csv
           data/raw/s11_csv/FILE_DATE.txt (source file date)
 Outputs : cqc_locations created/updated in exempt_pipeline; run logged.
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s11_cqc_editions.py. The old S11 load step upserted with INSERT ... '
+    'ON CONFLICT (location_id) DO UPDATE, setting loaded_at, so each new file overwrote every '
+    "location's previous snapshot; the July and August 2026 snapshots survive only in the files "
+    'on disk (rebuilt as snapshots on 2026-10-09). This is the step that upserted.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 import os
 import sys
 import uuid

@@ -113,4 +113,6 @@ From `ONS_Population_Estimates`:
 - W1, `refresh_map.py` and the export were not run here. The next W1 run will change
   `supported_living_locations` in about 87 authorities (by at most 3) and the map label (September to
   October 2026).
-- The old loader scripts are retired in a later step of this plan.
+- The old loader scripts were retired to `scripts/historical/` on 2026-10-09 (they stop with a RETIRED message).
+- Follow-up, a later and separate decision: whether to drop `cqc_locations_legacy` (30,797 rows) and the old
+  `cqc_unresolved_locations` once nobody needs them. Nothing was dropped here.

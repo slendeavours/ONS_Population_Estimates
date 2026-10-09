@@ -9,7 +9,7 @@ exist for that quarter.
 Streaming, not DOM. content.xml is ~42 MB uncompressed for a single quarter
 and the workbook carries 51 sheets, so it is parsed with iterparse over the
 zip entry, honouring number-columns-repeated and number-rows-repeated, and
-cleared as it goes. Same approach as scripts/s11_cqc_fetch.py, which hit the
+cleared as it goes. Same approach as scripts/historical/s11_cqc_fetch.py (now in scripts/s11_cqc_editions.py), which hit the
 same wall on the CQC directory.
 
 Only three sheets are read: A1 (assessments and duties), TA1 (temporary
