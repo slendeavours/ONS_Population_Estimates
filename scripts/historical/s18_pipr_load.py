@@ -11,6 +11,19 @@ Inputs  : data/processed/la_private_rents_<edition>.csv (argv[1] edition slug)
           Postgres exempt_pipeline on localhost:5432
 Outputs : Three tables created/updated in exempt_pipeline; row counts on stdout.
 """
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s18_pipr_editions.py. "
+    "The old S18 pipeline "
+    "upserted rows in place (ON CONFLICT DO UPDATE) from 2026-07-12 until "
+    "2026-10-01, overwriting held rows, and after that inserted new rows "
+    "only and ignored revisions of rows already held (ON CONFLICT DO "
+    "NOTHING). It took its edition from a command-line argument.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
+
 import os
 import sys
 import zipfile

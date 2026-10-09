@@ -12,6 +12,19 @@ Inputs  : data/raw/pipr_<edition>.xlsx (argv[1] edition slug, default 17june2026
 Outputs : data/processed/la_private_rents_<edition>.csv
           stdout: reconciliation counts, unresolved-code report.
 """
+
+import sys
+
+_RETIRED = (
+    "RETIRED: use scripts/s18_pipr_editions.py. "
+    "The transform is now inside scripts/s18_pipr_editions.py (parse_workbook and build_records). The old S18 pipeline "
+    "upserted rows in place (ON CONFLICT DO UPDATE) from 2026-07-12 until "
+    "2026-10-01, overwriting held rows, and after that inserted new rows "
+    "only and ignored revisions of rows already held (ON CONFLICT DO "
+    "NOTHING). It took its edition from a command-line argument.")
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
+
 import os
 import sys
 from pathlib import Path

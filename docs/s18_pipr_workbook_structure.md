@@ -64,7 +64,7 @@ Quirks:
 ## Conventions and markers
 
 - `[x]` = not available (e.g. no annual change for months without a year-earlier comparison; within England LA rows this edition, only in change columns for 2015/2016 periods). `[z]` = not applicable.
-- **No in-file provisional marker exists** (no `[p]` anywhere). The convention, per the accompanying ONS bulletin, is: **the latest period only is provisional** and is revised in the following edition. S18 sets `provisional = TRUE` for the latest period in the file, and each monthly re-run's upsert flips the prior month to `FALSE` when the new edition finalises it.
+- **No in-file provisional marker exists** (no `[p]` anywhere). The convention, per the accompanying ONS bulletin, is: **the latest period only is provisional** and is revised in the following edition. S18 sets `provisional = TRUE` for the latest period in the file, and when a later edition finalises the prior month, the flip to `FALSE` is stored as a new edition in `la_private_rents_editions` and reaches the live table only through `refresh-latest --commit`.
 - Index reference: January 2023 = 100 (note 2). Not seasonally adjusted (note 1).
 - Rounding (note 6): rental prices rounded to nearest £1 (integers in file); index and change values stored to 6 dp.
 - Bedroom categories: **ONS combines studios into the one-bedroom category.**

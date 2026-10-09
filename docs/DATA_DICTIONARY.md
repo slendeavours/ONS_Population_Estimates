@@ -263,6 +263,24 @@ Source: HM Land Registry / ONS UK House Price Index, average prices by local aut
 
 ---
 
+## Private Rents (S18)
+
+Source: ONS Price Index of Private Rents (PIPR), by English local authority, month (`period`, first day of the month, from 2024-03-01) and breakdown. `la_private_rents` holds the latest edition of each cell; `la_private_rents_editions` holds every release of a month that differed from the one before.
+
+| Column | Type | Description |
+|---|---|---|
+| `breakdown_type`, `category` | text | One of nine breakdown blocks (all properties, bedrooms, property type and so on) and the category within it |
+| `mean_rent` | numeric | Average (mean) monthly rent, GBP. Never zero; blank cells are NULL |
+| `rent_index` | numeric | Rent index (January 2023 = 100) |
+| `annual_pct_change` | numeric | Year-on-year change in the rent, per cent |
+| `provisional` | boolean | True for the latest month at publication. A change to final is a change and is stored as a new edition |
+
+`la_private_rents_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, period, breakdown_type, category, edition)`. Columns as for the other editions tables: `edition` (1 = first loaded), `supersedes`, the four values above, `release_label` and `published_date` (informational), and `source_file`, `source_sha256`, `loaded_at` (provenance). 79,380 rows on 2026-10-09: edition 1 for 30 months (March 2024 to August 2026), 294 areas, nine breakdown blocks, 2,646 rows a month. There is no edition 2 yet: the first comparison, against the 16 September 2026 workbook, found no change.
+
+**Live-layer rule.** The live table holds, for each cell, the latest edition. A new month's live rows are inserted by `python scripts/s18_pipr_editions.py load --commit` in the same transaction as its edition 1; a revised month reaches live through `refresh-latest --commit`, which changes only the value columns. The live `source` column names the edition that last wrote the row: the first-inserting edition for rows inserted by the new loader (from 2026-10-09), but for the 76,734 legacy rows (2024-03 to 2026-07, first inserted by the 17 June 2026 backfill and overwritten in place by the old loader) the 19 August 2026 edition. It is not changed by `refresh-latest`; the edition that supplied the current values is in the editions table. `la_private_rents` is not read by Workflow 1 or the map export. Procedure: [QUARTERLY_REFRESH.md](QUARTERLY_REFRESH.md).
+
+---
+
 ## Care Providers (Supply Side)
 
 Source: CQC Care directory with filters (monthly). Only supply-side column in the pipeline — every other signal measures demand.

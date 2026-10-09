@@ -596,12 +596,72 @@ edition or latest month is earlier than what is held (for example last month's
 file passed by mistake). `--allow-older-file` overrides it for a deliberate
 re-load.
 
+## S18 Private rents: the monthly check
+
+`la_private_rents` (S18, ONS Price Index of Private Rents) has an append-only
+editions table, `la_private_rents_editions` (key
+`lad24cd, period, breakdown_type, category, edition`), and the live table holds
+the latest edition of each month. It is monthly and independent of the other
+sources. Every workbook republishes the full back series and the latest month
+is provisional, so every `load` compares every held month. The first
+comparison (2026-10-09) found no change; revision in the held months is
+expected but not yet observed. Record:
+[decisions/2026-10-09-s18-editions-first-load.md](decisions/2026-10-09-s18-editions-first-load.md).
+
+Run from `ONS_Population_Estimates`:
+
+1. `python scripts/s18_pipr_editions.py load` (preview). It reads the dataset
+   page, downloads the newest workbook to `data/raw/`, checks that its file
+   name, Cover sheet and latest month agree, and compares every held month
+   cell by cell (new, unchanged or revised, with a count of rows changed: one
+   row per area and breakdown block, so 2,646 rows is all 294 areas, not 2,646
+   areas). Nothing is written. If a file of that edition name is already in
+   `data/raw/` with different content it is never replaced: the new download
+   is saved beside it as `pipr_<edition>-<sha8>.xlsx`, the message says so, and
+   the new one is the file compared. To work from a file you already have, add
+   `--file PATH` (offline).
+2. Read the preview. A month with fewer than 294 areas or a missing breakdown
+   block, a NULL replacing a number in more than five areas, a zero or
+   negative rent, a revision above 50% on more than ten areas, an unresolved
+   area code, or a Barnsley and Sheffield form that disagrees with
+   `scripts/geography.py` is rejected: nothing is stored for that month. A
+   workbook older than what is held halts; `--allow-older-file` overrides it.
+3. `python scripts/s18_pipr_editions.py load --commit` stores a new month as
+   edition 1 with its live rows in one transaction, and a revised month
+   (including provisional to final) as the next edition. A run that succeeds
+   writes one `pipeline_run_log` row; `--simulate` rehearses and writes
+   nothing.
+4. If any month was revised, `python scripts/s18_pipr_editions.py
+   refresh-latest` previews the live rows that would change; run it again with
+   `--commit`.
+5. `python scripts/s18_pipr_editions.py status` should say OK, and
+   `python scripts/s18_pipr_editions_verify.py` should pass all 23 gates.
+
+**First time on a table with no editions.** The first `sync-new` needs
+`--expected-areas 294`, because with no month recorded the count cannot be
+derived; later runs derive it.
+
+**The map and W1.** `la_private_rents` is not read by Workflow 1 (`sql/w1/`),
+by `scripts/refresh_map.py` or by `scripts/export_map_data.py` (checked by
+search on 2026-10-09; the registry has `publish_map` false, since raw rent
+levels do not go on the demand map). No W1 run or map refresh is needed after
+an S18 load, including after `refresh-latest --commit`. If a future source or
+export starts to read it, this paragraph needs changing.
+
+**Never run the old scripts.** `scripts/historical/s18_pipr_fetch.py`,
+`s18_pipr_transform.py`, `s18_pipr_load.py` and `s18_pipr_verify.py` upserted
+rows in place (`ON CONFLICT DO UPDATE`) from 2026-07-12 until commit ab14ef9
+(2026-10-01), so the 22 July and 19 August 2026 loads overwrote held rows; after
+that they inserted new rows only and ignored revisions of rows already held
+(`ON CONFLICT DO NOTHING`). They now stop with a RETIRED message.
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
 - **Running the S8b monthly check.** `check_sources.py 8b` detects a newer month but nothing runs `load` for you; see the S8b section.
 - **Running the S19 monthly check.** Nothing runs `s19_pip_editions.py load` for you; see the S19 section.
 - **Running the S15 monthly check.** Nothing runs `s15_hpi_editions.py load` for you; see the S15 section.
+- **Running the S18 monthly check.** Nothing runs `s18_pipr_editions.py load` for you; see the S18 section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

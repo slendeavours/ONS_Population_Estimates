@@ -142,7 +142,7 @@ CHANGELOG.md                                Dated record of pipeline changes
 /n8n/                                       n8n-era material (historical)
 ```
 
-Raw source downloads (`data/raw/`) are kept local and gitignored — they are re-fetchable via `scripts/s18_pipr_fetch.py` (ONS PIPR) and `scripts/s11_cqc_fetch.py` (CQC directory).
+Raw source downloads (`data/raw/`) are kept local and gitignored — they are re-fetchable via `scripts/s18_pipr_editions.py` (ONS PIPR) and `scripts/s11_cqc_fetch.py` (CQC directory).
 
 ## Technology Stack
 
