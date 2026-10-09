@@ -130,9 +130,14 @@ DATASET_FORM = {
            "other years), one form per year. scripts/s22_ctb_editions.py "
            "passes only the codes with a number in each year."),
     "23": ("old",
-           "RP_COMBINED_TOOL_2025_FINAL_V1.1.xlsx (data/raw/s23_rsh) and "
-           "rsh_rp_stock_by_la.publisher_la_code (stock date 2025-03-31) "
-           "carry E08000016/19 only."),
+           "Read 2026-10-09: RP_COMBINED_TOOL_2025_FINAL_V1.1.xlsx "
+           "(data/raw/s23_rsh, stock date 2025-03-31) carries Barnsley and "
+           "Sheffield as E08000016/19 only, on both the LA subtotal rows and "
+           "the provider rows of STOCK_BY_LA; rsh_rp_stock_by_la."
+           "publisher_la_code agrees. The 2026 file (stock date 2026-03-31, "
+           "after 1 April 2025) may carry E08000038/39: then "
+           "scripts/s23_rsh_stock_editions.py stops, and this becomes "
+           "'mixed' with that file as evidence (one form per stock date)."),
     "24": ("none",
            "RSH register has no geography (registry caveat); the register "
            "and judgements files carry none of the four codes."),

@@ -204,7 +204,7 @@ class InsertColumns(unittest.TestCase):
                 as_loaded_source_col="source",
                 refresh_source_whole_period=True, refresh_key_changes=True),
         }
-        specs.update(real_specs())
+        specs.update(real_specs(opted_in=False))
         self.assertIn("s4_care_leaver_editions.SPEC", specs)
         for name, spec in specs.items():
             with self.subTest(spec=name):
@@ -215,7 +215,7 @@ class InsertColumns(unittest.TestCase):
     def test_real_specs_whole_period_set_unchanged(self):
         """Every real spec: no whole_period_cols; the whole-period set is
         the source column exactly when refresh_source_whole_period."""
-        specs = real_specs()
+        specs = real_specs(opted_in=False)
         self.assertGreaterEqual(len(specs), 12)
         for name, spec in specs.items():
             with self.subTest(spec=name):
@@ -226,9 +226,16 @@ class InsertColumns(unittest.TestCase):
                 self.assertEqual(spec.whole_period_pairs, want)
 
 
-def real_specs() -> dict:
+# real specs that opt in to whole_period_cols and editions-only columns by
+# design (the engine options were added for them); the "unchanged" tests
+# cover every other real spec, and WholePeriodOptIn checks these
+OPTED_IN = {"s23_rsh_stock_editions.SPEC"}
+
+
+def real_specs(opted_in=True) -> dict:
     """{'module.NAME': spec} of every EditionSpec defined at module level by
-    the editions loaders (only imported, nothing run)."""
+    the editions loaders (only imported, nothing run); without the OPTED_IN
+    specs when opted_in is false."""
     import importlib
     out = {}
     for path in sorted(Path(__file__).resolve().parents[1].glob(
@@ -237,7 +244,24 @@ def real_specs() -> dict:
         for attr, val in vars(mod).items():
             if isinstance(val, core.EditionSpec):
                 out[f"{path.stem}.{attr}"] = val
+    if not opted_in:
+        out = {k: v for k, v in out.items() if k not in OPTED_IN}
     return out
+
+
+class WholePeriodOptIn(unittest.TestCase):
+    def test_s23_opts_in_to_both(self):
+        spec = real_specs()["s23_rsh_stock_editions.SPEC"]
+        prov = ("edition", "publication_date", "source_url", "source_file",
+                "release_page_url")
+        self.assertEqual(spec.whole_period_cols, prov)
+        self.assertEqual(spec.editions_only_cols,
+                         ("file_edition", "file_publication_date",
+                          "file_source_url", "file_name",
+                          "file_release_page_url"))
+        live_cols, _ = core._insert_cols(spec)
+        self.assertFalse(set(spec.editions_only_cols) & set(live_cols))
+        self.assertTrue(set(prov) <= set(live_cols))
 
 
 class WholePeriodValidation(unittest.TestCase):
