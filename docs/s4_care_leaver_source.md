@@ -49,14 +49,10 @@ DfE suppresses small counts with `c`, marks a figure that cannot exist (an autho
 - A suppressed cell is **NULL**, never 0. A published 0 stays 0.
 - A column built from several DfE categories (a bucket, `semi_independent`, `unsuitable`, `total_care_leavers`) is NULL unless every part is published. `total_care_leavers` is NULL unless every bucket is published; `total_published` is DfE's own Total row.
 - The reason is stored in `null_reasons` (for example `foyers=suppressed;semi_independent=suppressed`). `suppressed_flag` is true where a cell contributing to the aggregate was suppressed. `unsuitable_pct` is no longer written.
-- A row that is all `z` (an authority that did not exist in that year) is not stored. A row with every count suppressed or not available but published is stored: nine live 22-25 rows are like that (City of London 2023-25, Rutland 2024-25, North and West Northamptonshire 2023-24).
+- A row that is all `z` (an authority that did not exist in that year) is not stored. A row whose every stored column is NULL is stored if DfE publishes it: nine live 22-25 rows are like that (City of London 2023-25, Rutland 2024-25, North and West Northamptonshire 2023-24). They carry published numbers, but each stored column sums four ages and at least one age's cell is suppressed or not available, so every sum is NULL (rule 1.7).
 - A 0 changing to NULL, or the reverse, between releases (about 100 cells a release, normal publisher behaviour) is listed in the `load` preview and needs `--acknowledge YEAR`.
 
 The old builds added suppressed cells as 0, so about 7,700 cells held a number where the rule gives NULL; edition 2 corrects that and edition 1 keeps the table as it was held. See the decision note.
-
-## Definitional break at 2024
-
-From reporting year 2024, **Semi-independent, transitional accommodation** means Ofsted-registered supported accommodation only. Before 2024 the label also included unregistered provision. Counts either side of that boundary are not comparable and no trend statement should cross it.
 
 ## Acquisition
 
@@ -74,10 +70,10 @@ From reporting year 2024, **Semi-independent, transitional accommodation** means
 
 ## Caveats
 
-1. **Measurement date.** Figures are a point-in-time count, not a count of young people passing through a setting over the year; annual need is higher. DfE's dataset summary describes the count as taken on or around the care leaver's birthday, not on 31 March (stated in the S4 plan; the loader does not check it).
+1. **Measurement date.** Figures are a point-in-time count, not a count of young people passing through a setting over the year; annual need is higher. For the 17-21 cohort DfE's 2024 and 2025 data guidance describes the count as measured on or around the care leaver's birthday, not on 31 March (the loader does not check it). The 22-25 suitability measure is taken at latest contact during the year.
 2. **Upper-tier only.** District councils have no care leaver figure and are absent, not zero.
 3. **Suppression gives NULL.** See above. A NULL is an unpublished figure.
-4. **2024 registration change.** See above. Do not trend across it.
+4. **No definition-change statement.** DfE's care leaver notes for the 2024 and 2025 releases (checked 2026-10-09) carry no statement that the accommodation categories changed definition. The Ofsted registration wording on those pages belongs to the looked-after children placement data, a different collection and category. Say nothing about a break in this series unless DfE publishes one.
 5. **Hampshire 2024.** DfE flagged Hampshire for data quality problems in 2024 following a records system change. Retained without adjustment.
 6. **22-25 cohort is partial.** Data covers only young people who contacted the authority and requested support. DfE notes 2023 may undercount 24-year-olds by around 3% and 25-year-olds by around 10%.
 

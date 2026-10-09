@@ -79,8 +79,7 @@ SELECT
 
     -- Care leavers (most recent year, 17-21 cohort): DfE's published category
     -- 'Semi-independent, transitional accommodation' alone (S4 D1 (a)). NULL where
-    -- DfE suppressed the cell, never 0. From reporting year 2024 the DfE category
-    -- means Ofsted-registered provision only: do not trend across 2023/2024.
+    -- DfE suppressed the cell, never 0.
     cl.semi_independent_published AS care_leavers_semi_indep,
 
     -- MARAC (via PFA mapping, most recent year)

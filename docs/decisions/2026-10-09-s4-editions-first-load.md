@@ -9,8 +9,8 @@ exit 0). Design: `docs/superpowers/specs/2026-10-09-s4-editions-design.md` (audi
 ## D1 decision (Scott, 2026-10-09)
 
 Scott chose option (a): the map uses DfE's published category, `semi_independent_published`, not the pipeline
-aggregate `semi_independent`. This was recorded here before `refresh-latest --commit`. The W1 SQL change is a
-separate task (not made here; W1 was not run).
+aggregate `semi_independent`. This was recorded here before `refresh-latest --commit`. The W1 SQL change was made later on the same branch
+(`05_la_signals.sql` and its MANIFEST hash); W1 has not been run since.
 
 before-state hash: 96ad4b486af5b6c9c12d3152066b406f
 
@@ -77,7 +77,9 @@ supported_lodgings 664, total_care_leavers 1,427, total_published 5, unsuitable 
   unchanged.
 - `refresh-latest --commit --accept-key-changes 2019 ... 2025`: 1,449 rows refreshed, 66 keys inserted and 25
   deleted, before/after guard passed. The keys equalled the migration preview's list exactly. Live `source`
-  is now the release's data guidance URL, uniform per year, and `loaded_at` is the edition's.
+  is now the release's data guidance URL, uniform per year, and `loaded_at` is the edition's, except for the 7
+  Isles of Scilly (E06000053) 17-21 rows, 2019-2025: their values are published zeros and did not change, so
+  only `source` was updated and `loaded_at` stays 2026-08-20.
 - Run-log rows 244 (migrate-legacy, 3,003 rows) and 245 (release 2024, 151 rows).
 
 ## Live counts after
@@ -111,8 +113,9 @@ Total 1,522 (1,064 + 458), as the spec expected. County councils: 24, 23, 23, 22
 
 (Before: for example 17-21 `foyers` 805 zeros and 2 NULL; `unsuitable` 941 zeros and no NULL.) The zeros that
 remain are published zeros. Nine live 22-25 rows have every count NULL (City of London 2023-25, Rutland 2024-25,
-and North and West Northamptonshire 2023-24): DfE publishes them with every figure suppressed or not
-available, each carries its `null_reasons`, and they are stored, not dropped (rule 1.6 drops only rows that are
+and North and West Northamptonshire 2023-24): every stored column is NULL because each column sums four ages and at least one
+age's cell is suppressed or not available. DfE does publish some figures for these authorities (for example West
+Northamptonshire 2024 has six published numbers). Each row carries its `null_reasons`, and they are stored, not dropped (rule 1.6 drops only rows that are
 all `z`).
 
 ## W1 effect (D1 option a)
@@ -128,8 +131,8 @@ Not run here. Run 25's `care_leavers_semi_indep` has 132 values (4 of them 0) fo
 
 So the next W1 run changes `care_leavers_semi_indep` for most authorities, and the map's care leaver figure
 becomes a different, defined quantity. `refresh_map.py` will see `care_leaver_accommodation` as loaded after run
-25 (`loaded_at` now 2026-10-09). The W1 SQL change (`05_la_signals.sql`, `w1_contract_check.py`, the tenant
-label, the data dictionary) is Task 4.
+25 (`loaded_at` now 2026-10-09). The W1 SQL change (`05_la_signals.sql`, the data dictionary) is made on this
+branch; W1 has not been run.
 
 ## The engine addition
 
@@ -172,5 +175,5 @@ The backup table `care_leaver_accommodation_bak_20260820` was not touched.
   has no `sync-new`.
 - Two small fixes to the verify script were made while running it on the real tables: the decision note path
   pointed at the wrong directory, and gate 5 counted a row with every count NULL as a failure even when
-  `null_reasons` explains it (the nine rows above are real, published-as-suppressed data). An all-NULL row
+  `null_reasons` explains it (the nine rows above are real: every column is a sum with a suppressed age). An all-NULL row
   with no `null_reasons` still fails.

@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS care_leaver_accommodation (
 | `lad24cd` | LAD24CD for unitary and metropolitan authorities. County councils are carried on their own `E10` code and will not join `la_boundaries` |
 | `reporting_year` | Year ending 31 March, stored as integer |
 | `age_group` | `17-21` or `22-25` |
-| `semi_independent` | Pipeline aggregate: semi-independent transitional + Foyers + Supported lodgings. From 2024, the underlying DfE category means Ofsted-registered provision only |
+| `semi_independent` | Pipeline aggregate: semi-independent transitional + Foyers + Supported lodgings |
 | `semi_independent_published` | DfE's published `Semi-independent, transitional accommodation` alone. **Use this for anything external** |
 | `total_care_leavers` | Sum of buckets, so a minimum where suppression is present |
 | `total_published` | DfE's own Total row. The correct total to quote |

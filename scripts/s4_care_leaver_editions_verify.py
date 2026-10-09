@@ -28,8 +28,10 @@ Gates:
      (attribution complete); county councils resolved; no Barnsley or
      Sheffield new code; seeded: predecessor attribution, undeclared and
      new-code halts; no private dict in the module (AST check)    (real)
-  5  one row per authority, cohort and year; no all-NULL row; seeded: an
-     all-z row is not stored, two codes to one key halt             (real)
+  5  one row per authority, cohort and year; no all-NULL row without a
+     suppressed or not_available reason (a sum with a suppressed age is
+     real data); seeded: an all-z row is not stored, two codes to one key
+     halt                                                           (real)
   6  NULL versus 0 never conflated: seeded for every built column (c is
      NULL with its reason, a published 0 stays 0, k and blank halt)
                                                               (real data)
@@ -681,8 +683,10 @@ def real_codes(cur, spec=SPEC):
 def real_one_row(cur, spec=SPEC):
     """One row per authority, cohort and year (per edition in the editions
     table); no row whose every count is NULL without a null_reasons entry in
-    live or the tip edition (a row DfE publishes with every figure suppressed
-    is real data under rule 1; an unexplained all-NULL row is not)."""
+    live or the tip edition. A row whose every stored column is NULL because
+    a summed age is suppressed or not available is real data under rule 1
+    (DfE publishes other figures for it); a row with no reason, or only
+    not_applicable, is not."""
     years = _live_years(cur, spec)
     if not years:
         return False, EMPTY
@@ -695,18 +699,23 @@ def real_one_row(cur, spec=SPEC):
         if cur.fetchone()[0]:
             bad.append(f"{table}: an authority twice in one year and cohort")
     allnull = " AND ".join(f"{c} IS NULL" for c in m.COUNT_COLUMNS)
-    allnull += " AND null_reasons IS NULL"
+    # unexplained: no reason at all, or only not_applicable (an all-z row
+    # that should not have been stored). A suppressed or not_available
+    # reason explains an all-NULL row (a sum with a suppressed age).
+    allnull += (" AND (null_reasons IS NULL OR ("
+                "strpos(null_reasons, '=suppressed') = 0 AND "
+                "strpos(null_reasons, '=not_available') = 0))")
     cur.execute(f"SELECT COUNT(*) FROM public.{spec.live_table} WHERE "
                 + allnull)
     if cur.fetchone()[0]:
-        bad.append("live: a row whose every count is NULL, with no reason")
+        bad.append("live: a row whose every count is NULL, with no suppressed reason")
     for y in years:
         tip = core.chain_tip(cur, spec, str(y))
         cur.execute(f"SELECT COUNT(*) FROM public.{spec.editions_table} "
                     "WHERE reporting_year = %s AND edition = %s AND "
                     + allnull, (y, tip))
         if cur.fetchone()[0]:
-            bad.append(f"{y} ed{tip}: a row whose every count is NULL, with no reason")
+            bad.append(f"{y} ed{tip}: a row whose every count is NULL, with no suppressed reason")
     return not bad, "; ".join(bad[:3]) if bad else (
         f"{len(years)} years: one row per authority, cohort and year in live "
         "and every edition; no unexplained all-NULL row in live or the tip editions")
@@ -1339,6 +1348,12 @@ def gate_10_older_release(cur):
 
 # --------------------------------------------------------------- gate 11
 
+def _only_partial_log(logged) -> bool:
+    """No run-log row, or one that says PARTIAL RUN (a year committed before
+    another was rejected)."""
+    return (not logged.called) or "PARTIAL RUN" in logged.call_args[0][2]
+
+
 def gate_11_stop_conditions(cur):
     name = ("stop conditions: each seeded REJECTED and stores nothing; the "
             "limits themselves pass")
@@ -1358,8 +1373,9 @@ def gate_11_stop_conditions(cur):
             now = (tl.editions(e.cur, year), tl.ledger(e.cur, year),
                    ed_rows(e.cur, year) if tl.editions(e.cur, year) else {},
                    live_year(e.cur, year))
+            # a new year committed before the rejection is logged as partial
             if not (rc == 1 and needle in text and "REJECTED" in text
-                    and now == snap and not logged.called):
+                    and now == snap and _only_partial_log(logged)):
                 problems.append(f"{label}: rc {rc}, nothing-stored "
                                 f"{now == snap}: {text[-200:]}")
         elif rc != 0 or needle not in text:
@@ -1423,9 +1439,33 @@ def gate_11_stop_conditions(cur):
              str(r["17-21"]), "--commit"])
         if not (rc == 1 and "no carry-forward" in text and "REJECTED" in text
                 and (tl.editions(e.cur, 2023), tl.editions(e.cur, 2024))
-                == snap and not logged.called):
+                == snap and _only_partial_log(logged)):
             problems.append(f"one cohort against two: rc {rc}: {text[-200:]}")
     scenario(cur, b6)
+
+    def b6b(e):
+        # a 22-25 file alone against a year held for 17-21 only
+        r = e.release("2023", range(2019, 2024), None, register=False)
+        rc, text, _, _ = e.run_main(
+            ["load", "--release", "2023", "--file-17-21", str(r["17-21"]),
+             "--commit"])
+        if rc != 0:
+            problems.append(f"one-cohort seed failed: {text[-200:]}")
+            return
+        r2 = e.release("2025", None, (2023, 2024, 2025), register=False)
+        snap = (tl.editions(e.cur, 2023), tl.ledger(e.cur, 2023),
+                live_year(e.cur, 2023))
+        rc, text, _, logged = e.run_main(
+            ["load", "--release", "2025", "--file-22-25", str(r2["22-25"]),
+             "--commit"])
+        now = (tl.editions(e.cur, 2023), tl.ledger(e.cur, 2023),
+               live_year(e.cur, 2023))
+        if not (rc == 1 and "no carry-forward" in text
+                and "REJECTED" in text and now == snap
+                and _only_partial_log(logged)):
+            problems.append(f"one cohort against the other: rc {rc}: "
+                            f"{text[-200:]}")
+    scenario(cur, b6b, seed=False)
 
     def b7(e):
         zeros = {(CODES[2], 2023, a, c): "0"
@@ -1441,7 +1481,7 @@ def gate_11_stop_conditions(cur):
     report(11, name, not problems,
            "total_published >25% in 4 authorities, national +5%, a held "
            "authority absent, new-year authority range, one cohort against "
-           "two, and 0 to NULL each REJECTED with exit 1 and nothing "
+           "two or against the other, and 0 to NULL each REJECTED with exit 1 and nothing "
            "stored; 3 authorities over 25% is accepted" if not problems else
            "; ".join(problems[:3]))
 

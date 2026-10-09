@@ -808,21 +808,28 @@ when a new release is out):
    or Sheffield new code, an authority that cannot be resolved or declared, an
    authority with a published number missing from the release, a revised year
    whose `total_published` moves by more than 25% in more than three
-   authorities or whose national total moves by more than 5%, a year covered
-   for one cohort only, or an older release than the tip (also with `--file-17-21`/`--file-22-25`; `--allow-older-file` overrides).
+   authorities or whose national total moves by more than 5%, or a revised year
+   covered for fewer cohorts than its tip holds (a file for one age group
+   alone never replaces a year whose latest edition holds the other).
+   An older release than the tip is not rejected: its years are skipped as
+   older, a mixed run carries on with the newer years, and a run of only
+   older years halts with exit 1 (also with `--file-17-21`/`--file-22-25`;
+   `--allow-older-file` overrides).
    About 100 cells a release go between 0 and NULL (rule 1.10): after reading
    them, repeat the command with `--acknowledge YEAR` for each year.
 3. `load --commit` (with the same `--acknowledge` options) stores new years as
-   edition 1 and revised years as the next edition, with their live rows and
-   ledger rows in one transaction per year.
+   edition 1 with their live rows, and revised years as the next edition; each
+   year's edition, ledger rows (and live rows, for a new year) go in one
+   transaction. A revised year reaches the live table through step 4.
 4. `refresh-latest` (preview), then `refresh-latest --commit` to copy the
    latest editions into the live table. If a year gains or loses authorities
    the preview lists them and the command halts until that year is named:
    `refresh-latest --commit --accept-key-changes YEAR` (repeat for each year).
 5. `status` should say OK and `python scripts/s4_care_leaver_editions_verify.py`
    should pass all 23 gates.
-6. Run `w1_run.py` and `refresh_map.py` **only if the latest reporting year
-   changed** (a November release brings a new year, so it normally does). W1
+6. Run `w1_run.py` and `refresh_map.py` **only if W1's input changed**: a
+   new latest reporting year (a November release normally brings one) or a
+   revision of the latest year. `refresh_map.py --check` is the test. W1
    reads `semi_independent_published`, 17-21, for the latest year.
 
 **November 2026** (reporting year 2026): 2026 is a new year; 2022 to 2025 are

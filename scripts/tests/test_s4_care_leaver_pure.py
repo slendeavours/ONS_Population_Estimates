@@ -573,6 +573,17 @@ class StopConditions(unittest.TestCase):
             [rec("E06000001"), rec("E06000001", "22-25")],
             [rec("E06000001")], kind="revised"), [])
 
+    def test_one_cohort_against_a_tip_holding_only_the_other(self):
+        # a file for one age group alone never replaces a year's tip that
+        # holds the other group alone, in either direction
+        a = [rec("E06000001")]
+        b = [rec("E06000001", "22-25")]
+        for new, tip in ((b, a), (a, b)):
+            probs = m.year_problems(new, tip, kind="revised")
+            self.assertTrue(any("no carry-forward" in p for p in probs),
+                            probs)
+        self.assertEqual(m.year_problems(a, a, kind="revised"), [])
+
     def test_zero_null_flips(self):
         tip = [rec("E06000001", foyers=0, other=None),
                rec("E06000002", foyers=3)]

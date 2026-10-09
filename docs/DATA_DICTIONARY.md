@@ -98,7 +98,7 @@ Source: DfE Children Looked After in England including adoptions, SSDA903 return
 
 | Column | Type | Range | Description |
 |---|---|---|---|
-| `care_leavers_semi_indep` | integer | 0 – 500+ | Care leavers aged 17-21 in DfE's published category `Semi-independent, transitional accommodation` (`semi_independent_published`), latest year. NULL where DfE suppressed the cell, never 0. From reporting year 2024 the category means Ofsted-registered provision only, so do not trend across 2023/2024. Up to W1 run 25 this column held the wider pipeline aggregate `semi_independent` (see below) |
+| `care_leavers_semi_indep` | integer | 0 – 500+ | Care leavers aged 17-21 in DfE's published category `Semi-independent, transitional accommodation` (`semi_independent_published`), latest year. NULL where DfE suppressed the cell, never 0. Up to W1 run 25 this column held the wider pipeline aggregate `semi_independent` (see below) |
 
 ### Which measure to quote
 
@@ -117,11 +117,9 @@ Suppressed cells (`c`), not-applicable cells (`z`) and not-available cells (`x`)
 
 | Table | What it holds |
 |---|---|
-| `care_leaver_accommodation` | Live layer, the latest edition of each reporting year, keyed (`lad24cd`, `reporting_year`, `age_group`). W1 reads 17-21 for the latest year; the map export reads `MAX(reporting_year)`. `loaded_at` is the edition's, so a revision is visible to `refresh_map.py` |
+| `care_leaver_accommodation` | Live layer, the latest edition of each reporting year, keyed (`lad24cd`, `reporting_year`, `age_group`). W1 reads 17-21 for the latest year; the map export reads `MAX(reporting_year)`. `loaded_at` is the edition's (except the 7 Isles of Scilly 17-21 rows, whose values were unchanged by the 2026-10-09 correction and kept their earlier `loaded_at`), so a revision is visible to `refresh_map.py` |
 | `care_leaver_accommodation_editions` | Append-only: one release's figures for one reporting year, both cohorts of that release, keyed (`lad24cd`, `age_group`, `reporting_year`, `edition`). Edition 1 of every year is the table exactly as held before 2026-10-09, edition 2 the rule 1 correction, and edition 3 for 2020 is the 2024 release's revision |
 | `care_leaver_accommodation_editions_file_checks` | Append-only ledger of every file read |
-
-From reporting year 2024 the DfE category means Ofsted-registered supported accommodation only. Do not trend across 2023/2024.
 
 ---
 

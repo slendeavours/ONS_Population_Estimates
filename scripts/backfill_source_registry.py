@@ -253,16 +253,15 @@ SOURCES = [
                  "they read semi_independent_published. In 2025 the "
                  "aggregate has a value for 17 mapped areas and the "
                  "published category for 121 of 296.",
-                 "From reporting year 2024 the DfE category means Ofsted-"
-                 "registered supported accommodation only; before 2024 it "
-                 "included unregistered provision. Counts must not be "
-                 "trended across that boundary.",
-                 "Suppressed cells (c, k, z, x) are NULL, never 0: a bucket "
+                 "Suppressed cells (c, z, x) are NULL, never 0 (a k or a "
+                 "blank halts the loader): a bucket "
                  "built from parts is NULL unless every part is published, "
                  "total_care_leavers is NULL unless every bucket is, and the "
                  "reason is in null_reasons. total_published carries DfE's "
-                 "own Total row. Rows that are all z are not stored; nine "
-                 "2023-2025 22-25 rows with every count suppressed are.",
+                 "own Total row. Rows that are all z are not stored. Nine "
+                 "2023-2025 22-25 rows with every stored column NULL are "
+                 "stored: DfE publishes some figures for them, but each "
+                 "column sums four ages and at least one age is suppressed or not available.",
                  "DfE publishes upper-tier authorities only, including "
                  "county councils: 24 in 2019, 23 in 2020 and 2021, 22 in "
                  "2022 and 2023, 21 in 2024 and 2025 (17-21).",
@@ -270,10 +269,11 @@ SOURCES = [
                  "ages summed); before 2026-10-09 the table held age 25 "
                  "only. It covers only those who contacted the authority and "
                  "requested support, so figures are partial.",
-                 "DfE's dataset summary describes the count as taken on or "
-                 "around the care leaver's birthday, not on 31 March "
-                 "(recorded as stated by the project plan; not checked by "
-                 "the loader). Annual need is higher."],
+                 "For the 17-21 cohort DfE's 2024 and 2025 data guidance "
+                 "describes the count as measured on or around the care "
+                 "leaver's birthday, not on 31 March (the loader does not "
+                 "check it). The 22-25 suitability measure is taken at "
+                 "latest contact during the year. Annual need is higher."],
         ucws_lens="context", hss_lens="primary",
         completeness_note=(
             "Mechanics established: the content API publication endpoint "

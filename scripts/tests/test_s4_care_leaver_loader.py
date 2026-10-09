@@ -247,7 +247,7 @@ class Fixture(unittest.TestCase):
                                          published=f"{slug}-11-20T09:30:00")
         return out
 
-    def run_main(self, cur, argv, *, table=True, latest=None):
+    def run_main(self, cur, argv, *, table=True, latest=None, rng=(1, 100)):
         """main(argv) on the throwaway tables. Returns (rc or 'halt', text,
         borrowed, log mock)."""
         borrowed = _Borrowed(cur)
@@ -267,7 +267,7 @@ class Fixture(unittest.TestCase):
                 mock.patch.object(m, "fetch_api", return_value=api), \
                 mock.patch.object(m, "fetch_page", side_effect=fetch_page), \
                 mock.patch.object(m, "fetch_csv", side_effect=fetch_csv), \
-                mock.patch.object(m, "AUTHORITIES_RANGE", (1, 100)), \
+                mock.patch.object(m, "AUTHORITIES_RANGE", rng), \
                 mock.patch.object(m, "log_run") as logged, \
                 mock.patch.object(m, "table_exists",
                                   side_effect=lambda c, t: table
@@ -365,7 +365,7 @@ class LoaderDB(Fixture):
             self.assertEqual(editions(cur, 2024), [(1, None, 2 * N)])
             self.assertEqual(editions(cur, 2025), [])
             self.assertEqual(len(ledger(cur, 2024)), 2)
-            logged.assert_not_called()
+            self.assertIn("PARTIAL RUN", logged.call_args[0][2])
             # the pair is in the ledger for 2024 only: the rerun reads the
             # files and stores 2025; 2024 is not compared or stored again
             real = m.read_file
@@ -409,9 +409,14 @@ class LoaderDB(Fixture):
             self.release("2025", range(2021, 2026), (2023, 2024, 2025),
                          values17=flip)
             self.latest = "2025"
-            rc, text, _, _ = self.run_main(cur, ["load", "--commit"])
+            rc, text, _, logged = self.run_main(cur, ["load", "--commit"])
             self.assertEqual(rc, 1, text)
             self.assertEqual(editions(cur, 2025), [(1, None, 2 * N)])
+            # 2025 was committed before 2023 was rejected: the run is logged
+            # as partial so the audit trail has a row for the committed year
+            logged.assert_called_once()
+            self.assertIn("PARTIAL RUN", logged.call_args[0][2])
+            self.assertIn("[2023]", logged.call_args[0][2])
             before = {y: ledger(cur, y) for y in (2021, 2022, 2024, 2025)}
             # preview of the retry writes nothing
             rc, text, borrowed, _ = self.run_main(
@@ -636,7 +641,7 @@ class LoaderDB(Fixture):
             self.assertEqual(editions(cur, 2023), [(1, None, 2 * N)])
             self.assertEqual([o for _, o, _ in ledger(cur, 2023)],
                              ["new", "new"])
-            logged.assert_not_called()
+            self.assertIn("PARTIAL RUN", logged.call_args[0][2])
             self.assertEqual(editions(cur, 2025), [(1, None, 2 * N)])
             rc, text, _, _ = self.run_main(
                 cur, ["load", "--commit", "--recheck", "2023",
@@ -655,6 +660,41 @@ class LoaderDB(Fixture):
             self.assertIn("ACKNOWLEDGED", cur.fetchone()[0])
             self.assertIn("ACKNOWLEDGED", logged.call_args[0][2])
 
+    def test_nothing_committed_logs_nothing(self):
+        # the only changed year is rejected: no committed year, no run-log row
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)
+            self.release("2025", (2025,), (2025,))
+            self.latest = "2025"
+            rc, text, _, logged = self.run_main(
+                cur, ["load", "--commit"], rng=(145, 160))
+            self.assertEqual(rc, 1, text)
+            self.assertIn("2025: REJECTED", text)
+            self.assertIn("nothing was committed", text)
+            logged.assert_not_called()
+
+    def test_one_cohort_file_against_a_tip_holding_the_other_stops(self):
+        # 2023 is held with 17-21 only; a 22-25 file alone must not become
+        # its latest edition (and the reverse is the test below)
+        with rolled_back(self.conn) as cur:
+            r = self.release("2023", range(2019, 2024), None, register=False)
+            rc, text, _, _ = self.run_main(
+                cur, ["load", "--release", "2023", "--file-17-21",
+                      str(r["17-21"]), "--commit"])
+            self.assertEqual(rc, 0, text)
+            snap = (editions(cur, 2023), ledger(cur, 2023), live(cur, 2023))
+            r2 = self.release("2025", None, (2023, 2024, 2025),
+                              register=False)
+            rc, text, _, logged = self.run_main(
+                cur, ["load", "--release", "2025", "--file-22-25",
+                      str(r2["22-25"]), "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("2023: REJECTED", text)
+            self.assertIn("no carry-forward", text)
+            self.assertEqual((editions(cur, 2023), ledger(cur, 2023),
+                              live(cur, 2023)), snap)
+            self.assertIn("PARTIAL RUN", logged.call_args[0][2])
+
     def test_one_cohort_release_year_against_a_two_cohort_tip_stops(self):
         with rolled_back(self.conn) as cur:
             self.seed(cur)
@@ -671,7 +711,7 @@ class LoaderDB(Fixture):
             self.assertEqual(len(snap), 1)
             self.assertEqual(editions(cur, 2023), [(1, None, 2 * N)])
             self.assertEqual(editions(cur, 2024), [(1, None, 2 * N)])
-            logged.assert_not_called()
+            self.assertIn("PARTIAL RUN", logged.call_args[0][2])
 
     def test_rejected_year_stores_nothing_and_exits_1(self):
         with rolled_back(self.conn) as cur:
@@ -689,7 +729,7 @@ class LoaderDB(Fixture):
             self.assertIn("REJECTED 1 year(s)", text)
             self.assertEqual(editions(cur, 2023), [(1, None, 2 * N)])
             self.assertEqual(ledger(cur, 2023), led)
-            logged.assert_not_called()
+            self.assertIn("PARTIAL RUN", logged.call_args[0][2])
 
     def test_preview_and_simulate_write_nothing(self):
         with rolled_back(self.conn) as cur:

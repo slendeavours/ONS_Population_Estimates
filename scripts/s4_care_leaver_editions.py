@@ -798,8 +798,9 @@ def year_problems(new, tip, *, kind, all_z=()) -> list:
     covers) with a published number absent from the release, unless the
     release publishes it as all z (all_z: its (lad24cd, age_group) keys,
     listed by the caller, not stopped). New year:
-    authorities per cohort outside AUTHORITIES_RANGE. Revised year: a cohort
-    the tip holds that the release does not cover while the tip holds both;
+    authorities per cohort outside AUTHORITIES_RANGE. Revised year: any cohort
+    the tip holds that the release does not cover (one cohort alone never
+    replaces a tip that holds the other);
     total_published changing by more than TOTAL_CHANGE in more than
     TOTAL_CHANGE_AUTHORITIES authorities of a cohort; the national
     total_published of a cohort moving by more than NATIONAL_CHANGE."""
@@ -807,9 +808,9 @@ def year_problems(new, tip, *, kind, all_z=()) -> list:
     nk, tk = _by_key(new), _by_key(tip or ())
     ncoh = sorted({a for _, a in nk})
     tcoh = sorted({a for _, a in tk})
-    if kind == "revised" and len(tcoh) == 2 and len(ncoh) < 2:
+    if kind == "revised" and set(tcoh) - set(ncoh):
         out.append(f"the release covers {ncoh or 'no cohort'} for this year "
-                   f"but the tip holds both {tcoh}; no carry-forward")
+                   f"but the tip holds {tcoh}; no carry-forward")
     gone = sorted(k for k, r in tk.items() if k[1] in ncoh
                   and _published(r) and k not in nk
                   and k not in set(all_z))
@@ -1733,9 +1734,13 @@ def _run_years(args, conn, cur, spec, base, has_ed, src, metas, rank, tips,
               f"{', '.join(str(y) for y in sorted(problems))}; exit 1")
         rc = 1
     if args.commit:
-        if rc == 0:
+        committed = stats["stored_rows"] + stats["live_rows"] > 0
+        if rc == 0 or committed:
             kinds = stats["kinds"]
-            notes = (f"release {slug} ({src['how']}): "
+            partial = (f"PARTIAL RUN (exit 1): rejected "
+                       f"{sorted(problems) or 'none'}; a year that failed is "
+                       "not in the counts below; " if rc else "")
+            notes = (partial + f"release {slug} ({src['how']}): "
                      + "; ".join(f"{p} {k}" for p, k in kinds.items())
                      + "; files " + "; ".join(
                          f"{m['cohort']} {m['source']} sha256 {m['sha'][:16]}"
@@ -1749,11 +1754,11 @@ def _run_years(args, conn, cur, spec, base, has_ed, src, metas, rank, tips,
             log_run(cur, stats["stored_rows"] + stats["live_rows"],  # not a source value
                     notes, started)
             conn.commit()
-            print("pipeline_run_log row written")
+            print("pipeline_run_log row written"
+                  + (" (partial run: see its notes)" if rc else ""))
         else:
             print("pipeline_run_log: no row written (a year failed or was "
-                  "rejected; years committed before are in the editions "
-                  "table)")
+                  "rejected and nothing was committed)")
     return rc
 
 
