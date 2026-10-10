@@ -907,26 +907,175 @@ SOURCES = [
         source_code="12",
         source_name="MHCLG EFS / published S.114 notices",
         publisher="MHCLG / LAs",
+        series_name=("Exceptional Financial Support for local authorities "
+                     "(one GOV.UK page per financial year), and a curated "
+                     "register of section 114 notices"),
         acquisition_method="manual",
         cadence="periodic",
-        publication_window="Published as issued",
+        publication_window=(
+            "EFS: each year's page is updated as decisions are taken (the "
+            "2026-27 page was first published on 23 February 2026 and "
+            "updated on 30 July and 18 August 2026). S.114 notices: "
+            "published as issued by each council; there is no central "
+            "register"),
         target_table="la_efs_support", geography_level="LAD24",
-        n8n_workflow_name="Workflow 1",
-        caveats=["S.114 notices are held in a second table, la_s114_notices, "
-                 "keyed (lad24cd, notice_date).",
-                 "Notices are attributed to the authority that issued them and "
-                 "are never propagated to successors. la_s114_notices.attribution "
-                 "is 'direct' where the issuer still exists (13 notices, 10 "
-                 "authorities) and 'predecessor' where it does not (2, both "
-                 "Northamptonshire County Council E10000021, abolished 31 March "
-                 "2021). In 2018 Northamptonshire was two-tier: the county held "
-                 "social care and education while housing and homelessness sat "
-                 "with the seven districts, so the issuer did not hold the "
-                 "functions this source signals about. Propagating would also "
-                 "fan out - one predecessor, two successors, doubling the notice "
-                 "on any join by predecessor. successor_codes is reference only "
-                 "and must never be used as a join path; North and West "
-                 "Northamptonshire correctly carry s114_flag = false."],
+        join_path=(
+            "EFS: authority names on the year pages are matched exactly to "
+            "la_boundaries.lad24nm, or to an alias in "
+            "scripts/s12_efs_names.json, never fuzzily; counties, a police "
+            "and crime commissioner and a mayoral combined authority are "
+            "excluded by name and counted. S.114: the register's lad24cd; "
+            "every code must be in la_boundaries unless attribution is "
+            "'predecessor' with successor codes and a note (E10000021, "
+            "Northamptonshire County Council). Source 12 is declared "
+            "'none' in scripts/geography.py."),
+        build_script_path="scripts/s12_financial_stress_editions.py",
+        source_doc_path="docs/s12_financial_stress_source.md",
+        known_gotchas=(
+            "Two inputs make one source. EFS: the year's own GOV.UK page, "
+            "'Exceptional Financial Support for local authorities for "
+            "<yyyy-yy>', found through the collection of that name in the "
+            "content API; the page's title year, its table header and its "
+            "public_updated_at (with the newest change-history note) are "
+            "the identity and the rank, never the base path, and the "
+            "year's own page always wins over a statement about that year "
+            "on another page. S.114: the register "
+            "data/reference/la_s114_notices.csv, read through "
+            "scripts/manual_input.py with a register_as_at line and per-row "
+            "evidence. Traps. (1) A cell is a small closed grammar: a first "
+            "amount ('£63.0m (support agreed in-principle)'); 'This was "
+            "subsequently revised to: £50.0m' (the last such amount is the "
+            "year's figure); amounts 'for <other year>'; 'Note: For support "
+            "agreed in-principle for 2025-26, this has been revised to "
+            "£110.3m (from £136.0m)' (about another year); 'covering:' "
+            "lists; the 2020-21 qualifiers '(in the form of grant)' and "
+            "'(original capitalisation of £100m in 2017-18 was extended by "
+            "£25m)'; and 'Council provided with in-principle support but "
+            "withdrew its request'. Any other form halts naming the page, "
+            "row and cell. The n8n load took the first amount in every "
+            "cell. (2) A page holds more than one table: the main table, "
+            "'Housing Revenue Account' (stored, hra_only true) and 'Police "
+            "Force' (not stored); the 2024-25 'Capitalisation support for "
+            "2024-25' table (Norfolk) is excluded. Any other heading "
+            "halts. (3) Names must equal la_boundaries.lad24nm exactly or "
+            "be a listed alias; there is no fuzzy matching (the n8n "
+            "dictionary sent Haringey to E09000013, Hammersmith and "
+            "Fulham; the near-misses are Woking/Wokingham and "
+            "Gloucester/South Gloucestershire). (4) Non-LAD bodies on the "
+            "pages are excluded by name: East Sussex, Worcestershire and "
+            "Norfolk county councils, Kent Police and Crime Commissioner and "
+            "South Yorkshire Mayoral Combined Authority. (5) A cell that "
+            "states support for another year only is stored with a NULL "
+            "amount and status other-years-only (Plymouth 2024-25, "
+            "Shropshire 2025-26). (6) A withdrawn request is a row with a "
+            "NULL amount and status withdrawn. (7) The register has no "
+            "central source: a row without evidence is reported, never "
+            "invented or dropped, and the loader cannot remove a notice "
+            "(only a named entry in S114_REMOVALS, with what was "
+            "searched)."),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s12_financial_stress_editions_verify.py",
+            "checks": 21,
+            "first_load": "2026-10-10",
+            "migration_proof": ("migrate-legacy: the loader's parser on the "
+                                "seven year pages held on 2026-10-10 listed "
+                                "exactly the authorities the live table held "
+                                "for every year; no year reproduced the held "
+                                "amount, status and hra_only on every row, "
+                                "so no EFS ledger row was written and "
+                                "edition 2 was stored for all seven years "
+                                "(13 amounts changed, 2 values to NULL, 36 "
+                                "statuses, 2 hra_only set, 2 rows removed "
+                                "under a named rule). S.114: the held list "
+                                "reproduced all 15 notices, 15 without "
+                                "evidence"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an unknown cell form, table heading, unmatched name, "
+                     "identity mismatch or older page, and rejects a year "
+                     "that changes unless named with --acknowledge; a value "
+                     "going to or from NULL needs a named entry; the set of "
+                     "authorities with any row (the map's flags) may lose an "
+                     "authority only under the withdrawn-only rule or a "
+                     "named S.114 removal"),
+            "retired": ("the n8n workflow 'LA Financial Stress (12)' is "
+                        "retired (its Code node throws, 2026-10-10); it took "
+                        "the first amount in each cell, mapped names through "
+                        "a hard-coded dictionary and never set hra_only")},
+        revises_back_series=True,
+        revision_note=(
+            "The pages restate earlier decisions, and say so: the "
+            "collection page says the pages for each year 'have been "
+            "updated to show the most recent decisions', and the 2026-27 "
+            "page says decisions 'can amend the profile of support in those "
+            "prior years'. Read on 2026-10-10 against the load of 31 March "
+            "2026, 13 amounts differ (for example 2025-26 Bradford 127.1 to "
+            "113.0, Croydon 136.0 to 110.3, Medway 18.484 to 28.469; "
+            "2024-25 Birmingham 685.0 to 490.0, Woking 95.6 to 93.6), and "
+            "the page change notes of 18 August 2026 add capitalisation "
+            "directions for 2025-26. Each year's page is stored as an "
+            "edition (la_efs_support_editions): edition 1 is the table as "
+            "held, edition 2 is the seven pages read on 2026-10-10. The "
+            "S.114 register is stored the same way "
+            "(la_s114_notices_editions: edition 1 the 15 notices as held, "
+            "edition 2 the evidenced register). The live tables move to a "
+            "revision only through refresh-latest --commit. Record: "
+            "docs/decisions/2026-10-10-s12-editions-first-load.md."),
+        caveats=[
+            "S.114 notices are held in a second table, la_s114_notices, "
+            "keyed (lad24cd, notice_date). It is a curated, research-tier "
+            "register, not a publisher dataset: 13 notices as at "
+            "2026-10-10, each with an evidence_url, evidence_title and "
+            "checked_on (9 backed by a council's own report or meeting "
+            "papers, 1 by a council statement, 3 by a press report quoting "
+            "the council). Two notices that could not be evidenced "
+            "(Hillingdon 2000-07 and Croydon 2022-01) were removed on "
+            "2026-10-10 as a named step and remain in edition 1. Open for "
+            "Scott: the Hillingdon removal may be of a real notice; "
+            "Northumberland's financial_year is 2021-22 although its notice "
+            "date, 23 May 2022, falls in 2022-23; Croydon's second notice "
+            "of 2 December 2020 is not in the register; the day of "
+            "Hackney's notice (17 October 2000) is not stated in the report "
+            "found.",
+            "Notices are attributed to the authority that issued them and "
+            "are never propagated to successors. la_s114_notices.attribution "
+            "is 'direct' where the issuer still exists (11 notices, 9 "
+            "authorities) and 'predecessor' where it does not (2, both "
+            "Northamptonshire County Council E10000021, abolished 31 March "
+            "2021). In 2018 Northamptonshire was two-tier: the county held "
+            "social care and education while housing and homelessness sat "
+            "with the seven districts, so the issuer did not hold the "
+            "functions this source signals about. Propagating would also "
+            "fan out - one predecessor, two successors, doubling the notice "
+            "on any join by predecessor. successor_codes is reference only "
+            "and must never be used as a join path; North and West "
+            "Northamptonshire correctly carry s114_flag = false.",
+            "amount_m is the latest figure the year's own page states for "
+            "the authority, in £ millions: where a cell says 'subsequently "
+            "revised to', the revised figure. The pages state amounts "
+            "requested and agreed (in principle, or by a capitalisation "
+            "direction); they do not state amounts drawn or spent. status "
+            "says which: agreed-in-principle, capitalisation-direction (a "
+            "bare amount with a direction for that authority and year "
+            "listed on the page: the loader's reading), grant, "
+            "capitalisation-extended, withdrawn or other-years-only. A "
+            "statement on one page about another year that disagrees with "
+            "that year's own page is listed at load and not stored (for "
+            "example the 2023-24 page gives Croydon 2020-21 as £10m "
+            "against £70.0m on the 2020-21 page).",
+            "A withdrawn request is a row (amount_m NULL, status "
+            "withdrawn). W1's efs_flag is true for any row and is not "
+            "changed by this source. By Scott's decision of 2026-10-10 the "
+            "loader does not store the rows of Bournemouth, Christchurch "
+            "and Poole (2022-23) and North Northamptonshire (2024-25), "
+            "whose only rows are withdrawn requests with no direction "
+            "listed, so they carry no flag after the next W1 run; Bexley's "
+            "two withdrawn rows are kept because its 2020-21 page lists a "
+            "Bexley capitalisation direction and an amended one (the "
+            "documents have not been read).",
+            "hra_only is true for a row from a page's Housing Revenue "
+            "Account table (Lambeth 2025-26, City of London 2026-27). "
+            "The Police Force table is not stored."],
         completeness_note=("No source documentation file exists. " + CAUTIOUS),
         refresh_tier="C", status="active",
         publish_github=True, publish_map=True,
@@ -1196,19 +1345,134 @@ SOURCES = [
         latest_period_loaded="2025-26",
         source_name="SafeLives MARAC data",
         publisher="SafeLives",
+        series_name=("Marac data by police force area, region and country "
+                     "(England and Wales), annual workbook for the year "
+                     "ending March"),
+        landing_page_url=("https://safelives.org.uk/research-policy/"
+                          "practitioner-datasets/marac-data/"),
         acquisition_method="manual",
         cadence="annual", cadence_months=12,
-        publication_window="6-9 months after the reference period",
+        publication_window=(
+            "One workbook for each year ending March. The data page states "
+            "no release date; the workbooks' own document-modified dates "
+            "are 12 August 2024 (2023-24), 11 July 2025 (2024-25) and 2 "
+            "July 2026 (2025-26)"),
         target_table="marac_cases", geography_level="PFA",
-        join_path="la_pfa_mapping, a lad24cd to police force area crosswalk.",
-        n8n_workflow_name="Workflow 1",
-        caveats=["SafeLives publishes MARAC data 6-9 months after the "
-                 "reference period. The current run may show prior-year "
-                 "figures."],
-        completeness_note=(
-            "No source documentation file exists. The 6-9 month lag is a "
-            "range, so expected_lag_days is null rather than a midpoint. "
-            + CAUTIOUS),
+        join_path=("la_pfa_mapping, a lad24cd to police force area "
+                   "crosswalk (296 English authorities; pfa_name_safelives "
+                   "is the name marac_cases is keyed on). Workbook force "
+                   "names are matched exactly to "
+                   "la_pfa_mapping.pfa_name_safelives, 39 English forces; an "
+                   "English force missing, an unknown name or a Welsh force "
+                   "taken as English halts. The mapping is read, never "
+                   "written. Source 17 is declared 'none' in "
+                   "scripts/geography.py."),
+        build_script_path="scripts/s17_marac_editions.py",
+        source_doc_path="docs/s17_marac_source.md",
+        known_gotchas=(
+            "One workbook per financial year on the SafeLives Marac data "
+            "page (https://safelives.org.uk/research-policy/"
+            "practitioner-datasets/marac-data/; the registry's earlier "
+            "URL redirects to it with a 301): five .xls (2018-19 to "
+            "2022-23, read with xlrd 2.0.1) and three .xlsx. The loader "
+            "asks with a plain User-Agent that names the pipeline; a "
+            "browser-like User-Agent got a Cloudflare 403 in the survey of "
+            "2026-10-10, and a 403, a challenge page or a body that is not "
+            "a workbook halts with a message to download the file by hand "
+            "into data/raw/s17_marac/ and load it with --file. Identity is "
+            "read from the file: the Notes title 'SafeLives Marac data "
+            "England and Wales April YYYY - March YYYY' and the Cases title "
+            "'year ending March YYYY' must agree with each other and with "
+            "the year (the 2022-23 file's Notes title says April 2021 - "
+            "March 2022: a named erratum for that file's bytes only). "
+            "Traps. (1) 'No Data' (written 'No data' in the 2022-23 file) "
+            "and 'No population data' are the files' markers: NULL with "
+            "value_flag not_submitted or no_population; any other text "
+            "halts. (2) The 2023-24 file publishes Norfolk and the West "
+            "Midlands force as 0 MARACs, 0 cases, 'No population data' and "
+            "'#DIV/0!'; two named rules read both as non-submissions (every "
+            "value NULL, not_submitted). Every other published 0 stays 0. "
+            "(3) 'West Midlands' is both a region row and a force row in "
+            "every Cases sheet; the n8n-era load stored no West Midlands "
+            "force in any year (the cause is not proved) and the loader "
+            "stores it. (4) Referral counts can be fractional, because a "
+            "case referred by two services counts as 0.5 for each "
+            "(Referral routes note 1), so counts are numeric(10,2). (5) "
+            "housing_referrals is the Housing Number column of Referral "
+            "routes, found by its header text, not by position. (6) The "
+            "Cases footnotes say what is missing: Wigan in 2018-19 to "
+            "2020-21, one Metropolitan Police Marac in 2021-22, three "
+            "Metropolitan Police Maracs and one Lancashire Marac in "
+            "2022-23."),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s17_marac_editions_verify.py",
+            "checks": 20,
+            "first_load": "2026-10-10",
+            "migration_proof": ("migrate-legacy: the loader's parser on the "
+                                "eight held workbooks reproduced every held "
+                                "value at the column's scale except 13 "
+                                "published zeros that the n8n load held as "
+                                "NULL, and the West Midlands force, which "
+                                "the held table lacked in every year; the "
+                                "2025-26 cases_discussed and "
+                                "cases_per_10k_adult_females of the 38 "
+                                "forces held had 0 differences"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an unknown marker, header, force name or title, a "
+                     "failed reconciliation (the English forces must sum to "
+                     "the England row on five measures) or an older file, "
+                     "and rejects a new year in which England's cases "
+                     "discussed move more than 25% or more than 6 forces "
+                     "move more than 40%, or a held year that changes "
+                     "unless named with --acknowledge"),
+            "retired": ("the n8n workflow 'SafeLives MARAC (S17)' is "
+                        "retired (its Code node throws, 2026-10-10); it "
+                        "read every number with parseFloat(x) || null, "
+                        "which turned published zeros into NULL")},
+        revises_back_series=False,
+        revision_note=(
+            "Each workbook is one year and no revision of a published year "
+            "has been observed: the data page links one file for each of "
+            "the eight years. A reissued file for a year already held would "
+            "be stored as the next edition (marac_cases_editions) and stops "
+            "the load unless named with --accept-reissue or --acknowledge. "
+            "Edition 1 is the table as held on 2026-10-10 (304 rows); "
+            "edition 2 is the eight files read by the loader (312 rows, 39 "
+            "forces, 13 NULLs restored to the published 0). The live table "
+            "moves only through refresh-latest --commit. Record: "
+            "docs/decisions/2026-10-10-s17-editions-first-load.md."),
+        caveats=[
+            "MARAC data is submitted to SafeLives by individual Maracs each "
+            "quarter and collated; the page says the data should not be "
+            "used as an official measure of high-risk domestic abuse "
+            "prevalence. Missing submissions are footnoted in the files "
+            "(Wigan 2018-19 to 2020-21; one Metropolitan Police Marac in "
+            "2021-22; three Metropolitan Police Maracs and one Lancashire "
+            "Marac in 2022-23), and Norfolk and the West Midlands force "
+            "are not-submitted in 2023-24 (Norfolk also in 2022-23, "
+            "2024-25 and 2025-26). The latest year held is 2025-26; "
+            "the data page read on 2026-10-10 links no 2026-27 file.",
+            "The grain is the police force area, 39 in England, not the "
+            "local authority: every authority in a force area carries the "
+            "same force-wide figure through la_pfa_mapping. After the next "
+            "W1 run the seven West Midlands authorities (Birmingham, "
+            "Coventry, Dudley, Sandwell, Solihull, Walsall, Wolverhampton) "
+            "gain 2025-26 values (7,810 cases discussed, 65.903502 per "
+            "10,000 adult women) that the published map does not show "
+            "today.",
+            "A NULL has a reason in the editions table (value_flag "
+            "not_submitted or no_population); a published 0 is a 0. "
+            "Lancashire's housing_referrals are 0 in 2023-24, 2024-25 and "
+            "2025-26 as published: the files carry no note about it, and "
+            "the n8n-era claim that the 2023-24 and 2024-25 zeros were "
+            "footnoted as an incomplete submission is not supported by "
+            "them. Housing referrals are not read by W1.",
+            "Referral counts are not whole numbers where a case was "
+            "referred by more than one service (Referral routes note 1), "
+            "so some counts are fractional. 'Recommended number of cases' "
+            "and 'repeat cases' are not defined in the workbooks."],
+        completeness_note=("No source documentation file exists. " + CAUTIOUS),
         refresh_tier="C", status="active",
         publish_github=True, publish_map=True,
     ),
@@ -2137,15 +2401,29 @@ TIER_C_FINDINGS = {
         url=("https://www.gov.uk/government/collections/"
              "exceptional-financial-support-for-local-authorities"),
         ptype=None,
-        note=("Mechanics established 2026-08-14, and tier C is now evidenced "
-              "rather than assumed. The EFS half resolves through the GOV.UK "
-              "content API and could be detected. The S.114 half cannot: "
+        note=("Mechanics established 2026-08-14 and revised 2026-10-10. The "
+              "EFS half is now automated: scripts/s12_financial_stress_"
+              "editions.py reads the collection and each year's page "
+              "through the GOV.UK content API, and check_sources reads the "
+              "collection for a newer year. The S.114 half stays a "
+              "curated, evidenced register (data/reference/"
+              "la_s114_notices.csv, read through scripts/manual_input.py): "
               "notices are issued and published by individual local "
-              "authorities with no central register, so no endpoint exists to "
-              "watch. Automating only the detectable half would report the "
-              "source as checked while the manual half went unwatched, which "
-              "is worse than reporting it manual. Split the source if the EFS "
-              "half is ever worth automating on its own.")),
+              "authorities with no central register, so no endpoint exists "
+              "to watch, and a new notice is added by hand with its "
+              "evidence. acquisition_method stays manual because that half "
+              "is a hand step and the EFS load is run by hand; it is to be "
+              "reconsidered once two consecutive releases have been taken "
+              "without a hand step. Reporting the source as automated "
+              "while the register went unwatched would be worse than "
+              "reporting it manual."),
+        completeness_extra=(
+            " Held (2026-10-10): la_efs_support, 111 rows for 49 "
+            "authorities over 2020-21 to 2026-27, and la_s114_notices, 13 "
+            "notices for 10 authorities, the latest-edition layers of "
+            "la_efs_support_editions and la_s114_notices_editions (two "
+            "editions each) with file-check ledgers. W1 and the map read "
+            "only whether an authority has any row in either table.")),
     "13": dict(
         tier="B", method="landing_page",
         url=("https://www.gov.uk/government/collections/"
@@ -2167,15 +2445,26 @@ TIER_C_FINDINGS = {
             "(2025, unchanged by edition 2).")),
     "17": dict(
         tier="C", method="manual",
-        url=("https://safelives.org.uk/practice-support/"
-             "resources-marac-meetings/latest-marac-data/"),
+        url=("https://safelives.org.uk/research-policy/"
+             "practitioner-datasets/marac-data/"),
         ptype=None,
-        note=("Mechanics established 2026-08-14, and tier C is now evidenced. "
-              "SafeLives is a third-party charity publishing to its own site "
-              "with no API and no stable file-URL pattern. The page responds, "
-              "so detection by page fingerprint is possible, but ingestion "
-              "stays manual and the 6-9 month publication lag makes frequent "
-              "checking pointless.")),
+        note=("Mechanics established 2026-08-14 and revised 2026-10-10. "
+              "SafeLives is a third-party charity publishing to its own "
+              "site with no API; the data page links one workbook for each "
+              "year, and scripts/s17_marac_editions.py reads the page and "
+              "downloads the workbooks with a plain request. If SafeLives "
+              "refuses the request (a Cloudflare 403 was seen with a "
+              "browser-like User-Agent in the survey of 2026-10-10), the "
+              "loader halts and the file is downloaded by hand and loaded "
+              "with --file. acquisition_method stays manual until two "
+              "consecutive releases have been taken without a hand step."),
+        completeness_extra=(
+            " Held (2026-10-10): marac_cases, 312 rows (eight years 2018-19 "
+            "to 2025-26 for 39 English police force areas), the "
+            "latest-edition layer of marac_cases_editions (two editions "
+            "per year) with a file-check ledger. W1 and the map read "
+            "cases_discussed and cases_per_10k_adult_females at the newest "
+            "financial_year.")),
 }
 
 # Every column the upsert writes, in order. Columns absent from a source dict
@@ -2427,10 +2716,14 @@ def backfill_run_log_source_code(cur, register_codes):
 # reads its table). S22 never had an n8n workflow of its own; its row said
 # Workflow 1, which only reads the tables. S10 and S13: their n8n loader workflows were retired on
 # 2026-10-10 (the loaders are scripts/s10_rough_sleeping_editions.py and
-# scripts/s13_lahs_editions.py); Workflow 1 only reads the tables.
+# scripts/s13_lahs_editions.py); Workflow 1 only reads the tables. S12 and
+# S17: their n8n loader workflows were retired on 2026-10-10 (the loaders are
+# scripts/s12_financial_stress_editions.py and scripts/s17_marac_editions.py).
 CLEAR_FIELDS = {"4": ("n8n_workflow_name",),
                 "10": ("n8n_workflow_name",),
+                "12": ("n8n_workflow_name",),
                 "13": ("n8n_workflow_name",),
+                "17": ("n8n_workflow_name",),
                 "22": ("n8n_workflow_name",)}
 
 

@@ -83,7 +83,8 @@ w1-read la_s114_notices lad24cd-set rows=10 sha256-first32=b8b3f79595de90a09f49d
   (`public_updated_at` 2026-08-18T14:12:33Z) the 2025-26 cell for Croydon reads "136.0m ... subsequently revised to 110.3m",
   so the two pages now agree. The check did not look at the other amount changes below.
 - **18 August 2026 page changes.** The page change notes say what changed. 2026-27: "2026-27 external assurance reviews
-  added" (Barnet, Cheshire, Cumberland, East Sussex, Enfield, Gloucester, Halton, Medway, Peterborough, Shropshire).
+  added" (Barnet, Cheshire, Cumberland, East Sussex, Enfield, Gloucester, Halton, Medway, Peterborough, Shropshire, Wirral,
+  Worcestershire, Worthing) and "2025-26 Capitalisation Directions added: Kent Police and Crime Commissioner, Peterborough".
   2025-26: "Added 2025-26 capitalisation directions for: Bradford, Enfield, Haringey, Solihull, Stoke-on-Trent,
   Worcestershire." Those five LADs are exactly the 2025-26 rows whose status becomes `capitalisation-direction` in edition 2,
   and of them only Bradford's amount differs from the March load (127.1 to 113.0). That the 18 August edit caused the
@@ -285,10 +286,10 @@ statement or a press report quoting the council, is removed, as a named and list
    Halls, 26 Jan 2022, which is not a section 114 report); (d) searches of LGC, Public Finance, Local Government Lawyer and
    LocalGov for a Croydon s114(2) / unlawful-expenditure report in 2022 (none; the 2022 notice is the third, 22 Nov 2022, under
    s114(3)); (e) the IfG explainer, which counts three Croydon notices (11 Nov 2020, 2 Dec 2020, 22 Nov 2022). The row looks
-   like a mislabel of another notice. Croydon keeps its other three rows, so its flag is unchanged.
+   like a mislabel of another notice. Croydon keeps its other two rows (11 November 2020 and 22 November 2022), so its flag is unchanged.
 
 Effect on the map. The distinct `lad24cd` in `la_s114_notices` goes from 11 to 10: Hillingdon (E09000017) loses its
-`s114_flag`; Croydon keeps it (three other notices). The `w1-read la_s114_notices` line above was updated deliberately to the
+`s114_flag`; Croydon keeps it (two other notices). The `w1-read la_s114_notices` line above was updated deliberately to the
 10-code set; gate 9 now reads edition 1's set less the authorities whose every notice is a named removal. The map and W1 were
 not run; the live tables change only through the loader.
 

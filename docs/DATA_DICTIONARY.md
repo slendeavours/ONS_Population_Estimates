@@ -130,12 +130,31 @@ Suppressed cells (`c`), not-applicable cells (`z`) and not-available cells (`x`)
 
 ## Domestic Violence (MARAC)
 
-Source: SafeLives MARAC dataset (annual by LA)
+Source: SafeLives Marac data by police force area (annual workbook for the year ending March). Full source note: [s17_marac_source.md](s17_marac_source.md)
+
+In `staging_la_signals` (W1 reads the newest `financial_year` of `marac_cases` through `la_pfa_mapping`, so every authority in a force area carries the same force-wide figure):
 
 | Column | Type | Range | Description |
 |---|---|---|---|
-| `marac_cases` | numeric(10,2) | 0 – 2,000+ | MARAC (Multi-Agency Risk Assessment Conference) cases discussed |
-| `marac_rate_per_10k` | numeric(10,6) | 0 – 50+ | MARAC cases per 10,000 population — deprivation-adjusted demand intensity indicator |
+| `marac_cases` | numeric(10,2) | 11 – 17,174 in 2025-26 | `cases_discussed`: cases discussed at Maracs (multi-agency risk assessment conferences) in the police force area, year ending March |
+| `marac_rate_per_10k` | numeric(10,6) | 16.5 – 106.1 in 2025-26 | `cases_per_10k_adult_females`: SafeLives' published number of cases per 10,000 adult females in the police force area. Not computed in the pipeline and not a rate per head of population |
+
+Table `marac_cases`, key `(pfa_name_safelives, financial_year)`; the latest-edition layer of `marac_cases_editions` (key plus `edition`; the editions table also has `value_flag`, `release_label`, `published_date`, `source_file`, `source_sha256`, `supersedes` and `loaded_at`). 39 English police force areas by 8 years (2018-19 to 2025-26).
+
+| Column | Type | Description |
+|---|---|---|
+| `pfa_name_safelives` | varchar(100) | The force name as `la_pfa_mapping.pfa_name_safelives` holds it |
+| `financial_year` | varchar(7) | The year ending March, `2025-26` |
+| `marac_count` | integer | Number of MARACs |
+| `cases_discussed` | numeric(10,2) | Number of cases discussed |
+| `recommended_cases` | numeric(10,2) | Recommended number of cases (the workbooks do not define it) |
+| `cases_per_10k_adult_females` | numeric(10,6) | Published cases per 10,000 adult females |
+| `repeat_cases`, `repeat_cases_pct` | numeric(10,2), numeric(8,4) | Number of repeat cases (the workbooks do not define it) and the published percentage |
+| `children_in_household` | numeric(10,2) | Number of children in household |
+| `housing_referrals` | numeric(10,2) | The Housing Number column of the Referral routes sheet; can be fractional (a case referred by two services counts 0.5 for each) |
+| `value_flag` (editions only) | text | The reason every NULL in the row is NULL: `not_submitted` ("No Data" in the file, or the two named rules for Norfolk and West Midlands 2023-24) or `no_population`. NULL where the row has no NULL. 5 rows carry `not_submitted` in edition 2 |
+
+A published 0 is stored as 0, including Lancashire's housing referrals of 0 in 2023-24 to 2025-26 and City of London's housing zeros. NULL never means 0: the n8n load made published zeros NULL (13 cells), and edition 2 restores them.
 
 ---
 
@@ -230,10 +249,36 @@ All spend figures are in **£ thousands (£000s)**. Multiply by 1,000 for £ ste
 
 ## Fiscal Risk Flags
 
+Source: MHCLG Exceptional Financial Support (EFS) year pages, and a curated register of section 114 notices. Full source note: [s12_financial_stress_source.md](s12_financial_stress_source.md)
+
 | Column | Type | Values | Description |
 |---|---|---|---|
-| `efs_flag` | boolean | true / false | LA is receiving Exceptional Financial Support from MHCLG. `true` = currently supported. |
-| `s114_flag` | boolean | true / false | LA has issued a Section 114 notice under the Local Government Finance Act 1988 (effective budget declaration of inability to balance). `true` = notice issued. |
+| `efs_flag` | boolean | true / false | The authority has at least one row in `la_efs_support`: a request for Exceptional Financial Support on a MHCLG year page, in any year from 2020-21, whether agreed in principle, issued as a direction or withdrawn. It does not say the authority is supported now. BCP and North Northamptonshire (withdrawn requests only) have no row and no flag after the next W1 run; Bexley, whose rows are withdrawn requests, keeps one |
+| `s114_flag` | boolean | true / false | The authority has at least one row in `la_s114_notices`: a section 114 notice on the curated register (Local Government Finance Act 1988), in any year from 2000-01. It is attributed to the issuing authority and is not propagated to successors |
+
+### Exceptional Financial Support (S12)
+
+Table `la_efs_support`, key `(lad24cd, financial_year)`; the latest-edition layer of `la_efs_support_editions` (key plus `edition`; the editions table also has `cell_text`, the page's cell as read, `page_updated_at`, `release_label`, `published_date`, `source_file`, `source_sha256`, `supersedes` and `loaded_at`). 111 rows, 49 authorities, 2020-21 to 2026-27.
+
+| Column | Type | Description |
+|---|---|---|
+| `amount_m` | numeric(10,3) | The latest figure the year's own page states for the authority, in £ millions (where a cell says "subsequently revised to", the revised figure). NULL exactly when `status` is `withdrawn` or `other-years-only`. The pages state amounts requested and agreed, not amounts drawn |
+| `status` | text | `agreed-in-principle` (the cell says "support agreed in-principle"); `capitalisation-direction` (a bare amount with a direction for that authority and year listed on the page: the loader's reading); `grant`; `capitalisation-extended`; `withdrawn` ("withdrew its request"); `other-years-only` (the cell states support for other years only; Plymouth 2024-25, Shropshire 2025-26) |
+| `hra_only` | boolean | True for a row from the page's Housing Revenue Account table (Lambeth 2025-26, City of London 2026-27) |
+| `source` | text | The release label |
+
+### Section 114 notices (S12)
+
+Table `la_s114_notices`, key `(lad24cd, notice_date)`; the latest-edition layer of `la_s114_notices_editions`. 13 notices, 10 authorities. A research-tier register (rule 6.4), not publisher data.
+
+| Column | Type | Description |
+|---|---|---|
+| `notice_date` | date | The date of the notice |
+| `financial_year` | varchar(7) | The financial year recorded for it (Northumberland's notice of 23 May 2022 is recorded in 2021-22; open for Scott) |
+| `reason` | text | The reason as compiled |
+| `date_confirmed` | text | `exact`, or `approximate - month only confirmed` (the day is a placeholder; one notice, Northamptonshire July 2018) |
+| `attribution`, `successor_codes`, `attribution_note` | text, text[], text | `direct` where the issuer still exists (11 notices, 9 authorities); `predecessor` where it does not (the two Northamptonshire County Council notices, E10000021), with successors and a note. `successor_codes` is reference only, never a join path |
+| `evidence_url`, `evidence_title`, `checked_on` (editions only) | text, text, date | The document or report that evidences the notice, and the date it was checked. Every one of the 13 notices has all three |
 
 ---
 
