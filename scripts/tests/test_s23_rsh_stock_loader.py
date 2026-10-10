@@ -43,6 +43,29 @@ LEDGER = "zz_s23_editions_file_checks"
 N = len(CODES) * ROWS_PER_AREA
 P = "2025-03-31"
 COLL = m.COLLECTION_PATH
+SMALL = len(CODES)          # the fixture's Small PRP rows (H0375, each area)
+ACK = "not-counted-lcho-2025"
+LCHO = "low_cost_home_ownership"
+
+
+def ack_cells(cells=SMALL):
+    """The real acknowledgement with the fixture's cell count."""
+    return mock.patch.dict(m.ACKNOWLEDGED_FLIPS, {ACK: dict(
+        m.ACKNOWLEDGED_FLIPS[ACK], cells=cells)})
+
+
+def edition_diff(cur, a, b, period=P):
+    """{(rp_code, lad24cd): {column: (in a, in b)}} of the key + ROW_COLS
+    cells differing between editions a and b."""
+    ra = {(r["rp_code"], r["lad24cd"]): r for r in m.records(cur, ZZ, period, a)}
+    rb = {(r["rp_code"], r["lad24cd"]): r for r in m.records(cur, ZZ, period, b)}
+    out = {}
+    for k in sorted(set(ra) | set(rb)):
+        for c in m.ROW_COLS:
+            x, y = ra.get(k, {}).get(c), rb.get(k, {}).get(c)
+            if x != y:
+                out.setdefault(k, {})[c] = (x, y)
+    return out
 
 
 def quiet():
@@ -284,6 +307,65 @@ class Load(Fixture):
             logged.assert_called_once()
             self.assertIn(f"{P} new", logged.call_args[0][2])
             self.assertTrue(pe.status(cur, m.profile())["ok"])
+
+    def test_a_load_stores_the_not_counted_cells_null_with_the_reason(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)
+            for table, extra in (("zz_s23_editions", " AND edition = 1"),
+                                 ("zz_s23_live", "")):
+                cur.execute(f"SELECT rp_code, {LCHO}, null_reasons, "
+                            f"total_social_stock FROM public.{table} WHERE "
+                            f"({LCHO} IS NULL OR null_reasons IS NOT NULL)"
+                            f"{extra} ORDER BY lad24cd")
+                rows = cur.fetchall()
+                self.assertEqual(len(rows), SMALL, table)
+                self.assertEqual({r[0] for r in rows}, {"H0375"})
+                self.assertEqual({r[1:] for r in rows},
+                                 {(None, m.NOT_COUNTED_REASON, 3)})
+            # a covered published zero stays 0: the first LARP owns nothing
+            self.assertEqual(live_val(cur, "00C0", "E06000001", LCHO), 0)
+            self.assertEqual(live_val(cur, "00C0", "E06000001",
+                                      "total_social_stock"), 0)
+            # Large PRPs keep their published LCHO
+            self.assertEqual(count(cur, "zz_s23_live", "WHERE rp_code = "
+                                   f"'4865' AND {LCHO} IS NULL"), 0)
+            self.assertTrue(pe.status(cur, m.profile())["ok"])
+            # a re-read is unchanged (the rule never flips back to 0)
+            text, _ = self.ok(cur, ["load", "--recheck", P])
+            self.assertIn(f"{P}: unchanged", text)
+
+    def test_the_rule_halts_without_the_note_or_on_a_small_lcho_number(self):
+        with rolled_back(self.conn) as cur:
+            for kw, needle in (({"lcho_note": False}, "Area Summary"),
+                               ({"values": {("H0375", "E06000002"): {
+                                   "LA_LCHO_Less_100_Eqty_Own": 4}}},
+                                "LARPs and Large PRPs only")):
+                with self.subTest(kw=kw):
+                    self.tool(**kw)
+                    rc, text, logged = self.run_main(cur, ["load",
+                                                           "--commit"])
+                    self.assertEqual(rc, "halt", text)
+                    self.assertIn(needle, text)
+                    self.assertIn("H0375", text)
+                    self.assertEqual(count(cur, "zz_s23_editions"), 0)
+                    self.assertEqual(count(cur, "zz_s23_live"), 0)
+                    logged.assert_not_called()
+
+    def test_an_acknowledgement_is_named_and_needs_its_stock_date(self):
+        with rolled_back(self.conn) as cur:
+            self.tool()
+            # only a name in ACKNOWLEDGED_FLIPS is accepted
+            rc, text, _ = self.run_main(cur, ["load", "--acknowledge-flips",
+                                              "anything"])
+            self.assertEqual(rc, "halt", text)
+            # a run that does not compare its stock date as a held one
+            rc, text, logged = self.run_main(cur, ["load", "--commit",
+                                                   "--acknowledge-flips",
+                                                   ACK])
+            self.assertEqual(rc, "halt", text)
+            self.assertIn("does not compare", text)
+            self.assertEqual(count(cur, "zz_s23_editions"), 0)
+            logged.assert_not_called()
 
     def test_a_failing_ledger_insert_rolls_back_everything(self):
         with rolled_back(self.conn) as cur:
@@ -629,7 +711,8 @@ class Migrate(Fixture):
     PAGE = "https://www.gov.uk" + BASE.format(2024, 2025)
 
     def seed_legacy(self, cur, **kw):
-        """Held-style live rows built from a fixture file, with the page's
+        """Held-style live rows built from a fixture file as published (the
+        old build stored the Small PRP LCHO zeros), with the page's
         provenance (first published 2025-10-28) and one loaded_at."""
         path = self.tool(register=False, **kw)
         t = m.read_tool(path)
@@ -639,7 +722,7 @@ class Migrate(Fixture):
                 "file_publication_date": date(2025, 10, 28),
                 "file_source_url": self.URL, "file_name": path.name,
                 "file_release_page_url": self.PAGE}
-        recs = m.build_rows(t, lambda c: rmap[c], prov)
+        recs = m.build_rows(t, lambda c: rmap[c], prov, rule=False)
         m.insert_live(cur, m.profile(), P, recs)
         cur.execute("UPDATE public.zz_s23_live SET loaded_at = "
                     "'2026-08-14 21:24:42.442022+00'")
@@ -657,7 +740,14 @@ class Migrate(Fixture):
                                     files=files)
         return plan, out.getvalue()
 
-    def check_every_path_unchanged(self, cur, path, files):
+    def check_reread_after_migration(self, cur, path, files):
+        """After migrate-legacy (edition 1 holds the published Small PRP
+        LCHO zeros), the same bytes read again carry the not-counted rule:
+        on every path the stock date is REVISED in exactly the Small rows'
+        LCHO cells, and the 0/NULL stop rejects it unless the named
+        acknowledgement matches the count. With it, edition 2 stores the
+        rule's NULLs (provenance kept: same bytes), refresh-latest brings
+        live to it, and every path is then unchanged."""
         self.urls[files["url"]] = path
         self.page(2024, 2025, files["url"])
         text, _ = self.ok(cur, ["load"])
@@ -669,15 +759,72 @@ class Migrate(Fixture):
                      ["load", "--file", path, "--commit"],
                      ["load", "--recheck", P, "--commit"]):
             with self.subTest(argv=argv):
+                rc, text, _ = self.run_main(cur, argv)
+                self.assertEqual(rc, 1, text)
+                self.assertIn(f"{P}: REJECTED", text)
+                self.assertIn(f"{SMALL} cell(s) go from 0 to NULL", text)
+                self.assertIn("--acknowledge-flips", text)
+                self.assertNotIn("two files claim", text)
+                self.assertEqual(editions(cur), [(1, None, N)])
+        self.assertEqual([o for _, _, o, _ in ledger(cur)], ["unchanged"])
+        argv = ["load", "--file", path, "--no-page", "--acknowledge-flips",
+                ACK]
+        # the count must match exactly
+        with ack_cells(SMALL + 1):
+            rc, text, _ = self.run_main(cur, argv + ["--commit"])
+        self.assertEqual(rc, 1, text)
+        self.assertIn(f"expects exactly {SMALL + 1} cell(s)", text)
+        self.assertEqual(editions(cur), [(1, None, N)])
+        with ack_cells():
+            text, _ = self.ok(cur, argv)
+            self.assertIn(f"{P}: revised, {SMALL} rows changed", text)
+            self.assertIn("ACKNOWLEDGED", text)
+            self.assertEqual(editions(cur), [(1, None, N)])
+            text, logged = self.ok(cur, argv + ["--commit"])
+        self.assertIn("the tip's provenance is kept", text)
+        self.assertIn(f"ACKNOWLEDGED {ACK}", logged.call_args[0][2])
+        self.assertEqual(editions(cur), [(1, None, N), (2, 1, N)])
+        diff = edition_diff(cur, 1, 2)
+        self.assertEqual(len(diff), SMALL)
+        for k, cells in diff.items():
+            self.assertEqual(k[0], "H0375")
+            self.assertEqual(cells, {LCHO: (0, None), "null_reasons": (
+                None, m.NOT_COUNTED_REASON)})
+        cur.execute("SELECT COUNT(DISTINCT (file_edition, "
+                    "file_publication_date, file_source_url, file_name, "
+                    "file_release_page_url)) FROM public.zz_s23_editions")
+        self.assertEqual(cur.fetchone()[0], 1)        # provenance kept
+        cur.execute("SELECT DISTINCT release_label FROM public.zz_s23_editions "
+                    "WHERE edition = 2")
+        self.assertIn(f"ACKNOWLEDGED {ACK}", cur.fetchone()[0])
+        self.assertEqual([o for _, _, o, _ in ledger(cur)],
+                         ["unchanged", "revised"])
+        # live waits for refresh-latest
+        self.assertEqual(core.rows_differing(cur, ZZ, P, 1), 0)
+        self.assertEqual(pe.status(cur, m.profile())["pending_refresh"], [P])
+        before = provenance(cur)
+        text, _ = self.ok(cur, ["refresh-latest"])
+        self.assertIn(f"{P}={SMALL}", text)
+        self.ok(cur, ["refresh-latest", "--commit"])
+        self.assertEqual(m.live_equals_tip(cur, ZZ, [P]), [])
+        self.assertEqual(provenance(cur), before)
+        self.assertEqual(count(cur, "zz_s23_live", f"WHERE {LCHO} IS NULL"),
+                         SMALL)
+        self.assertTrue(pe.status(cur, m.profile())["ok"])
+        # the rule holds on every path: nothing flips back to 0
+        text, _ = self.ok(cur, ["load"])
+        self.assertIn("nothing parsed", text)
+        for argv in (["load", "--recheck", P],
+                     ["load", "--file", path, "--recheck", P],
+                     ["load", "--file", path, "--no-page", "--recheck", P,
+                      "--commit"]):
+            with self.subTest(argv=argv):
                 text, _ = self.ok(cur, argv)
                 self.assertIn(f"{P}: unchanged", text)
                 self.assertNotIn("REJECTED", text)
-                self.assertEqual(editions(cur), [(1, None, N)])
-        self.assertEqual([o for _, _, o, _ in ledger(cur)],
-                         ["unchanged"] * 3)
+        self.assertEqual(editions(cur), [(1, None, N), (2, 1, N)])
         text, _ = self.ok(cur, ["refresh-latest"])
         self.assertIn("would write: none", text)
-        self.assertTrue(pe.status(cur, m.profile())["ok"])
 
     def test_proof_passes_and_edition_1_and_ledger_are_stored(self):
         with rolled_back(self.conn) as cur:
@@ -698,11 +845,11 @@ class Migrate(Fixture):
                 P, f"{self.URL} (version 1.1; dated 2025-11; stock date {P})",
                 "unchanged", 1)])
             self.assertTrue(pe.status(cur, m.profile())["ok"])
-            # the same bytes, read again on every path: unchanged (the live
-            # provenance differs from what a load would write)
-            self.check_every_path_unchanged(cur, path, files)
+            # the same bytes, read again on every path: the not-counted
+            # rule's effect, released only by the named acknowledgement
+            self.check_reread_after_migration(cur, path, files)
 
-    def test_a_published_blank_rechecks_unchanged(self):
+    def test_a_published_blank_rechecks_with_the_rule(self):
         with rolled_back(self.conn) as cur:
             path, files = self.seed_legacy(
                 cur, values={("H0375", "E06000002"): {"Survey_Status": None,
@@ -711,7 +858,7 @@ class Migrate(Fixture):
                         "survey_status IS NULL AND rp_size_band IS NULL")
             self.assertEqual(cur.fetchone()[0], 1)
             self.migrate(cur, path, files)
-            self.check_every_path_unchanged(cur, path, files)
+            self.check_reread_after_migration(cur, path, files)
 
     def test_a_planted_held_difference_stops_and_rolls_back(self):
         with rolled_back(self.conn) as cur:

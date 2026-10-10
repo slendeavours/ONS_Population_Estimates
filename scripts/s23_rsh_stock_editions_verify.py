@@ -23,7 +23,8 @@ Gates:
   1  editions table, ledger, append-only triggers (UPDATE, DELETE, TRUNCATE
      refused), live checks                              (throwaway + real)
   2  every live period has edition 1; the latest edition equals live on the
-     key, the stock date and the 11 compared columns, cell for cell   (real)
+     key, the stock date, the 11 compared columns and null_reasons, cell for
+     cell                                                             (real)
   3  live provenance uniform per period and equal to the tip's file_*
      values (live column against its file_* column, as refresh-latest's
      own after-check maps them)                                      (real)
@@ -31,9 +32,13 @@ Gates:
      publisher_la_code resolves to lad24cd through geography.resolve, no
      private recode dict and no la_code_lookup query in the loader (AST)
   5  296 authorities in the latest period                            (real)
-  6  no NULL in the five stock columns, total = components on every row, the
-     zero-total rows all LARPs; a blank stock cell in a file halts; no
-     source value coerced to 0 in the loader (AST)
+  6  no NULL in the four always-counted stock columns; an LCHO NULL only on
+     a Small PRP row with the not-counted reason, and no Small PRP LCHO zero
+     (LCHO zeros only for the covered types, LARPs and Large PRPs); total =
+     components (a NULL LCHO is not a part) on every row; the zero-total
+     rows all LARPs; edition 1 'as loaded' still holds the published values
+     (no NULL, no reason); a blank stock cell in a file halts; no source
+     value coerced to 0 in the loader (AST)                  (seeded + real)
   7  in-file reconciliation re-run read-only from the file on disk
   8  identity from the file (seeded title, source line, Version History,
      header and page-year mismatches halt)
@@ -44,8 +49,13 @@ Gates:
  11  a new period: edition, live rows and ledger row in one transaction
  12  ledger skip needs the (URL, sha256) pair for the period
  13  preview and simulate write nothing
- 14  a byte-identical re-read is `unchanged` on every path, against edition 1
-     "as loaded"
+ 14  a byte-identical re-read carries the not-counted rule: read as
+     published it equals edition 1 "as loaded"; with the rule it equals the
+     tip, which differs from edition 1 in exactly the cells the named
+     acknowledgement records (LCHO 0 -> NULL with the reason); seeded: on
+     every path the 0/NULL stop rejects it without the acknowledgement or
+     with another count, the acknowledgement stores the next edition,
+     refresh-latest brings live to it, and every path is then unchanged
  15  a revision, then refresh-latest: only that period changes, provenance on
      every row, loaded_at copied; key changes only with --accept-key-changes
  16  edition 1 equals the before-state hash lines in
@@ -228,7 +238,7 @@ class Env(tl.Fixture):
     seed_legacy = tl.Migrate.seed_legacy
     legacy = tl.Migrate.legacy
     migrate = tl.Migrate.migrate
-    check_every_path_unchanged = tl.Migrate.check_every_path_unchanged
+    check_reread_after_migration = tl.Migrate.check_reread_after_migration
 
     def __init__(self, cur, root):
         super().__init__()
@@ -403,12 +413,20 @@ def shape_problems(cur, spec):
             bad.append(f"{spec.editions_table}: CHECK {name} missing")
     bad += _triggers(cur, spec.editions_table, spec.trigger,
                      spec.truncate_trigger)
-    for c in m.COMPARED + m.LIVE_PROVENANCE + ("loaded_at",):
+    for c in m.ROW_COLS + m.LIVE_PROVENANCE + ("loaded_at",):
         if c not in lcols:
             bad.append(f"{spec.live_table}: {c} missing")
     for c in m.STOCK_COLUMNS:
-        if lcols.get(c, (None, "YES"))[1] != "NO":
-            bad.append(f"{spec.live_table}: {c} is nullable (rule 1)")
+        want = "YES" if c == m.NOT_COUNTED_COLUMN else "NO"
+        if lcols.get(c, (None, None))[1] != want:
+            bad.append(f"{spec.live_table}: {c} nullable is "
+                       f"{lcols.get(c, (None, None))[1]}, expected {want} "
+                       "(rule 1: only the not-counted LCHO may be NULL)")
+    lchk = _constraint_names(cur, spec.live_table, "c")
+    for suffix in ("components_sum_chk", "lcho_null_reason_chk"):
+        if f"{m.LIVE_PREFIX}_{suffix}" not in lchk:
+            bad.append(f"{spec.live_table}: CHECK {m.LIVE_PREFIX}_{suffix} "
+                       "missing")
     lc = _columns(cur, led)
     for c, ty, nullable in (("id", "bigint", "NO"), (spec.period_col, "date",
                                                      "NO"),
@@ -529,7 +547,7 @@ def real_edition1_and_latest(cur, spec=REAL):
     if missing:
         return False, (f"no edition 1 (with a source_file) for "
                        f"{missing[:6]} ({len(missing)} of {len(periods)})")
-    cols = ", ".join(tuple(spec.key_cols) + (spec.period_col,) + m.COMPARED)
+    cols = ", ".join(tuple(spec.key_cols) + (spec.period_col,) + m.ROW_COLS)
     bad = []
     for p in periods:
         ed = _tip(cur, spec, p)
@@ -542,8 +560,8 @@ def real_edition1_and_latest(cur, spec=REAL):
             bad.append(f"{p} ed{ed}: {a} edition-only, {b} live-only rows")
     return not bad, "; ".join(bad[:3]) if bad else (
         f"{len(periods)} live period(s) each have edition 1 and the latest "
-        "edition equals live on the key, the stock date and the 11 compared "
-        "columns, cell for cell")
+        "edition equals live on the key, the stock date, the 11 compared "
+        "columns and null_reasons, cell for cell")
 
 
 def real_provenance(cur, spec=REAL):
@@ -700,48 +718,89 @@ def real_row_counts(cur, spec=REAL, n=AREAS):
 
 
 def real_stock_values(cur, spec=REAL):
-    """No NULL in the five stock columns, total = components on every row,
-    every zero-total row a LARP (a published zero), in live and in each
-    period's tip edition."""
+    """In live and in each period's tip edition: no NULL in the four
+    always-counted stock columns; an LCHO NULL only with the not-counted
+    reason and only on a PRP that is not a Large (Long Form) one, i.e. a
+    Small PRP; no Short Form (Small PRP) row with an LCHO 0 (LCHO zeros
+    only for the covered types); total = components (a NULL LCHO is not a
+    part, the published total then equals the other three) on every row;
+    every zero-total row a LARP (a published zero). In each edition 1 'as
+    loaded': no NULL stock value and no reason (the published values as
+    loaded are kept)."""
     _need(cur, spec)
     periods = _live_periods(cur, spec)
     if not periods:
         return False, EMPTY
-    bad, zeros, rows = [], 0, 0
-    comp = " + ".join(m.PARTS)
-    nulls = " OR ".join(f"{c} IS NULL" for c in m.STOCK_COLUMNS)
+    bad, zeros, rows, nulls_seen = [], 0, 0, 0
+    lc = m.NOT_COUNTED_COLUMN
+    three = " + ".join(c for c in m.PARTS if c != lc)
+    counted = " OR ".join(f"{c} IS NULL" for c in m.STOCK_COLUMNS if c != lc)
     for p in periods:
         tip = _tip(cur, spec, p)
         for table, extra in ((spec.live_table, ""),
                              (spec.editions_table, f" AND edition = {tip}")):
             w = f"{spec.period_col} = %s{extra}"
-            cur.execute(f"SELECT COUNT(*), COUNT(*) FILTER (WHERE {nulls}), "
-                        f"COUNT(*) FILTER (WHERE total_social_stock <> "
-                        f"{comp}), COUNT(*) FILTER (WHERE total_social_stock "
-                        f"= 0), COUNT(*) FILTER (WHERE total_social_stock = 0 "
-                        f"AND provider_type <> 'LARP') FROM public.{table} "
-                        f"WHERE {w}", (p,))
-            n, nn, off, z, znl = cur.fetchone()
+            cur.execute(
+                f"SELECT COUNT(*), COUNT(*) FILTER (WHERE {counted}), "
+                f"COUNT(*) FILTER (WHERE {lc} IS NULL), "
+                f"COUNT(*) FILTER (WHERE {lc} IS NULL AND (null_reasons IS "
+                f"DISTINCT FROM %s OR provider_type <> 'PRP' OR rp_size_band "
+                f"IS NOT DISTINCT FROM 'Long Form')), "
+                f"COUNT(*) FILTER (WHERE {lc} IS NOT NULL AND null_reasons "
+                f"IS NOT NULL), "
+                f"COUNT(*) FILTER (WHERE {lc} = 0 AND rp_size_band = "
+                f"'Short Form'), "
+                f"COUNT(*) FILTER (WHERE NOT ((({lc} IS NULL) AND "
+                f"total_social_stock = {three}) OR (({lc} IS NOT NULL) AND "
+                f"total_social_stock = {three} + {lc}))), "
+                f"COUNT(*) FILTER (WHERE total_social_stock = 0), "
+                f"COUNT(*) FILTER (WHERE total_social_stock = 0 AND "
+                f"provider_type <> 'LARP') FROM public.{table} WHERE {w}",
+                (m.NOT_COUNTED_REASON, p))
+            n, nn, ln, lbad, rstray, smallz, off, z, znl = cur.fetchone()
             rows += n
             zeros += z
+            nulls_seen += ln
             if nn:
-                bad.append(f"{table} {p}: {nn} row(s) with a NULL stock "
-                           "value")
+                bad.append(f"{table} {p}: {nn} row(s) with a NULL in an "
+                           "always-counted stock column")
+            if lbad:
+                bad.append(f"{table} {p}: {lbad} LCHO NULL(s) without the "
+                           "not-counted reason or not on a Small PRP row")
+            if rstray:
+                bad.append(f"{table} {p}: {rstray} row(s) with a null reason "
+                           "but an LCHO value")
+            if smallz:
+                bad.append(f"{table} {p}: {smallz} Small PRP (Short Form) "
+                           "LCHO zero(s): not counted is NULL (rule 1)")
             if off:
                 bad.append(f"{table} {p}: {off} row(s) whose total is not "
                            "the sum of the components")
             if znl:
                 bad.append(f"{table} {p}: {znl} zero-total row(s) that are "
                            "not LARPs")
+    cur.execute(f"SELECT {spec.period_col}, COUNT(*), COUNT(*) FILTER (WHERE "
+                f"{counted} OR {lc} IS NULL OR null_reasons IS NOT NULL) "
+                f"FROM public.{spec.editions_table} WHERE edition = 1 AND "
+                "release_label = %s GROUP BY 1", (core.AS_LOADED_LABEL,))
+    loaded = cur.fetchall()
+    for p, n, nn in loaded:
+        if nn:
+            bad.append(f"{spec.editions_table} {p} edition 1 (as loaded): "
+                       f"{nn} row(s) with a NULL stock value or a reason; "
+                       "the published values as loaded must be kept")
     return not bad, "; ".join(bad[:3]) if bad else (
-        f"{rows:,} rows over live and the tip editions: no NULL stock "
-        f"value, total = components on every row, {zeros} zero-total row(s) "
-        "all LARPs (published zeros)")
+        f"{rows:,} rows over live and the tip editions: no NULL in the four "
+        f"always-counted columns; {nulls_seen:,} LCHO NULL(s), each a Small "
+        "PRP row with the not-counted reason, and no Small PRP LCHO zero; "
+        f"total = components on every row; {zeros} zero-total row(s) all "
+        f"LARPs (published zeros); {len(loaded)} edition 1 'as loaded' "
+        "period(s) keep the published values (no NULL, no reason)")
 
 
 def gate_2_edition1_and_latest(cur):
     name = ("every live period has edition 1; the latest edition equals "
-            "live cell for cell on the 11 compared columns")
+            "live cell for cell on the 11 compared columns and null_reasons")
     out = {}
 
     def body(e):
@@ -904,9 +963,11 @@ def gate_5_row_counts(cur):
 
 
 def gate_6_stock_values(cur):
-    name = ("no NULL in the five stock columns, total = components, zero "
-            "totals all LARPs; a blank stock cell halts; no source value "
-            "coerced to 0")
+    name = ("no NULL in the four always-counted columns; an LCHO NULL only "
+            "on a Small PRP with the not-counted reason, no Small PRP LCHO "
+            "zero; total = components, zero totals all LARPs; edition 1 as "
+            "loaded keeps the published values; a blank stock cell halts; no "
+            "source value coerced to 0")
     out = {}
     probe = (f"UPDATE public.{ZZ.live_table} SET provider_type = 'PRP' "
              "WHERE total_social_stock = 0")
@@ -924,9 +985,40 @@ def gate_6_stock_values(cur):
             e.cur.execute("ROLLBACK TO SAVEPOINT plant")
             out["pt_chk"] = True
         e.cur.execute("RELEASE SAVEPOINT plant")
-        # the table's own constraints refuse a NULL and a broken sum
+        # a Small PRP LCHO zero, a NULL without the reason and an LCHO
+        # NULL on a Large PRP each fail the gate (the CHECKs are dropped in
+        # a savepoint so the gate itself is tested)
+        for sql, needle in (
+            (f"UPDATE public.{ZZ.live_table} SET low_cost_home_ownership = 0,"
+             " null_reasons = NULL WHERE rp_code = 'H0375'",
+             "Small PRP (Short Form) LCHO zero"),
+            (f"UPDATE public.{ZZ.live_table} SET null_reasons = 'x' WHERE "
+             "rp_code = 'H0375'", "without the not-counted reason"),
+            (f"UPDATE public.{ZZ.live_table} SET low_cost_home_ownership = "
+             "NULL, null_reasons = %s, total_social_stock = "
+             "general_needs_self_contained + general_needs_bedspaces + "
+             "supported_housing_and_older_people WHERE rp_code = '4865'",
+             "not on a Small PRP row")):
+            e.cur.execute("SAVEPOINT plant")
+            for suffix in ("components_sum_chk", "lcho_null_reason_chk"):
+                e.cur.execute(f"ALTER TABLE public.{ZZ.live_table} DROP "
+                              f"CONSTRAINT {m.LIVE_PREFIX}_{suffix}")
+            e.cur.execute(sql, (m.NOT_COUNTED_REASON,) if "%s" in sql
+                          else None)
+            ok_, detail = real_stock_values(e.cur, ZZ)
+            e.cur.execute("ROLLBACK TO SAVEPOINT plant")
+            e.cur.execute("RELEASE SAVEPOINT plant")
+            if ok_ or needle not in detail:
+                out.setdefault("missed", []).append(needle)
+        # the table's own constraints refuse a NULL in a counted column, an
+        # LCHO NULL without its reason, a reason without a NULL and a broken
+        # sum
         for sql in (f"UPDATE public.{ZZ.live_table} SET low_cost_home_"
                     "ownership = NULL",
+                    f"UPDATE public.{ZZ.live_table} SET general_needs_"
+                    "bedspaces = NULL",
+                    f"UPDATE public.{ZZ.live_table} SET null_reasons = 'x' "
+                    "WHERE low_cost_home_ownership IS NOT NULL",
                     f"UPDATE public.{ZZ.live_table} SET total_social_stock "
                     "= total_social_stock + 1"):
             e.cur.execute("SAVEPOINT plant")
@@ -956,14 +1048,17 @@ def gate_6_stock_values(cur):
     scenario(cur, body)
     src = _source_problems(LOADER)
     ok = (out["base"][0] and out["zeros"] == 1 and not out.get("not_refused")
-          and all(out["cells"].values()) and not out["none_to_zero"]
-          and out["zero_kept"] and not src)
-    detail = ("the seeded state passes (its one published zero is a LARP); a "
-              "blank, a text marker, a negative and a fractional cell each "
-              "halt and store nothing; stock_cell(None) raises and a "
-              "published 0 stays 0; the table refuses a NULL and a broken "
-              "sum; no source value is coerced to 0 in the loader"
-              if ok else f"seeded: {out} {src[:2]}")
+          and not out.get("missed") and all(out["cells"].values())
+          and not out["none_to_zero"] and out["zero_kept"] and not src)
+    detail = ("the seeded state passes (its one zero total is a LARP; its "
+              "Small PRP LCHO cells are NULL with the reason); a Small PRP "
+              "LCHO zero, a NULL without the reason and an LCHO NULL on a "
+              "Large PRP each fail; a blank, a text marker, a negative and a "
+              "fractional cell each halt and store nothing; stock_cell(None) "
+              "raises and a published 0 stays 0; the table refuses a NULL in "
+              "a counted column, a NULL without its reason, a reason without "
+              "a NULL and a broken sum; no source value is coerced to 0 in "
+              "the loader" if ok else f"seeded: {out} {src[:2]}")
     mixed(6, name, ok, detail, cur, real_stock_values)
 
 
@@ -1478,9 +1573,14 @@ def gate_13_preview(cur):
 # ---------------------------------------------------------------- gate 14
 
 def real_held_reread(cur, spec=REAL, files=None, raw_dir=None):
-    """The held file read again equals edition 1 'as loaded' in content (the
-    content sha256 is key + the 11 compared columns; provenance is not in
-    it), so a re-read is `unchanged` whatever the live provenance says."""
+    """The held file read again carries the not-counted rule. Read as
+    published (the rule off) it has the content sha256 of edition 1 'as
+    loaded' (key + the 11 compared columns; provenance is not in it). Read
+    with the rule (as every load reads it) it has the content sha256 of the
+    period's tip, and its 0/NULL changes against edition 1 are exactly those
+    a named acknowledgement for the period records (each LCHO 0 -> NULL with
+    the reason, the recorded count). So a re-read is unchanged against the
+    tip and never turns the cells back into 0."""
     _need(cur, spec)
     files = m.LEGACY_FILE if files is None else files
     p = held_file(files, raw_dir)
@@ -1499,48 +1599,84 @@ def real_held_reread(cur, spec=REAL, files=None, raw_dir=None):
     held = m.records(cur, spec, period, 1)
     prov = dict(zip(m.PROVENANCE, m._provenance_of(held, period)))
     with contextlib.redirect_stdout(io.StringIO()):
-        built = m._build(cur, tool, prov)
-    a, b = m.rows_content_sha(held), m.rows_content_sha(built)
+        plain = m._build(cur, tool, prov, rule=False)
+        ruled = m._build(cur, tool, prov)
+    tip = _tip(cur, spec, period)
+    tiprecs = m.records(cur, spec, period, tip)
+    a, b = m.rows_content_sha(held), m.rows_content_sha(plain)
+    t, r = m.rows_content_sha(tiprecs), m.rows_content_sha(ruled)
     bad = []
     if a != b:
         bad.append(f"{period}: edition 1 content sha {a[:12]} differs from "
-                   f"the held file read now {b[:12]}")
+                   f"the held file read now as published {b[:12]}")
+    if t != r:
+        bad.append(f"{period}: the tip (edition {tip}) content sha {t[:12]} "
+                   f"differs from the held file read now with the not-"
+                   f"counted rule {r[:12]}")
+    fl = m._flips(ruled, held)
+    names = [n for n, x in m.ACKNOWLEDGED_FLIPS.items()
+             if x["stock_date"] == period]
+    covered = [n for n in names if not m.ack_problems(n, period, fl, ruled)]
+    if fl and not covered:
+        bad.append(f"{period}: {len(fl):,} 0/NULL change(s) against edition "
+                   "1 that no named acknowledgement covers ("
+                   + ("; ".join(f"{n}: {m.ack_problems(n, period, fl, ruled)}"
+                                for n in names) or "none recorded") + ")")
     if label != core.AS_LOADED_LABEL:
         bad.append(f"{period}: edition 1 is not 'as loaded' ({label!r})")
     if m.release_rank(sf) != tool["rank"]:
         bad.append(f"{period}: edition 1 source_file ranks "
                    f"{m.release_rank(sf)}, the file {tool['rank']}")
     return not bad, "; ".join(bad[:3]) if bad else (
-        f"{p.name} read now has the content sha256 of edition 1 as loaded "
-        f"({a[:12]}, {len(held):,} rows), so a re-read by the page, "
-        "--release or --file is unchanged")
+        f"{p.name} read now: as published it has edition 1's content "
+        f"sha256 ({a[:12]}, {len(held):,} rows); with the not-counted rule "
+        f"it has the tip's (edition {tip}, {t[:12]}), {len(fl):,} LCHO "
+        "cell(s) 0 -> NULL against edition 1"
+        + (f", exactly as {covered[0]} records" if covered else "")
+        + "; so a re-read by the page, --release or --file is unchanged "
+        "against the tip")
 
 
 def gate_14_held_file_recheck(cur):
-    name = ("a byte-identical re-read is unchanged on every path, against "
-            "edition 1 as loaded")
+    name = ("a byte-identical re-read carries the not-counted rule: as "
+            "published it equals edition 1, with the rule it equals the tip; "
+            "0/NULL changes only through the named acknowledgement")
     problems = []
     out = {}
 
     def run(label, **kw):
         def body(e, path, files):
             plan, text = e.migrate(e.cur, path, files)
-            try:
-                e.check_every_path_unchanged(e.cur, path, files)
-            except AssertionError as ex:
-                problems.append(f"{label}: {_first(ex)}")
-                return
             d = Path(e.root) / "disk"
             d.mkdir()
             (d / path.name).write_bytes(path.read_bytes())
-            with expected(len(CODES), 2):
+            # before the rule's edition: the tip (edition 1) is not what a
+            # load reads now
+            with expected(len(CODES), 2), tl.ack_cells():
+                out[label + " before"] = real_held_reread(e.cur, ZZ, files, d)
+            try:
+                e.check_reread_after_migration(e.cur, path, files)
+            except AssertionError as ex:
+                problems.append(f"{label}: {_first(ex)}")
+                return
+            with expected(len(CODES), 2), tl.ack_cells():
                 out[label] = real_held_reread(e.cur, ZZ, files, d)
+            with expected(len(CODES), 2), tl.ack_cells(tl.SMALL + 1):
+                out[label + " count"] = real_held_reread(e.cur, ZZ, files, d)
         legacy_world(cur, body, **kw)
     run("held")
     run("blank", values={("H0375", "E06000002"): {"Survey_Status": None,
                                                   "SDR_Size": None}})
     for label, (ok, detail) in out.items():
-        if not ok:
+        if label.endswith(" before"):
+            if ok or "not-counted rule" not in detail:
+                problems.append(f"{label}: the as-loaded tip passed: "
+                                f"{detail[:100]}")
+        elif label.endswith(" count"):
+            if ok or "no named acknowledgement covers" not in detail:
+                problems.append(f"{label}: another count passed: "
+                                f"{detail[:100]}")
+        elif not ok:
             problems.append(f"{label}: {detail}")
 
     def changed(e, path, files):
@@ -1553,14 +1689,18 @@ def gate_14_held_file_recheck(cur):
                 e.cur, ZZ, {"sha256": m.content_sha256(other)},
                 Path(other).parent)
         if ok or "differs" not in detail:
-            problems.append("a file with other content was called unchanged")
+            problems.append("a file with other content was called equal")
     legacy_world(cur, changed)
     seeded = not problems
     sd = ("seeded: after migrate-legacy the same bytes read by the page, "
           "--release, --file, --file --no-page, --recheck and with --commit "
-          "are unchanged, no edition is stored and refresh-latest plans "
-          "nothing (also with a published blank band and status); a file "
-          "with other content is not equal" if seeded
+          "are REJECTED by the 0/NULL stop (and with the acknowledgement at "
+          "another count), store nothing, then the named acknowledgement "
+          "stores edition 2 (exactly the Small PRP LCHO cells 0 -> NULL with "
+          "the reason, provenance kept), refresh-latest brings live to it and "
+          "every path is then unchanged (also with a published blank band "
+          "and status); the as-loaded tip and another count fail the real "
+          "check; a file with other content is not equal" if seeded
           else "; ".join(problems[:3]))
     mixed(14, name, seeded, sd, cur, real_held_reread)
 
@@ -1857,7 +1997,7 @@ def real_migration_proof(cur, spec=REAL, files=None, raw_dir=None,
         return False, f"{period}: no edition 1"
     prov = dict(zip(m.PROVENANCE, m._provenance_of(held, period)))
     with contextlib.redirect_stdout(io.StringIO()):
-        built = m._build(cur, tool, prov)
+        built = m._build(cur, tool, prov, rule=False)   # as published
     cells, diffs = m._proof(held, built)
     cur.execute(f"SELECT DISTINCT release_label FROM "
                 f"public.{spec.editions_table} WHERE {spec.period_col} = %s "

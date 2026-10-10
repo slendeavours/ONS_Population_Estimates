@@ -5,8 +5,10 @@ Status: done 2026-10-09. Works like [S22](2026-10-09-s22-editions-first-load.md)
 `scripts/s23_rsh_stock_editions_verify.py` (21 gates, all PASS, exit 0). Design:
 `docs/superpowers/specs/2026-10-09-s23-editions-design.md` (audit record, not approval).
 
-No held value changed. The live table `rsh_rp_stock_by_la` is exactly as it was (same rows, columns, constraints and
-`loaded_at`). The map is unaffected: S23 is not a W1 input, so W1 and `refresh_map.py` were not run.
+On 2026-10-09 no held value changed: the live table `rsh_rp_stock_by_la` was exactly as it was (same rows, columns,
+constraints and `loaded_at`). On 2026-10-10, by Scott's decision, the 2,738 Small PRP low cost home ownership cells
+became NULL with a reason (edition 2; see "Decided by Scott, 2026-10-10" below). The map is unaffected: S23 is not a W1
+input, so W1 and `refresh_map.py` were not run.
 
 ## Before-state (read-only, confirmed against the live table before the migration)
 
@@ -14,7 +16,7 @@ Confirmed first: 10,171 rows, one stock date (2025-03-31), 296 authorities, one 
 (2026-08-14 21:24:42.442022 UTC), 0 NULLs in every column, survey hash `4967e5b59580d98f0edc3c6f8d908ac9`.
 
 Zeros as published: `total_social_stock` 12 (all LARPs that own no stock), `general_needs_self_contained` 4,499,
-`general_needs_bedspaces` 9,878, `supported_housing_and_older_people` 4,603, `low_cost_home_ownership` 5,563. Of the 5,563 LCHO zeros, 2,738 are every Small PRP row, and those are an OPEN rule 1 question (see "Open question for Scott" below).
+`general_needs_bedspaces` 9,878, `supported_housing_and_older_people` 4,603, `low_cost_home_ownership` 5,563. Of the 5,563 LCHO zeros, 2,738 are every Small PRP row; those are not counted on the publisher's note and are NULL from edition 2 (see "Decided by Scott, 2026-10-10" below). The other 2,825 (2,700 Large PRP, 125 LARP rows) are counted zeros and stay 0.
 
 Each sha256 is written as two 32-hex halves (`first32` then `last32`; join them) so the credential scan, which flags a 64-hex run, stays untouched. The first line is the loader's `rows_content_sha` (key plus the 11 compared columns, provenance excluded; the line the
 verify script's gate 16 reads). The second hashes every stored column, `loaded_at` included: every column in table
@@ -49,17 +51,40 @@ The old `num(v)` returned 0 for a blank cell. A blank stock cell would have been
 rows. There is no publisher marker for these columns (the tool notes, glossary, technical notes and data quality note
 say none), so nothing is stored as NULL; the five stock columns stay `NOT NULL`, and the new loader halts on a blank,
 a string, a negative or a non-integer stock cell. The 12 zero-total rows are LARPs the tool's own note says own no
-stock: published zeros. The code defect (a blank turned into 0) is fixed with no data change. The loader no longer coerces blanks to 0, but that does not settle the Small PRP LCHO zeros: see "Open question for Scott" below.
+stock: published zeros. The code defect (a blank turned into 0) is fixed with no data change. The Small PRP LCHO zeros were a separate rule 1 question, decided on 2026-10-10: see below.
 
-## Open question for Scott: Small PRP low cost home ownership zeros (rule 1)
+## Decided by Scott, 2026-10-10: Small PRP low cost home ownership is not counted, so it is NULL (rule 1)
 
-Status: **OPEN. Decision pending Scott. No data change has been made.**
+Status: **DECIDED by Scott on 2026-10-10 and done.** Option (b): store NULL with a reason, as a new edition;
+`total_social_stock` stays exactly as the publisher gave it.
+
+The question as it was put (kept for the record):
 
 - The tool's Area Summary says: "Unit counts for LCHO are for LARPs and Large PRPs only." All 2,738 Small PRP (Short Form) rows hold 0 in `low_cost_home_ownership` (sum 0).
 - On the publisher's own note those zeros mean "not counted", not "owns none". Small PRPs do hold LCHO: Additional Table 1.1 (PRP data weighted, all PRPs) puts PRP LCHO at 276,352; the loaded Large PRP LCHO is 267,072 (274,171 less LARP 7,099); that leaves about 9,280 units held by Small PRPs and recorded as 0 here (derived by review, not published). Additional Table 1.20 (weighted, by authority) exceeds the tool by 4,322 nationally, which fits the by-authority tables also leaving out Small PRP LCHO, though the notes do not say so.
 - `total_social_stock` on those rows is the sum of the four parts as published, so it also leaves out the provider's LCHO.
 - Rule 1 says a zero is a measured count. These are published zeros that the publisher's note says are not counts. The table has no `null_reasons` or flag column to show it. The loader's fix (blank to 0) is separate from this and is done.
-- Today's state is option (a): zeros kept as published, with the caveat in the source note and the registry. The options for Scott: (a) keep, as a known qualification; (b) store NULL with a reason for Small PRP LCHO as a new edition, with a decision on what `total_social_stock` means for those rows; (c) add a flag column. Any change is a new edition and reversible (`restore-edition`). Until he decides, do not sum LCHO or read a Small PRP's 0 as a count.
+- The options were: (a) keep, as a known qualification; (b) store NULL with a reason for Small PRP LCHO as a new edition, with a decision on what `total_social_stock` means for those rows; (c) add a flag column.
+
+What was done (2026-10-10):
+
+- **The publisher's note, checked in the held file.** Area Summary, under Tables 1 and 2 (the stock tables): "Unit counts for LCHO are for LARPs and Large PRPs only." The "LARPs and PRPs in region" sheet heads its LCHO column "(LARPs and large PRPs only - unweighted)". The note names LCHO only; general needs and supported housing/housing for older people are counted for every provider type, so no other column was changed. The tool's four other "Owned stock. LARPs and Large PRPs only - unweighted." notes sit under the rent tables 3 to 6 (social rent rents and unit counts), which are not loaded; nothing in the loaded columns rests on them. The technical notes and data quality note say nothing more on Small PRP LCHO.
+- **A transformation rule in the loader, applied on every load** (`not_counted` in `scripts/s23_rsh_stock_editions.py`): a provider row with `RP_Type` `Small` gets `low_cost_home_ownership` NULL and `null_reasons` `low_cost_home_ownership=not_counted_for_this_provider_type`. Large PRP and LARP cells are kept as published, zeros included. The total is checked against the four published parts first and is never changed. The rule halts on a Small row that publishes an LCHO number, and on a file whose Area Summary no longer carries the note, because the rule rests on that note. So a future load cannot turn the cells back into 0, and a changed publisher note cannot slip through.
+- **`ddl --commit`** (schema only, no value written): `null_reasons text` added to the live and editions tables; `low_cost_home_ownership` made nullable in both; the sum CHECK replaced by a NULL-aware one (with LCHO NULL the total equals the other three parts) and a CHECK that a NULL LCHO has a reason and only a NULL does. The other four stock columns stay `NOT NULL`.
+- **0/NULL stop, with one named acknowledgement.** A 0/NULL change against the tip (rule 1.10) now stops a revision. It is released only by `--acknowledge-flips NAME`, which covers exactly what `ACKNOWLEDGED_FLIPS[NAME]` records. One exists: `not-counted-lcho-2025` (stock date 2025-03-31, `low_cost_home_ownership` 0 to NULL with the reason, exactly 2,738 cells). Any other change, or any other count, is still rejected.
+- **The writes, one command at a time, each preview read first:**
+  1. `load --file data/raw/s23_rsh/RP_COMBINED_TOOL_2025_FINAL_V1.1.xlsx --no-page` (preview): REJECTED by the 0/NULL stop, 2,738 cells, every one `low_cost_home_ownership` 0 to NULL; no other stop (the same-version check, which compares every other cell, did not fire). With `--acknowledge-flips not-counted-lcho-2025` (preview): revised, 2,738 rows changed, each only LCHO 0 to NULL with the reason.
+  2. The same with `--commit`: edition 2 of 2025-03-31 stored (10,171 rows), ledger row `revised` edition 2, run-log row 311. The file is the held file by sha256 (starting 6c237c79), so edition 2 keeps edition 1's provenance (the release page URL, `publication_date` 2025-10-28 and the asset URL), not "not read".
+  3. `refresh-latest` (preview: 2,738 rows), then `--commit`: 2,738 live rows refreshed, before/after guard passed.
+  4. `status`: OK. `scripts/s23_rsh_stock_editions_verify.py`: 21 of 21 PASS, exit 0.
+- **Counts.** Edition 2 differs from edition 1 in exactly 2,738 rows and 5,476 cells: 2,738 `low_cost_home_ownership` 0 to NULL and the 2,738 matching `null_reasons`; nothing else, same keys. The live table differs from its before-state in the same 2,738 rows: those two columns plus `loaded_at` (refresh-latest copies the edition's time onto the rows it writes). Live equals edition 2. National sums are unchanged: LCHO 274,171 (the NULLs were zeros), total social stock 4,533,055. Live LCHO zeros fall from 5,563 to 2,825.
+- **Edition 1 untouched.** Edition 1 still hashes to the before-state line above (`5c0ba1ce...6135f427`), all 10,171 rows equal on every column it held, with the published zeros and no reason.
+
+after-state edition 2 of rsh_rp_stock_by_la_editions 2025-03-31 rows=10171 content-first32=699ca93e6de9d7659f20c039e617ab66 content-last32=dc81e5733a7fc3e22a62f766639e13ae
+
+(`rows_content_sha`: key plus the 11 compared columns, then `|null_reasons` on a row that has one, so rows without a reason hash as before.)
+
+**How to read it now.** For the 2,738 Small PRP rows, `low_cost_home_ownership` is NULL: not counted, not zero. `total_social_stock` for those providers does not include LCHO, as the publisher gave it. LCHO summed by authority is the LARP and Large PRP count, which is what the publisher counted.
 
 ## The proof run
 
@@ -147,14 +172,14 @@ From `ONS_Population_Estimates`:
 ## Follow-ups
 
 - Fold S23's `refresh-latest` into the shared engine. S23 has its own copy of the command (`cmd_refresh_latest`, a copy of `pe.run_refresh_latest` with one check swapped) because `load_checks.check_latest_equals_live` compares by column name and fails on the five `file_*` provenance columns. Today the two behave the same; an engine fix to refresh will not reach S23 unless copied across. The fix is a column mapping in the shared check.
-- The Small PRP LCHO decision above.
+- The Small PRP LCHO decision above: done 2026-10-10.
 - `publication_date` changes meaning from the next load (the file's publication month, not the release page's first-published day): see the source note.
 
 ## Downstream
 
 The table is read outside the repo's W1 and map paths:
 
-- `analysis/yada/yada_run2_build.py` and `analysis/priority_market/priority_market_reassessment.py` read `rsh_rp_stock_by_la`. No value changed in this work, so nothing they produced moves today; a later `refresh-latest` would change what they read (and `loaded_at`).
+- `analysis/yada/yada_run2_build.py` and `analysis/priority_market/priority_market_reassessment.py` read `rsh_rp_stock_by_la`. No value changed on 2026-10-09. On 2026-10-10 the 2,738 Small PRP LCHO cells became NULL (sums unchanged, since they were zeros; a reader that counts zeros or does arithmetic that does not skip NULL will now see a difference). These files were not edited or re-run.
 - The sent YADA run 2 text said the per-capita table "is topped by coalfield and market-town districts with sheltered stock for older people". The publisher's notes do not support that reading: the column is "supported housing and older people", which the glossary does not define as sheltered stock. Any correction is a new version, not an overwrite of what was sent. That is Scott's call. These analysis files were not edited.
 
 ## How to reverse

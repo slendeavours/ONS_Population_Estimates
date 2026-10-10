@@ -91,10 +91,12 @@ def write_tool(path, *, year=2025, version="1.1", month="November 2025",
                title=None, source=None, history=None, history_tail=None,
                header=None, codes=None, rows=None, values=None, drop=(),
                add=(), subtotal=None, region=None, extra_rows=(),
-               trailing=3, after_trailing=(), sheets=None):
+               trailing=3, after_trailing=(), sheets=None, lcho_note=True):
     """A look-up tool workbook in the 2025 layout: Introduction and Contents
-    (title, source line, publication month, version), Version History, and
-    STOCK_BY_LA (provider rows, one LA subtotal row per authority, one
+    (title, source line, publication month, version), Version History, Area
+    Summary (with the 2025 note "Unit counts for LCHO are for LARPs and
+    Large PRPs only." unless lcho_note is false) and STOCK_BY_LA (provider
+    rows, one LA subtotal row per authority, one
     Region row per region, then wholly empty rows). values {(rp_code,
     la_code): {header: v}} overrides cells (the total is recomputed from the
     parts unless given); drop: (rp_code, la_code) rows left out; add: more
@@ -131,6 +133,15 @@ def write_tool(path, *, year=2025, version="1.1", month="November 2025",
     for r in (history_tail if history_tail is not None
               else [[f"Publication date: {month}"], [f"Version: {version}"]]):
         vh.append(r)
+    area = wb.create_sheet("Area Summary")
+    area.append([None, f"RP social housing by local authority area {year}"])
+    area.append([None, "Tables 1 & 2 comprise all LARPs & PRPs - unweighted. "
+                 + ("Unit counts for LCHO are for LARPs and Large PRPs only. "
+                    if lcho_note else "")
+                 + "Figures for GN and SH/HOP include intermediate and "
+                 "Affordable Rent units."])
+    area.append([None, "Owned stock.  LARPs and Large PRPs only - "
+                 "unweighted."])
     ws = wb.create_sheet("STOCK_BY_LA")
     ws.append(header)
     def num(v):
@@ -558,6 +569,226 @@ class Records(Tmp):
         self.assertNotEqual(m.rows_content_sha(a), m.rows_content_sha(b))
         self.assertEqual(m.rows_content_sha(list(reversed(a))),
                          m.rows_content_sha(a))
+
+
+# ---------------------------------------------------------------------------
+# Not counted (rule 1): a Small PRP's LCHO cell (decided 2026-10-10)
+# ---------------------------------------------------------------------------
+
+LCHO = "low_cost_home_ownership"
+REASON = "low_cost_home_ownership=not_counted_for_this_provider_type"
+
+
+def _vals(lcho=0, gn=5):
+    return {"total_social_stock": gn + 1 + lcho,
+            "general_needs_self_contained": gn,
+            "general_needs_bedspaces": 0,
+            "supported_housing_and_older_people": 1, LCHO: lcho}
+
+
+class NotCounted(Tmp):
+
+    def test_constants_name_the_publisher_note_and_the_reason(self):
+        self.assertEqual(m.LCHO_NOTE, "Unit counts for LCHO are for LARPs "
+                                      "and Large PRPs only.")
+        self.assertEqual(m.NOT_COUNTED_TYPES, ("Small",))
+        self.assertEqual(m.NOT_COUNTED_COLUMN, LCHO)
+        self.assertEqual(m.NOT_COUNTED_REASON, REASON)
+        self.assertEqual(m.ROW_COLS, m.COMPARED + ("null_reasons",))
+
+    def test_a_small_prp_zero_becomes_null_with_the_reason(self):
+        v, why = m.not_counted("Small", _vals(0), "row 9", True)
+        self.assertIsNone(v[LCHO])
+        self.assertEqual(why, REASON)
+        # the other columns, the total included, are as published
+        for c in m.STOCK_COLUMNS[:4]:
+            self.assertEqual(v[c], _vals(0)[c], c)
+
+    def test_covered_types_keep_their_published_zero(self):
+        for typ in ("Large", "LARP"):
+            v, why = m.not_counted(typ, _vals(0), "row 9", True)
+            self.assertEqual(v[LCHO], 0, typ)
+            self.assertIsNone(why)
+            v, why = m.not_counted(typ, _vals(7), "row 9", True)
+            self.assertEqual(v[LCHO], 7)
+            self.assertIsNone(why)
+
+    def test_a_genuine_null_stays_null(self):
+        # covered: NULL stays NULL, no reason invented; not counted: NULL
+        # stays NULL with the reason
+        v, why = m.not_counted("Large", dict(_vals(), **{LCHO: None}), "r", True)
+        self.assertIsNone(v[LCHO])
+        self.assertIsNone(why)
+        v, why = m.not_counted("Small", dict(_vals(), **{LCHO: None}), "r", True)
+        self.assertIsNone(v[LCHO])
+        self.assertEqual(why, REASON)
+
+    def test_only_the_lcho_column_is_touched(self):
+        zeros = {c: 0 for c in m.STOCK_COLUMNS}
+        v, _ = m.not_counted("Small", zeros, "r", True)
+        self.assertEqual([c for c in m.STOCK_COLUMNS if v[c] is None], [LCHO])
+
+    def test_a_small_prp_with_a_published_lcho_number_halts(self):
+        with self.assertRaises(ValueError) as e:
+            m.not_counted("Small", _vals(3), "STOCK_BY_LA row 9", True)
+        self.assertIn("row 9", str(e.exception))
+        self.assertIn("LARPs and Large PRPs only", str(e.exception))
+
+    def test_the_rule_needs_the_note_in_the_file(self):
+        with self.assertRaises(ValueError) as e:
+            m.not_counted("Small", _vals(0), "row 9", False)
+        self.assertIn("Area Summary", str(e.exception))
+        # a covered row does not need it
+        self.assertEqual(m.not_counted("Large", _vals(0), "r", False)[0][LCHO],
+                         0)
+
+    def test_read_tool_finds_the_note(self):
+        self.assertTrue(self.read()["lcho_note"])
+        self.assertFalse(self.read(name="n.xlsx", lcho_note=False)["lcho_note"])
+        self.assertFalse(self.read(name="s.xlsx",
+                                   sheets={"remove": ["Area Summary"]})
+                         ["lcho_note"])
+
+    def test_build_rows_applies_the_rule_to_small_rows_only(self):
+        recs_ = m.build_rows(self.read(), lambda c: c, PROV)
+        small = [r for r in recs_ if r["rp_code"] == "H0375"]
+        self.assertEqual(len(small), len(CODES))
+        for r in small:
+            self.assertIsNone(r[LCHO])
+            self.assertEqual(r["null_reasons"], REASON)
+            # the published total, which leaves out the provider's LCHO
+            self.assertEqual(r["total_social_stock"], 3)
+        others = [r for r in recs_ if r["rp_code"] != "H0375"]
+        self.assertTrue(all(r[LCHO] is not None and r["null_reasons"] is None
+                            for r in others))
+        # a covered published zero stays 0 (the first LARP owns nothing)
+        larp0 = [r for r in others if r["rp_code"] == larp_code(CODES[0])][0]
+        self.assertEqual((larp0[LCHO], larp0["total_social_stock"]), (0, 0))
+
+    def test_build_rows_without_the_rule_is_as_published(self):
+        recs_ = m.build_rows(self.read(), lambda c: c, PROV, rule=False)
+        self.assertTrue(all(r[LCHO] is not None and r["null_reasons"] is None
+                            for r in recs_))
+        self.assertEqual({r[LCHO] for r in recs_ if r["rp_code"] == "H0375"},
+                         {0})
+
+    def test_build_rows_halts_on_a_small_lcho_number_or_a_missing_note(self):
+        t = self.read(values={("H0375", "E06000002"):
+                              {"LA_LCHO_Less_100_Eqty_Own": 4}})
+        with self.assertRaises(ValueError) as e:
+            m.build_rows(t, lambda c: c, PROV)
+        self.assertIn("H0375", str(e.exception))
+        with self.assertRaises(ValueError):
+            m.build_rows(self.read(name="n.xlsx", lcho_note=False),
+                         lambda c: c, PROV)
+        # without the rule, both read as published
+        self.assertTrue(m.build_rows(t, lambda c: c, PROV, rule=False))
+
+    def test_the_total_check_reads_the_published_cells(self):
+        # the total is checked before the rule: a Small row whose total is
+        # not its parts halts as before
+        t = self.read(values={("H0375", "E06000002"): {TOTAL: 9}})
+        with self.assertRaises(ValueError) as e:
+            m.build_rows(t, lambda c: c, PROV)
+        self.assertIn("not the sum", str(e.exception))
+
+    def test_content_sha_without_reasons_is_unchanged(self):
+        # a record set with no null_reasons hashes exactly as before the
+        # rule (edition 1's stored sha256 stays reproducible)
+        recs_ = m.build_rows(self.read(), lambda c: c, PROV, rule=False)
+        lines = ["|".join([str(r["rp_code"]), str(r["lad24cd"])]
+                          + ["" if r[c] is None else str(r[c])
+                             for c in m.COMPARED])
+                 for r in sorted(recs_, key=lambda r: (r["rp_code"],
+                                                       r["lad24cd"]))]
+        want = hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+        self.assertEqual(m.rows_content_sha(recs_), want)
+        ruled = m.build_rows(self.read(), lambda c: c, PROV)
+        self.assertNotEqual(m.rows_content_sha(ruled), want)
+        # the reason is part of the content
+        other = [dict(r) for r in ruled]
+        for r in other:
+            if r["null_reasons"]:
+                r["null_reasons"] = "low_cost_home_ownership=x"
+        self.assertNotEqual(m.rows_content_sha(other),
+                            m.rows_content_sha(ruled))
+
+    def test_sums_leave_a_null_out(self):
+        recs_ = m.build_rows(self.read(), lambda c: c, PROV)
+        plain = m.build_rows(self.read(), lambda c: c, PROV, rule=False)
+        self.assertEqual(m._national(recs_), m._national(plain))
+        self.assertEqual(m._area_sums(recs_), m._area_sums(plain))
+
+
+class Flips(Tmp):
+    """0/NULL changes against the tip, and the named acknowledgement."""
+
+    def setUp(self):
+        super().setUp()
+        self.plain = m.build_rows(self.read(), lambda c: c, PROV, rule=False)
+        self.ruled = m.build_rows(self.read(), lambda c: c, PROV)
+        p = mock.patch.dict(m.ACKNOWLEDGED_FLIPS, {"t": dict(
+            m.ACKNOWLEDGED_FLIPS["not-counted-lcho-2025"],
+            cells=len(CODES))})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def test_the_real_acknowledgement(self):
+        a = m.ACKNOWLEDGED_FLIPS["not-counted-lcho-2025"]
+        self.assertEqual((a["stock_date"], a["column"], a["cells"],
+                          a["reason"]), ("2025-03-31", LCHO, 2738, REASON))
+
+    def test_flips_are_the_small_lcho_cells(self):
+        fl = m._flips(self.ruled, self.plain)
+        self.assertEqual(len(fl), len(CODES))
+        self.assertTrue(all(k[0] == "H0375" and c == LCHO and a == 0
+                            and b is None for k, c, a, b in fl))
+        self.assertEqual(m._flips(self.plain, self.ruled)[0][2:], (None, 0))
+        self.assertEqual(m._flips(self.ruled, self.ruled), [])
+
+    def test_a_value_change_is_not_a_flip(self):
+        other = [dict(r) for r in self.plain]
+        other[0]["general_needs_self_contained"] += 1
+        self.assertEqual(m._flips(other, self.plain), [])
+
+    def test_the_acknowledgement_covers_exactly_its_cells(self):
+        fl = m._flips(self.ruled, self.plain)
+        self.assertEqual(m.ack_problems("t", "2025-03-31", fl, self.ruled),
+                         [])
+        # the count must match exactly
+        self.assertTrue(m.ack_problems("t", "2025-03-31", fl[:-1],
+                                       self.ruled))
+        with mock.patch.dict(m.ACKNOWLEDGED_FLIPS["t"],
+                             {"cells": len(CODES) + 1}):
+            out = m.ack_problems("t", "2025-03-31", fl, self.ruled)
+        self.assertTrue(any("expects" in x for x in out), out)
+        # another stock date
+        self.assertTrue(m.ack_problems("t", "2024-03-31", fl, self.ruled))
+        # no flips at all
+        self.assertTrue(m.ack_problems("t", "2025-03-31", [], self.ruled))
+
+    def test_the_acknowledgement_refuses_other_flips(self):
+        # NULL -> 0 (the other direction)
+        back = m._flips(self.plain, self.ruled)
+        self.assertTrue(m.ack_problems("t", "2025-03-31", back, self.plain))
+        # a 0 -> NULL in the right column without the rule's reason
+        bad = [dict(r) for r in self.ruled]
+        for r in bad:
+            r["null_reasons"] = None
+        fl = m._flips(bad, self.plain)
+        out = m.ack_problems("t", "2025-03-31", fl, bad)
+        self.assertTrue(any("reason" in x for x in out), out)
+        # a flip in another column
+        fl2 = [(fl[0][0], "general_needs_bedspaces", 0, None)] + fl[1:]
+        self.assertTrue(m.ack_problems("t", "2025-03-31", fl2, self.ruled))
+
+    def test_revert_puts_the_acknowledged_cells_back(self):
+        fl = m._flips(self.ruled, self.plain)
+        back = m._revert(self.ruled, fl, self.plain)
+        self.assertFalse(m._differs(back, self.plain))
+        self.assertTrue(m._differs(self.ruled, self.plain))
+        # the inputs are not changed
+        self.assertTrue(any(r[LCHO] is None for r in self.ruled))
 
 
 class _Cur:

@@ -33,6 +33,25 @@ a blank, any text, a negative or a non-integer halts naming the sheet, row
 and column (stock_cell). A published 0 stays 0 (12 LARP rows own no stock).
 A blank SDR_Size or Survey_Status is stored NULL, never ''.
 
+Not counted (rule 1; decided by Scott 2026-10-10): the tool's Area Summary
+says "Unit counts for LCHO are for LARPs and Large PRPs only." So a Small
+PRP's (RP_Type 'Small', the short SDR form) published 0 in
+LA_LCHO_Less_100_Eqty_Own is not a count: build_rows stores it NULL with
+null_reasons 'low_cost_home_ownership=not_counted_for_this_provider_type'
+(not_counted). Every load applies the rule, so a re-read never turns the
+cells back into 0. The note names LCHO only; the other columns are counted
+for every provider type and are not touched. total_social_stock stays as
+the publisher gave it (for those rows it leaves out the provider's LCHO).
+The rule needs the note in the file (a Small row in a file without it
+halts) and a 0 or blank cell (a Small row with a published LCHO number
+halts: the note would no longer hold). Edition 1 of 2025-03-31 (as loaded)
+keeps the published zeros; edition 2 holds the rule's NULLs.
+
+0/NULL changes against the tip (rule 1.10) stop a revision unless named:
+--acknowledge-flips NAME releases exactly the changes ACKNOWLEDGED_FLIPS
+records for NAME (stock date, column, direction, reason and cell count),
+and nothing else.
+
 Identity (rule 3), from the file itself on every path: the Introduction's
 title year, its source line "1 April <y1> to 31 March <y2>", its publication
 month and version, which must equal the last row of the Version History
@@ -69,7 +88,7 @@ stock date.
     python scripts/s23_rsh_stock_editions.py status
     python scripts/s23_rsh_stock_editions.py load [--release Y1-Y2]
         [--file PATH [--no-page]] [--recheck YYYY-MM-DD] [--allow-older-file]
-        [--commit | --simulate]
+        [--acknowledge-flips NAME] [--commit | --simulate]
         # the file is downloaded to data/raw/s23_rsh/ (also in a preview; a
         # preview writes nothing to the database). A stock date breaking a
         # stop condition is REJECTED (nothing stored, exit 1).
@@ -118,7 +137,9 @@ NO_PAGE = "not read (--file --no-page)"
 # ---------------------------------------------------------------------------
 # Columns (live types from information_schema, checked 2026-10-09: the five
 # stock columns integer NOT NULL; rp_size_band and survey_status the only
-# nullable columns)
+# nullable columns. From 2026-10-10 (ddl) low_cost_home_ownership is
+# nullable, for the not-counted rule only, and null_reasons is added; the
+# CHECKs hold a NULL to its reason)
 # ---------------------------------------------------------------------------
 
 VALUE_TYPES = (
@@ -126,8 +147,9 @@ VALUE_TYPES = (
     ("general_needs_self_contained", "integer NOT NULL"),
     ("general_needs_bedspaces", "integer NOT NULL"),
     ("supported_housing_and_older_people", "integer NOT NULL"),
-    ("low_cost_home_ownership", "integer NOT NULL"),
+    ("low_cost_home_ownership", "integer"),
 )
+NULL_REASONS_TYPES = (("null_reasons", "text"),)
 EXTRA_TYPES = (
     ("rp_name", "text NOT NULL"),
     ("provider_type", "text NOT NULL"),
@@ -158,6 +180,8 @@ def _names(types) -> tuple:
 STOCK_COLUMNS = _names(VALUE_TYPES)
 PARTS = STOCK_COLUMNS[1:]
 COMPARED = STOCK_COLUMNS + _names(EXTRA_TYPES)       # the 11 compared columns
+# what a row carries and the comparison uses: the 11 and null_reasons
+ROW_COLS = COMPARED + _names(NULL_REASONS_TYPES)
 PROVENANCE = _names(PROVENANCE_TYPES)
 LIVE_PROVENANCE = tuple(lc for lc, _ in PROVENANCE_PAIRS)
 KEY = ("rp_code", "lad24cd")
@@ -201,6 +225,38 @@ REGION_TYPE = "Region"
 DISTRICT_RE = re.compile(r"E0[6-9][0-9]{6}")
 EXPECTED_AREAS = 296
 EXPECTED_REGIONS = 9
+
+# ---------------------------------------------------------------------------
+# Not counted (rule 1: not counted is NULL, never 0). Decided by Scott,
+# 2026-10-10. The tool's Area Summary, under Tables 1 and 2 (the stock
+# tables), says: "Unit counts for LCHO are for LARPs and Large PRPs only."
+# It names LCHO only: general needs and supported housing/housing for older
+# people are counted for every provider type. (The tool's other "LARPs and
+# Large PRPs only" notes are under the rent tables 3 to 6, which are not
+# loaded.)
+# ---------------------------------------------------------------------------
+
+NOTE_SHEET = "Area Summary"
+LCHO_NOTE = "Unit counts for LCHO are for LARPs and Large PRPs only."
+NOT_COUNTED_COLUMN = "low_cost_home_ownership"
+NOT_COUNTED_TYPES = ("Small",)          # RP_Type values the note leaves out
+NOT_COUNTED = "not_counted_for_this_provider_type"
+NOT_COUNTED_REASON = f"{NOT_COUNTED_COLUMN}={NOT_COUNTED}"
+
+# The 0/NULL changes against the tip (rule 1.10) a load may store, each named
+# and decided, never a blanket override: --acknowledge-flips NAME releases
+# exactly these cells (every one going 0 -> NULL in `column` with `reason`,
+# exactly `cells` of them, in `stock_date`) and nothing else.
+ACKNOWLEDGED_FLIPS = {
+    "not-counted-lcho-2025": {
+        "stock_date": "2025-03-31", "column": NOT_COUNTED_COLUMN,
+        "cells": 2738, "reason": NOT_COUNTED_REASON,
+        "decided": "Scott, 2026-10-10",
+        "why": ("edition 1 (as loaded) holds the 2,738 Small PRP LCHO cells "
+                "as the published 0, which the tool's note says are not "
+                "counted; the not-counted rule stores them NULL"),
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Stop conditions (percent; calibrated on 2024 to 2025: national +0.96%,
@@ -587,8 +643,9 @@ def read_tool(path) -> dict:
     ((published, version key)), history [(version, month, note)],
     providers [{row, rp_name, rp_code, rp_type, sdr_size, survey_status,
     la_name, la_code, values}], subtotals {la_code: {row, name, region,
-    values}}, regions {name: {row, values}}, empty_rows}. values: {stock
-    column: int}.
+    values}}, regions {name: {row, values}}, empty_rows, lcho_note (True
+    when the Area Summary sheet carries LCHO_NOTE)}. values: {stock
+    column: int}, as published.
 
     Raises ValueError (naming what was seen) on a missing sheet; an
     Introduction without exactly one title, source line, publication month
@@ -617,8 +674,11 @@ def read_tool(path) -> dict:
         intro = _sheet_rows(wb, INTRO_SHEET)
         hist_rows = _sheet_rows(wb, HISTORY_SHEET)
         stock = _sheet_rows(wb, SHEET)
+        note_rows = (_sheet_rows(wb, NOTE_SHEET)
+                     if NOTE_SHEET in wb.sheetnames else [])
     finally:
         wb.close()
+    lcho_note = any(_norm(LCHO_NOTE) in c for c in _cells(note_rows))
     cells = _cells(intro)
     t = _one(cells, TITLE_RE, "RP social housing by local authority area "
              "(SDR and LADR data) <yyyy>", INTRO_SHEET)
@@ -660,7 +720,8 @@ def read_tool(path) -> dict:
                 "y2": y2, "stock_date": date(y2, 3, 31).isoformat(),
                 "edition": f"{y1} to {y2}", "month_text": month_text,
                 "published": published, "version": version,
-                "rank": (published, _vkey(version)), "history": history})
+                "rank": (published, _vkey(version)), "history": history,
+                "lcho_note": lcho_note})
     return out
 
 
@@ -753,8 +814,11 @@ def tool_codes(tool) -> set:
 # ---------------------------------------------------------------------------
 
 def _add(acc, values) -> None:
+    """Add a row's stock values into acc. A NULL (a not-counted cell) adds
+    nothing: it is not a count, and is never read as 0."""
     for c in STOCK_COLUMNS:
-        acc[c] += values[c]
+        if values[c] is not None:
+            acc[c] += values[c]
 
 
 def england_totals(tool) -> dict:
@@ -821,14 +885,50 @@ def _getter(resolve):
     return resolve if callable(resolve) else (lambda c: resolve[c])
 
 
-def build_rows(tool, resolve, provenance) -> list:
+def not_counted(rp_type, values, where, note) -> tuple:
+    """(values, null_reasons) of one provider row under the not-counted
+    rule. A provider type the publisher's note leaves out of the LCHO counts
+    (NOT_COUNTED_TYPES: 'Small') gets NOT_COUNTED_COLUMN NULL and the reason
+    NOT_COUNTED_REASON; its published cell must be 0 (or already NULL), and
+    note (the file carries LCHO_NOTE) must be true, else ValueError naming
+    `where`: the rule rests on the note, and a published number would mean
+    the note no longer holds. Any other type is returned as given (a 0 stays
+    0, a NULL stays NULL) with no reason. No other column is touched; the
+    published total is kept. Returns a copy."""
+    out = dict(values)
+    if rp_type not in NOT_COUNTED_TYPES:
+        return out, None
+    if not note:
+        raise ValueError(f"{where}: a {rp_type} provider row, but the file's "
+                         f"{NOTE_SHEET} sheet does not carry the note "
+                         f"{LCHO_NOTE!r}, on which the not-counted rule "
+                         "rests; the rule must be reviewed with the evidence")
+    v = out[NOT_COUNTED_COLUMN]
+    if v is not None and v != 0:
+        raise ValueError(f"{where}: a {rp_type} provider row with "
+                         f"{HEADER_OF[NOT_COUNTED_COLUMN]} {v!r}; the "
+                         f"publisher's note says LCHO counts are for LARPs "
+                         "and Large PRPs only, so a published number means "
+                         "the note no longer holds; the not-counted rule must "
+                         "be reviewed with the evidence")
+    out[NOT_COUNTED_COLUMN] = None
+    return out, NOT_COUNTED_REASON
+
+
+def build_rows(tool, resolve, provenance, *, rule=True) -> list:
     """The stock date's records from a read tool (read_tool): one per
     provider row, sorted by key. resolve: {publisher code: lad24cd} or a
     callable. provenance: the five file_* values (every record carries
     them). provider_type PRP (Large, Small) or LARP; a blank SDR_Size or
-    Survey_Status is NULL (as read). ValueError when a total is not the sum
-    of its four parts, a code resolves to nothing, or a key (rp_code,
-    lad24cd) repeats (two publisher codes reaching one lad24cd included)."""
+    Survey_Status is NULL (as read). The total is checked against its four
+    published parts, then (rule, the default) the not-counted rule
+    (not_counted) sets null_reasons: a Small PRP's LCHO NULL with its
+    reason, every other record null_reasons NULL. rule=False gives the
+    cells exactly as published (the migration proof of edition 1 'as
+    loaded' only). ValueError when a total is not the sum of its four
+    parts, the rule refuses a row, a code resolves to nothing, or a key
+    (rp_code, lad24cd) repeats (two publisher codes reaching one lad24cd
+    included)."""
     get = _getter(resolve)
     gone = [c for c in PROVENANCE if c not in provenance]
     if gone:
@@ -851,9 +951,14 @@ def build_rows(tool, resolve, provenance) -> list:
             raise ValueError(f"{where}: duplicate key {key} (also row "
                              f"{seen[key]}); refusing to choose a winner")
         seen[key] = p["row"]
+        reason = None
+        if rule:
+            v, reason = not_counted(p["rp_type"], v, where,
+                                    tool.get("lcho_note", False))
         rec = {"rp_code": p["rp_code"], "lad24cd": lad,
                "stock_date": tool["stock_date"]}
         rec.update(v)
+        rec["null_reasons"] = reason
         rec.update({"rp_name": p["rp_name"],
                     "provider_type": PROVIDER_TYPES[p["rp_type"]],
                     "rp_size_band": p["sdr_size"],
@@ -868,15 +973,20 @@ def build_rows(tool, resolve, provenance) -> list:
 
 def rows_content_sha(records) -> str:
     """sha256 of the records' content: one line per record sorted by key,
-    rp_code|lad24cd|the 11 compared columns (NULL as the empty string),
-    lines joined by LF, UTF-8. Provenance is not in it, so it never makes a
-    new edition."""
+    rp_code|lad24cd|the 11 compared columns (NULL as the empty string), then
+    |null_reasons only on a record that has one, lines joined by LF, UTF-8.
+    A record without a reason renders exactly as before the not-counted
+    rule, so edition 1's stored sha256 stays reproducible. Provenance is not
+    in it, so it never makes a new edition."""
     def cell(v):
         return "" if v is None else str(v)
     ordered = sorted(records, key=lambda r: (str(r["rp_code"]),
                                              str(r["lad24cd"])))
     lines = ["|".join([cell(r[k]) for k in KEY]
-                      + [cell(r.get(c)) for c in COMPARED]) for r in ordered]
+                      + [cell(r.get(c)) for c in COMPARED]
+                      + ([r["null_reasons"]] if r.get("null_reasons")
+                         is not None else []))
+             for r in ordered]
     return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
@@ -1144,12 +1254,77 @@ def period_problems(new, tip, prev, *, kind) -> list:
     return out
 
 
+def _by_key(records) -> dict:
+    return {(r["rp_code"], r["lad24cd"]): r for r in records or ()}
+
+
 def _differs(new, old) -> bool:
-    nk = {(r["rp_code"], r["lad24cd"]): r for r in new or ()}
-    ok = {(r["rp_code"], r["lad24cd"]): r for r in old or ()}
+    nk, ok = _by_key(new), _by_key(old)
     if set(nk) != set(ok):
         return True
-    return any(nk[k].get(c) != ok[k].get(c) for k in nk for c in COMPARED)
+    return any(nk[k].get(c) != ok[k].get(c) for k in nk for c in ROW_COLS)
+
+
+def _flips(new, tip) -> list:
+    """[(key, column, tip value, new value)] of the stock cells, on keys in
+    both, going from 0 to NULL or from NULL to 0 against the tip (rule
+    1.10), sorted."""
+    nk, tk = _by_key(new), _by_key(tip)
+    out = []
+    for k in sorted(set(nk) & set(tk)):
+        for c in STOCK_COLUMNS:
+            a, b = tk[k].get(c), nk[k].get(c)
+            if (a == 0 and b is None) or (a is None and b == 0):
+                out.append((k, c, a, b))
+    return out
+
+
+def ack_problems(name, period, flips, new) -> list:
+    """Problems (empty = the acknowledgement covers them) of releasing the
+    period's 0/NULL changes `flips` (_flips) under ACKNOWLEDGED_FLIPS[name]:
+    its stock date must be the period, every change must go 0 -> NULL in its
+    column on a record (of `new`) whose null_reasons is its reason, and
+    their number must equal its cells exactly."""
+    a = globals()["ACKNOWLEDGED_FLIPS"][name]
+    out = []
+    if a["stock_date"] != period:
+        out.append(f"{name} is for stock date {a['stock_date']}, not "
+                   f"{period}")
+    nk = _by_key(new)
+    other = [f for f in flips if not (f[1] == a["column"] and f[2] == 0
+                                      and f[3] is None)]
+    if other:
+        out.append(f"{len(other)} change(s) it does not name (it names "
+                   f"{a['column']} 0 -> NULL only), e.g. "
+                   + ", ".join(f"{'/'.join(k)} {c} {x}->{y}"
+                               for k, c, x, y in other[:3]))
+    noreason = [f for f in flips if f not in other
+                and nk.get(f[0], {}).get("null_reasons") != a["reason"]]
+    if noreason:
+        out.append(f"{len(noreason)} cell(s) without the reason "
+                   f"{a['reason']!r}, e.g. "
+                   + ", ".join("/".join(k) for k, _, _, _ in noreason[:3]))
+    if len(flips) != a["cells"]:
+        out.append(f"{name} expects exactly {a['cells']:,} cell(s) going 0 -> "
+                   f"NULL, the file gives {len(flips):,}")
+    return out
+
+
+def _revert(new, flips, tip) -> list:
+    """Copies of the records with each flipped cell, and its record's
+    null_reasons, put back to the tip's (to compare the rest)."""
+    tk = _by_key(tip)
+    back = {}
+    for k, c, _, _ in flips:
+        back.setdefault(k, []).append(c)
+    out = []
+    for r in new:
+        k = (r["rp_code"], r["lad24cd"])
+        if k in back:
+            r = dict(r, null_reasons=tk[k].get("null_reasons"),
+                     **{c: tk[k].get(c) for c in back[k]})
+        out.append(r)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -1175,6 +1350,20 @@ def tip_row_count(editions_table: str):
     return count
 
 
+# The total equals its four parts; a not-counted (NULL) LCHO is not a part,
+# so the published total then equals the other three. Written so the
+# expression is never NULL (a CHECK passes on NULL).
+SUM_CHECK = ("((low_cost_home_ownership IS NULL AND total_social_stock = "
+             "general_needs_self_contained + general_needs_bedspaces + "
+             "supported_housing_and_older_people) OR (low_cost_home_ownership "
+             "IS NOT NULL AND total_social_stock = general_needs_self_contained "
+             "+ general_needs_bedspaces + supported_housing_and_older_people "
+             "+ low_cost_home_ownership))")
+# a NULL LCHO always carries a reason, and only a NULL does
+REASON_CHECK = "((low_cost_home_ownership IS NULL) = (null_reasons IS NOT NULL))"
+ED_PREFIX = "rsh_rp_stock_by_la_editions"     # constraint names
+LIVE_PREFIX = "rsh_rp_stock_by_la"
+
 SPEC = core.EditionSpec(
     name="s23",
     live_table="rsh_rp_stock_by_la",
@@ -1182,8 +1371,8 @@ SPEC = core.EditionSpec(
     key_cols=KEY,
     period_col="stock_date",
     value_cols=VALUE_TYPES,
-    extra_cols=EXTRA_TYPES + PROVENANCE_TYPES,
-    refresh_cols=COMPARED + LIVE_PROVENANCE + ("loaded_at",),
+    extra_cols=EXTRA_TYPES + NULL_REASONS_TYPES + PROVENANCE_TYPES,
+    refresh_cols=ROW_COLS + LIVE_PROVENANCE + ("loaded_at",),
     refresh_from=PROVENANCE_PAIRS + (("loaded_at", "loaded_at"),),
     whole_period_cols=LIVE_PROVENANCE,     # one file's provenance per period
     key_types=(("rp_code", "text NOT NULL"),
@@ -1191,12 +1380,10 @@ SPEC = core.EditionSpec(
                ("stock_date", "date NOT NULL")),
     fk_la_boundaries=True,
     table_constraints=(
-        "CONSTRAINT rsh_rp_stock_by_la_editions_provider_type_chk CHECK "
+        f"CONSTRAINT {ED_PREFIX}_provider_type_chk CHECK "
         "(provider_type IN ('PRP', 'LARP'))",
-        "CONSTRAINT rsh_rp_stock_by_la_editions_components_sum_chk CHECK "
-        "(total_social_stock = general_needs_self_contained + "
-        "general_needs_bedspaces + supported_housing_and_older_people + "
-        "low_cost_home_ownership)"),
+        f"CONSTRAINT {ED_PREFIX}_components_sum_chk CHECK {SUM_CHECK}",
+        f"CONSTRAINT {ED_PREFIX}_lcho_null_reason_chk CHECK {REASON_CHECK}"),
     refresh_key_changes=True,
     expected_rows_per_period=tip_row_count("rsh_rp_stock_by_la_editions"),
 )
@@ -1231,7 +1418,7 @@ def check_records(records, period) -> None:
 
 
 PROFILE = pe.Profile(
-    spec=SPEC, value_cols=COMPARED, run_agent=RUN_AGENT,
+    spec=SPEC, value_cols=ROW_COLS, run_agent=RUN_AGENT,
     run_source=RUN_SOURCE,
     heading="S23 RSH registered provider stock by local authority "
             "(rsh_rp_stock_by_la)",
@@ -1257,17 +1444,44 @@ def _late(name: str):
     return lambda *a, **kw: globals()[name](*a, **kw)
 
 
+def ddl_statements(spec) -> list:
+    """The changes ddl makes to an existing editions table and to the live
+    table for the not-counted rule (rule 1), additive and idempotent:
+    null_reasons added, low_cost_home_ownership made nullable, the sum CHECK
+    replaced by its NULL-aware form (SUM_CHECK) and the reason CHECK
+    (REASON_CHECK) added. No value is written."""
+    out = []
+    for t, pfx in ((spec.editions_table, ED_PREFIX),
+                   (spec.live_table, LIVE_PREFIX)):
+        out += [f"ALTER TABLE public.{t} ADD COLUMN IF NOT EXISTS "
+                "null_reasons text",
+                f"ALTER TABLE public.{t} ALTER COLUMN low_cost_home_ownership "
+                "DROP NOT NULL",
+                f"ALTER TABLE public.{t} DROP CONSTRAINT IF EXISTS "
+                f"{pfx}_components_sum_chk",
+                f"ALTER TABLE public.{t} ADD CONSTRAINT "
+                f"{pfx}_components_sum_chk CHECK {SUM_CHECK}",
+                f"ALTER TABLE public.{t} DROP CONSTRAINT IF EXISTS "
+                f"{pfx}_lcho_null_reason_chk",
+                f"ALTER TABLE public.{t} ADD CONSTRAINT "
+                f"{pfx}_lcho_null_reason_chk CHECK {REASON_CHECK}"]
+    return out
+
+
 def create_all(cur) -> None:
     """ddl: the editions table, its append-only triggers and the file-check
-    ledger. Idempotent; the live table is not touched."""
+    ledger, then ddl_statements on the editions and live tables (null_reasons
+    and the NULL-aware CHECKs). Idempotent; no value is written."""
     prof = profile()
     core.create_schema(cur, prof.spec)
+    for sql in ddl_statements(prof.spec):
+        cur.execute(sql)
     pe.create_file_checks(cur, prof)
 
 
 def insert_live(cur, profile, period: str, records: list) -> None:
     """A new stock date's live rows: the key, the period, the 11 compared
-    columns and the five provenance columns from the records' file_* values
+    columns, null_reasons and the five provenance columns from the records' file_* values
     (one value over the records, else ValueError); loaded_at takes its
     default."""
     from psycopg2.extras import execute_values
@@ -1448,15 +1662,25 @@ def _conn(writing):
     return pe.connect(writing)
 
 
+def has_null_reasons(cur, table) -> bool:
+    """True when the table has the null_reasons column (ddl adds it)."""
+    cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema "
+                "= 'public' AND table_name = %s AND column_name = "
+                "'null_reasons'", (table,))
+    return cur.fetchone() is not None
+
+
 def records(cur, spec, period, edition=None) -> list:
     """The period's rows as records (key, period as a string, the 11
-    compared columns and the five file_* provenance values): the live
-    table's (edition None; its provenance columns read as file_*) or the
-    given edition's."""
-    names = tuple(spec.key_cols) + COMPARED + PROVENANCE
+    compared columns, null_reasons and the five file_* provenance values):
+    the live table's (edition None; its provenance columns read as file_*)
+    or the given edition's."""
+    names = tuple(spec.key_cols) + ROW_COLS + PROVENANCE
     if edition is None:
         live = dict(PROVENANCE_PAIRS)
         back = {ec: lc for lc, ec in live.items()}
+        if not has_null_reasons(cur, spec.live_table):   # before ddl
+            back["null_reasons"] = "NULL::text"
         sel = [back.get(c, c) for c in names]
         cur.execute(f"SELECT {', '.join(sel)} FROM public.{spec.live_table} "
                     f"WHERE {spec.period_col} = %s", (period,))
@@ -1520,6 +1744,10 @@ def log_run(cur, rows_written: int, notes: str, started_at=None) -> None:
 
 
 def cmd_ddl(args) -> int:
+    print("ddl also runs these idempotent changes (the not-counted rule; no "
+          "value is written):")
+    for sql in ddl_statements(profile().spec):
+        print(f"  {sql}")
     return pe.run_ddl(profile(), args, connect=_late("_conn"),
                       table_exists=_late("table_exists"),
                       create_schema=lambda cur: create_all(cur))
@@ -1593,14 +1821,14 @@ def cmd_status(args) -> int:
 
 def live_equals_tip(cur, spec, periods) -> list:
     """Problems (empty = fine): for each period, the live rows equal the
-    tip edition on the key, the stock date, the 11 compared columns and the
-    five provenance columns (live column against its file_* column),
+    tip edition on the key, the stock date, the 11 compared columns,
+    null_reasons and the five provenance columns (live column against its file_* column),
     NULL-safe, both ways. (load_checks.check_latest_equals_live compares
     every data column by name, and the file_* columns are not live
     columns.)"""
-    ed_cols = ", ".join(tuple(spec.key_cols) + (spec.period_col,) + COMPARED
+    ed_cols = ", ".join(tuple(spec.key_cols) + (spec.period_col,) + ROW_COLS
                         + PROVENANCE)
-    lv_cols = ", ".join(tuple(spec.key_cols) + (spec.period_col,) + COMPARED
+    lv_cols = ", ".join(tuple(spec.key_cols) + (spec.period_col,) + ROW_COLS
                         + LIVE_PROVENANCE)
     bad = []
     for p in periods:
@@ -1832,16 +2060,34 @@ def provenance(tool, src) -> dict:
             "file_release_page_url": src["page_url"]}
 
 
+def same_file_provenance(cur, prof, period, sha, tips) -> "dict | None":
+    """The tip's five file_* values when the file read has the bytes
+    (sha256) of a file the ledger records for the period's tip edition:
+    the same file, so its provenance is the tip's, however it was read this
+    time (a --file --no-page re-read would otherwise record 'not read'). None
+    when the period is not held or the bytes are not the tip's file."""
+    t = tips.get(period)
+    if not t or t.get("edition") is None:
+        return None
+    cur.execute(f"SELECT COUNT(*) FROM public.{pe.file_checks_table(prof)} "
+                f"WHERE {prof.spec.period_col} = %s AND file_sha256 = %s AND "
+                "edition = %s", (period, sha, t["edition"]))
+    if not cur.fetchone()[0]:
+        return None
+    return _tip_provenance(cur, prof.spec, period)
+
+
 def edition_source(tool, src) -> str:
     return (f"{src['file_name']}; version {tool['version']}; dated "
             f"{tool['published']:%Y-%m}; {src['where']}")
 
 
-def _label(tool, src, sha, how, *, older="") -> str:
+def _label(tool, src, sha, how, *, older="", acknowledged="") -> str:
     return (f"RSH registered providers look-up tool: {tool['title']}; "
             f"version {tool['version']}; dated {tool['published']:%Y-%m}; "
             f"{src['where']} sha256 {sha[:16]}; {how}"
-            + (f"; {older}" if older else ""))
+            + (f"; {older}" if older else "")
+            + (f"; ACKNOWLEDGED {acknowledged}" if acknowledged else ""))
 
 
 def _report(tool) -> None:
@@ -1872,7 +2118,7 @@ def _reconciled(tool) -> None:
           + f" ({', '.join(STOCK_COLUMNS)})")
 
 
-def _build(cur, tool, prov) -> list:
+def _build(cur, tool, prov, *, rule=True) -> list:
     try:
         rmap, problems = resolve_codes(cur, tool_codes(tool),
                                        tool["stock_date"])
@@ -1885,7 +2131,7 @@ def _build(cur, tool, prov) -> list:
         print("codes resolved (geography.resolve, la_code_lookup recode): "
               + ", ".join(f"{c} -> {r}" for c, r in recoded))
     try:
-        return build_rows(tool, rmap, prov)
+        return build_rows(tool, rmap, prov, rule=rule)
     except ValueError as e:
         halt(f"{e}; nothing stored")
 
@@ -1958,7 +2204,20 @@ def cmd_load(args) -> int:
             _report(tool)
             _reconciled(tool)
             period = tool["stock_date"]
-            recs = _build(cur, tool, provenance(tool, src))
+            prov = provenance(tool, src)
+            if has_ed:
+                carried = same_file_provenance(cur, prof, period, sha, tips)
+                if carried is not None:
+                    prov = carried
+                    src = dict(src, how=src["how"] + "; the bytes of the "
+                               "file the tip came from (ledger sha256), so "
+                               "the tip's provenance is kept")
+                    print(f"NOTE: {path.name} has the bytes of the file "
+                          f"{period}'s tip edition came from (the ledger "
+                          "records its sha256); the tip's provenance is "
+                          "kept: " + ", ".join(f"{c}={v}"
+                                               for c, v in carried.items()))
+            recs = _build(cur, tool, prov)
             lsrc = ledger_source(src["where"], tool["rank"], tool["version"],
                                  period)
             chk = {p: s for p, s in checked.items() if p not in stranded}
@@ -2002,6 +2261,13 @@ def _run_period(args, conn, cur, prof, has_ed, src, tool, recs, new, revised,
           "skipped " + (", ".join(f"{p} ({r})" for p, r in sorted(
               skipped.items())) or "none"))
     periods = sorted(new + revised)
+    ack = getattr(args, "acknowledge_flips", None)
+    if ack and ACKNOWLEDGED_FLIPS[ack]["stock_date"] not in revised:
+        halt(f"--acknowledge-flips {ack} names stock date "
+             f"{ACKNOWLEDGED_FLIPS[ack]['stock_date']}, which this run does "
+             f"not compare as a held stock date (compared: "
+             f"{revised or 'none'}); nothing stored")
+    acked = {}
     if not periods:
         if skipped and all(r.startswith("older") for r in skipped.values()):
             halt(f"older file: every stock date of the file is skipped; the "
@@ -2024,7 +2290,35 @@ def _run_period(args, conn, cur, prof, has_ed, src, tool, recs, new, revised,
             prev = (_tip_records(cur, spec, max(earlier), tips, has_ed)
                     if earlier else None)
         bad = period_problems(recs, tip, prev, kind=kind)
-        if kind == "revised" and ranks.get(p) == rank and _differs(recs, tip):
+        same = recs
+        if kind == "revised":
+            fl = _flips(recs, tip)
+            # the same-version check below compares the rest: 0/NULL changes
+            # are this stop's business
+            same = _revert(recs, fl, tip)
+            mine = ack and ACKNOWLEDGED_FLIPS[ack]["stock_date"] == p
+            msg = (f"{len(fl):,} cell(s) go from 0 to NULL or NULL to 0 "
+                   "against the tip (rule 1.10)" + (", e.g. " + ", ".join(
+                       f"{'/'.join(k)} {c} {a}->{b}"
+                       for k, c, a, b in fl[:3]) if fl else ""))
+            if mine:
+                why = ack_problems(ack, p, fl, recs)
+                if why:
+                    bad.append(f"{msg}; --acknowledge-flips {ack} does not "
+                               "cover them: " + "; ".join(why))
+                else:
+                    a = ACKNOWLEDGED_FLIPS[ack]
+                    acked[p] = (f"{ack}: {len(fl):,} {a['column']} cells 0 "
+                                f"-> NULL ({a['reason']}; {a['decided']})")
+                    print(f"  {p}: ACKNOWLEDGED (--acknowledge-flips): "
+                          f"{msg}; exactly the {a['cells']:,} cells {ack} "
+                          f"names ({a['why']})")
+            elif fl:
+                bad.append(f"{msg}; S23 releases a 0/NULL change only "
+                           "through a named, decided acknowledgement "
+                           "(--acknowledge-flips NAME; ACKNOWLEDGED_FLIPS in "
+                           "the loader)")
+        if kind == "revised" and ranks.get(p) == rank and _differs(same, tip):
             bad.append(f"the file is {rank_text(rank)}, the same version and "
                        "month as the file of the held tip, but its content "
                        "differs: two files claim the same version")
@@ -2036,7 +2330,8 @@ def _run_period(args, conn, cur, prof, has_ed, src, tool, recs, new, revised,
         infos[p] = PeriodInfo(
             edition_source(tool, src),
             _label(tool, src, sha, how,
-                   older=older_note.get(p, "").removeprefix("NOTE: ")),
+                   older=older_note.get(p, "").removeprefix("NOTE: "),
+                   acknowledged=acked.get(p, "")),
             ((lsrc, sha),))
     for p, msgs in sorted(problems.items()):
         for msg in msgs:
@@ -2054,6 +2349,9 @@ def _run_period(args, conn, cur, prof, has_ed, src, tool, recs, new, revised,
                              simulate=args.simulate, against="editions",
                              stats=stats, apply=apply)
     elif ok:
+        if not has_null_reasons(cur, spec.live_table):
+            # before ddl the live table has no null_reasons to compare
+            prof = dataclasses.replace(prof, value_cols=COMPARED)
         rc = pe.load_periods(cur, prof, ok, lambda per: recs,
                              tool["published"], False, against="live")
         print("  (no editions table yet: preview against live only)")
@@ -2080,6 +2378,8 @@ def _run_period(args, conn, cur, prof, has_ed, src, tool, recs, new, revised,
                     or "nothing stored")
                  + (f"; skipped {sorted(skipped)}" if skipped else "")
                  + "".join(f"; {older_note[p]}" for p in sorted(older_note))
+                 + "".join(f"; ACKNOWLEDGED {acked[p]}" for p in sorted(acked)
+                           if p in stats["periods"])
                  + f". Rows stored: {stored} edition rows, {live} live rows.")
         log_run(cur, stored + live, notes, started)
         conn.commit()
@@ -2134,8 +2434,10 @@ def migrate_legacy(cur, file, *, write, legacy=None, files=None) -> dict:
     LEGACY_LIVE; one loaded_at; one stock date); the file's sha256 as
     files['sha256'] (default LEGACY_FILE). Proof, any failure halts: the
     file's identity and in-file reconciliation; the live provenance names
-    the file's edition, name and URL; this parser on the file reproduces
-    every live row on the key, the stock date and the 11 compared columns
+    the file's edition, name and URL; this parser on the file, as published
+    (build_rows rule=False: the old build stored the Small PRP LCHO zeros),
+    reproduces every live row on the key, the stock date and the 11 compared
+    columns
     (publication_date and release_page_url are the release page's, not in
     the file, and are carried as held). Edition 1 'as loaded' from live
     (release label the engine's as-loaded label, published_date the load
@@ -2191,7 +2493,7 @@ def migrate_legacy(cur, file, *, write, legacy=None, files=None) -> dict:
     if off:
         halt(f"proof failed: the live provenance does not name the file: "
              f"{off}; nothing stored")
-    built = _build(cur, tool, prov)
+    built = _build(cur, tool, prov, rule=False)   # as published
     cells, diffs = _proof(held, built)
     if diffs:
         halt(f"proof failed: {len(diffs)} differences between the held rows "
@@ -2359,6 +2661,12 @@ def main(argv=None) -> int:
     p.add_argument("--allow-older-file", action="store_true",
                    help="compare and store a stock date whose tip comes from "
                    "a newer file (logged)")
+    p.add_argument("--acknowledge-flips", metavar="NAME",
+                   choices=sorted(globals()["ACKNOWLEDGED_FLIPS"]),
+                   help="release exactly the 0/NULL changes this named, "
+                   "decided acknowledgement records (ACKNOWLEDGED_FLIPS: "
+                   "stock date, column, reason and cell count); any other "
+                   "change, or another count, is still rejected")
     pe.mode_parser(p)
     p.set_defaults(func=cmd_load)
     p = sub.add_parser("refresh-latest", help="copy each stock date's latest "

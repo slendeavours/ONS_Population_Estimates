@@ -178,12 +178,71 @@ class VerifyGates(unittest.TestCase):
         self.seed()
         for sql in (f"UPDATE public.{ZZ.live_table} SET "
                     "low_cost_home_ownership = NULL",
+                    f"UPDATE public.{ZZ.live_table} SET "
+                    "general_needs_self_contained = NULL",
+                    f"UPDATE public.{ZZ.live_table} SET null_reasons = 'x' "
+                    "WHERE low_cost_home_ownership IS NOT NULL",
                     f"UPDATE public.{ZZ.live_table} SET total_social_stock "
                     "= total_social_stock + 1"):
             self.cur.execute("SAVEPOINT t")
             with self.assertRaises(Exception):
                 self.cur.execute(sql)
             self.cur.execute("ROLLBACK TO SAVEPOINT t")
+
+    def test_lcho_nulls_and_zeros_follow_the_not_counted_rule(self):
+        self.seed()
+        ok, detail = v.real_stock_values(self.cur, ZZ)
+        self.assertTrue(ok, detail)
+        self.assertIn(f"{2 * tl.SMALL} LCHO NULL(s)", detail)   # live + tip
+        live = ZZ.live_table
+        drop = [f"ALTER TABLE public.{live} DROP CONSTRAINT "
+                f"{m.LIVE_PREFIX}_{s}" for s in ("components_sum_chk",
+                                                 "lcho_null_reason_chk")]
+        for sql, needle in (
+                (f"UPDATE public.{live} SET low_cost_home_ownership = 0, "
+                 "null_reasons = NULL WHERE rp_code = 'H0375'",
+                 "Small PRP (Short Form) LCHO zero"),
+                (f"UPDATE public.{live} SET null_reasons = 'other' WHERE "
+                 "rp_code = 'H0375'", "without the not-counted reason"),
+                (f"UPDATE public.{live} SET low_cost_home_ownership = NULL, "
+                 f"null_reasons = '{m.NOT_COUNTED_REASON}', "
+                 "total_social_stock = general_needs_self_contained + "
+                 "general_needs_bedspaces + supported_housing_and_older_people"
+                 " WHERE rp_code = 'L0055'", "not on a Small PRP row"),
+                (f"UPDATE public.{live} SET general_needs_bedspaces = NULL "
+                 "WHERE rp_code = 'L0055'", "always-counted")):
+            with self.subTest(needle=needle):
+                self.cur.execute("SAVEPOINT t")
+                for d in drop:
+                    self.cur.execute(d)
+                if needle == "always-counted":
+                    self.cur.execute(f"ALTER TABLE public.{live} ALTER "
+                                     "COLUMN general_needs_bedspaces DROP "
+                                     "NOT NULL")
+                self.cur.execute(sql)
+                ok, detail = v.real_stock_values(self.cur, ZZ)
+                self.cur.execute("ROLLBACK TO SAVEPOINT t")
+                self.assertFalse(ok, detail)
+                self.assertIn(needle, detail)
+
+    def test_edition_1_as_loaded_keeps_the_published_zeros(self):
+        path, files = self.migrated()
+        with tl.ack_cells():
+            rc, text, _ = self.e.cmd(["load", "--file", path, "--no-page",
+                                      "--acknowledge-flips", tl.ACK,
+                                      "--commit"])
+            self.assertEqual(rc, 0, text)
+        rc, text, _ = self.e.cmd(["refresh-latest", "--commit"])
+        self.assertEqual(rc, 0, text)
+        ok, detail = v.real_stock_values(self.cur, ZZ)
+        self.assertTrue(ok, detail)
+        self.assertIn("1 edition 1 'as loaded' period(s) keep", detail)
+        self.cur.execute(f"SELECT COUNT(*) FROM public.{ZZ.editions_table} "
+                         "WHERE edition = 1 AND rp_code = 'H0375' AND "
+                         "low_cost_home_ownership = 0")
+        self.assertEqual(self.cur.fetchone()[0], tl.SMALL)
+        ok, detail = v.real_edition1_and_latest(self.cur, ZZ)
+        self.assertTrue(ok, detail)
 
     def test_a_zero_total_that_is_not_a_larp_fails(self):
         self.seed()
@@ -273,8 +332,28 @@ class VerifyGates(unittest.TestCase):
         ok, detail = v.real_migration_proof(self.cur, ZZ, files, raw, **kw)
         self.assertTrue(ok, detail)
         self.assertIn("0 differences", detail)
-        ok, detail = v.real_held_reread(self.cur, ZZ, files, raw)
+        # edition 1 as loaded is the tip: a load now reads the rule's NULLs
+        with tl.ack_cells():
+            ok, detail = v.real_held_reread(self.cur, ZZ, files, raw)
+        self.assertFalse(ok, detail)
+        self.assertIn("with the not-counted rule", detail)
+        # the named acknowledgement stores edition 2; then the re-read
+        # equals the tip, and the proof of edition 1 still holds
+        with tl.ack_cells():
+            rc, text, _ = self.e.cmd(["load", "--file", path, "--no-page",
+                                      "--acknowledge-flips", tl.ACK,
+                                      "--commit"])
+            self.assertEqual(rc, 0, text)
+            ok, detail = v.real_held_reread(self.cur, ZZ, files, raw)
         self.assertTrue(ok, detail)
+        self.assertIn(f"{tl.SMALL} LCHO cell(s) 0 -> NULL", detail)
+        ok, detail = v.real_migration_proof(self.cur, ZZ, files, raw, **kw)
+        self.assertTrue(ok, detail)
+        # without the acknowledgement recorded, the changes are not covered
+        with mock.patch.dict(m.ACKNOWLEDGED_FLIPS, clear=True):
+            ok, detail = v.real_held_reread(self.cur, ZZ, files, raw)
+        self.assertFalse(ok, detail)
+        self.assertIn("no named acknowledgement covers", detail)
         (raw / path.name).write_bytes(path.read_bytes() + b"\0")
         for fn in (v.real_migration_proof, v.real_held_reread):
             ok, detail = fn(self.cur, ZZ, files, raw)

@@ -2,7 +2,7 @@
 
 <!-- repo-meta
 status: active
-last-reviewed: 2026-10-09
+last-reviewed: 2026-10-10
 type: source
 consumed-by: scripts/s23_rsh_stock_editions.py, scripts/s23_rsh_stock_editions_verify.py
 -->
@@ -84,7 +84,7 @@ A provider row is `RP_Type` `Large`, `Small` or `LARP` **and** an E06 to E09 `LA
 
 The publisher defines the terms (glossary and technical notes) but does not define the sheet's header abbreviations; the mapping of `GN_SC`, `GN_BSp` and `SHHOP` to these words is ours, from the tool's section titles ("Supported housing/housing for older people (social rent)") and the abbreviations. "Owned" is the publisher's term: an RP owns property when it holds the freehold or a leasehold interest of any length and is the body with a direct legal relationship with the occupants. So stock is recorded where it is **owned**, not where it is managed; a provider owning units in an authority is not evidence that it operates there.
 
-`total = the four components` holds on all 10,171 rows and is enforced by a CHECK constraint; a row where it fails halts.
+`total = the four components` holds on all 10,171 rows as published, is checked on the published cells before anything else, and a row where it fails halts. The CHECK constraint is NULL-aware: where `low_cost_home_ownership` is NULL (not counted, below) the total equals the other three parts, which is what the publisher gave.
 
 ## What the supported housing column is, and is not
 
@@ -101,13 +101,15 @@ So read the column under the tool's label. The 504,902 national units are the un
 
 ## Values (rule 1)
 
-The publisher documents no suppression marker or missing-data notation for these columns (the tool notes, glossary, technical notes and data quality note say none), and every stock cell in the 2025 file is an integer: all 50,855 stock cells of the 10,171 provider rows and the 296 subtotal rows likewise; no blank, string, negative or non-integer. So a stock cell must be a non-negative whole number, and **a blank, text, a negative or a non-integer halts**, naming sheet, row and column. Nothing is stored as NULL, and no value goes through `or 0` or `COALESCE(x, 0)`. The stock columns stay `NOT NULL`. A blank `SDR_Size` or `Survey_Status` is stored NULL, never an empty string.
+The publisher documents no suppression marker or missing-data notation for these columns (the tool notes, glossary, technical notes and data quality note say none), and every stock cell in the 2025 file is an integer: all 50,855 stock cells of the 10,171 provider rows and the 296 subtotal rows likewise; no blank, string, negative or non-integer. So a stock cell must be a non-negative whole number, and **a blank, text, a negative or a non-integer halts**, naming sheet, row and column. No value goes through `or 0` or `COALESCE(x, 0)`. Four stock columns stay `NOT NULL`; `low_cost_home_ownership` is nullable for one reason only, the not-counted rule below, and a CHECK holds every NULL there to its reason in `null_reasons` (and a reason to a NULL). A blank `SDR_Size` or `Survey_Status` is stored NULL, never an empty string.
 
 Published zeros are zeros: 12 rows have a total of 0, all LARPs, which the tool's Area Summary note describes as "registered but does not currently own any stock". The old build's `num()` returned 0 for a blank cell; it never fired.
 
 Two things to know about zeros:
 
-- **Low cost home ownership: an OPEN rule 1 question (decision pending Scott).** The tool's Area Summary says LCHO unit counts are for LARPs and Large PRPs only. All 2,738 Short Form (Small) rows hold 0. On the publisher's own note that 0 means "not counted", not "owns none": Additional Table 1.1 puts PRP LCHO at 276,352, against 267,072 for the loaded Large PRPs (274,171 less LARP 7,099), which leaves about 9,280 units held by Small PRPs and recorded as 0 here (derived, not published). `total_social_stock` for those rows also leaves out the provider's LCHO. The zeros are stored exactly as published and nothing was changed; whether they should be NULL with a reason, or flagged, is for Scott and would be a new edition (reversible). Until then, do not sum LCHO or read a Small PRP's 0 as a count.
+- **Low cost home ownership for Small PRPs is not counted, so it is NULL (decided by Scott, 2026-10-10).** The tool's Area Summary, under Tables 1 and 2 (the stock tables), says: "Unit counts for LCHO are for LARPs and Large PRPs only." The tool's "LARPs and PRPs in region" sheet heads its LCHO column the same way ("LARPs and large PRPs only - unweighted"). All 2,738 Small PRP (`RP_Type` `Small`, Short Form) rows publish 0 there, and on the publisher's own note that 0 means "not counted", not "owns none". Small PRPs do hold LCHO: Additional Table 1.1 puts PRP LCHO at 276,352, against 267,072 for the loaded Large PRPs (274,171 less LARP 7,099), which leaves about 9,280 units held by Small PRPs (derived by review, not published). Rule 1 says not counted is NULL, never 0, so the loader stores a Small PRP's LCHO cell as NULL with `null_reasons` `low_cost_home_ownership=not_counted_for_this_provider_type`. It is a transformation rule in the parser, applied on every load, so a re-read never turns the cells back into 0. The note names LCHO only: general needs and supported housing/housing for older people are counted for every provider type and are not touched. (The tool's other "LARPs and Large PRPs only" notes sit under the rent tables 3 to 6, which are not loaded.) LARP and Large PRP LCHO zeros (125 and 2,700 rows in 2025) are counted zeros and stay 0. The rule halts, rather than guess, on a Small PRP row that publishes an LCHO number, or on a file whose Area Summary no longer carries the note.
+- **`total_social_stock` for those 2,738 rows is the publisher's total, kept as given: it does not include the provider's LCHO**, because the publisher did not count it. Read it as general needs plus supported housing and housing for older people for those providers. Summing LCHO by authority gives the LARP and Large PRP count only, which is what the publisher counted.
+- Edition 1 of 2025-03-31 ("as loaded") keeps the published zeros, as the file gave them; edition 2 holds the rule's NULLs (see Editions).
 - `survey_status` is stored as published, in two spellings: `Signed_Off` (9,943 PRP rows) and `Signed-Off` (228 LARP rows).
 
 ## Unweighted versus weighted
@@ -134,7 +136,7 @@ The 2025 file (stock at 31 March 2025) carries them as E08000016 and E08000019 o
 
 ## Editions and revisions
 
-An edition is what one look-up tool file says about one stock date. Edition 1 of 2025-03-31 is the data exactly as it was held on 2026-10-09 (10,171 rows), proved equal to a re-read of the held file (0 differences in 122,052 cells). The compared columns are the five stock columns plus `rp_name`, `provider_type`, `rp_size_band`, `survey_status`, `publisher_la_code` and `la_name`; the five provenance columns (`edition`, `publication_date`, `source_url`, `source_file`, `release_page_url`) are stored per edition and are set on every live row of a period, but never decide whether a file is new. A byte-identical or same-content file adds a ledger row only, never an edition.
+An edition is what one look-up tool file says about one stock date. Edition 1 of 2025-03-31 is the data exactly as it was held on 2026-10-09 (10,171 rows), proved equal to a re-read of the held file as published (0 differences in 122,052 cells). Edition 2 (2026-10-10) is the same file read with the not-counted rule: it differs from edition 1 in exactly 2,738 cells, every Small PRP's `low_cost_home_ownership` 0 to NULL with its reason, and in nothing else; the live table equals edition 2. The compared columns are the five stock columns plus `rp_name`, `provider_type`, `rp_size_band`, `survey_status`, `publisher_la_code`, `la_name` and `null_reasons`; the five provenance columns (`edition`, `publication_date`, `source_url`, `source_file`, `release_page_url`) are stored per edition and are set on every live row of a period, but never decide whether a file is new. A same-content file adds a ledger row only, never an edition. A file with the bytes of the file the tip came from (by sha256 in the ledger) keeps the tip's provenance, however it was read (so a `--file --no-page` re-read does not record "not read").
 
 The live table moves only by inserting a **new stock date** (edition 1, with its ledger row, in one transaction) and by `refresh-latest --commit`, which copies the tip edition into the live rows of a period (and `loaded_at` from the edition). A reissued tool for a held stock date is stored as the next edition and waits for `refresh-latest`; if it adds or drops providers, `refresh-latest --accept-key-changes YYYY-MM-DD` is needed (the preview lists the keys).
 
@@ -148,6 +150,7 @@ Two kinds of stop. A **halt** (identity, header, value, reconciliation or geogra
 |---|---|
 | any (a halt: no run-log row) | identity, header, value, reconciliation or geography failure |
 | new stock date | fewer than 296 authorities; national total social stock moves more than 5% from the previous period, or supported housing and older people more than 10%; any authority's total moves more than 25% |
+| revised stock date, 0/NULL | any cell going from 0 to NULL or NULL to 0 against the tip (rule 1.10). Released only by a named, decided acknowledgement, `--acknowledge-flips NAME`, which covers exactly the cells it records in `ACKNOWLEDGED_FLIPS` (stock date, column, direction, reason and count); any other change, or any other count, is still rejected. One exists: `not-counted-lcho-2025` (2025-03-31, `low_cost_home_ownership` 0 to NULL with the not-counted reason, 2,738 cells; Scott, 2026-10-10) |
 | revised stock date | the national total of any stock column moves more than 1%; more than 30 authorities' totals change; any authority's total moves more than 10%; more than 5% of provider rows are added or removed; an authority of the tip missing from the file (a missing authority always stops). A reissued file that drops providers by 5% or less passes these checks and is stored as the next edition; `refresh-latest` then needs `--accept-key-changes PERIOD` before it reaches the live table, and the preview lists the keys |
 
 For scale, 2024 to 2025 moved the national total by +0.96%, supported housing by -1.0% and the largest authority by +10.0%.
@@ -164,7 +167,7 @@ python scripts/s23_rsh_stock_editions.py refresh-latest   # preview; --commit ap
 python scripts/s23_rsh_stock_editions_verify.py
 ```
 
-Other commands: `ddl`, `restore-edition YYYY-MM-DD N`, and the one-off `migrate-legacy FILE` (already run). `load` takes `--release Y1-Y2`, `--file PATH` (with `--no-page`), `--recheck YYYY-MM-DD` and `--allow-older-file`; every writing command previews unless `--commit` (or `--simulate`, which rolls back).
+Other commands: `ddl`, `restore-edition YYYY-MM-DD N`, and the one-off `migrate-legacy FILE` (already run). `load` takes `--release Y1-Y2`, `--file PATH` (with `--no-page`), `--recheck YYYY-MM-DD`, `--allow-older-file` and `--acknowledge-flips NAME`; every writing command previews unless `--commit` (or `--simulate`, which rolls back).
 
 **If S23 is ever wired into W1:** run `refresh-latest --commit` in the same session as `load --commit` and before any W1 run. `refresh-latest` copies the edition's time into the live `loaded_at`; if W1 ran in between, `refresh_map.py --check` would call the map current while it still showed the unrevised stock date. Today none of this applies, because the map does not read this table.
 
@@ -175,7 +178,7 @@ Other commands: `ddl`, `restore-edition YYYY-MM-DD N`, and the one-off `migrate-
 - **Treating the release page URL as stable.** It carries the years and changes annually.
 - **Treating `stock_date` as current.** The return is a snapshot at 31 March; publication follows about seven months later (28 October 2025 for the 2025 snapshot), so a figure is up to about nineteen months old before the next release.
 - **Comparing loaded totals to the published headline.** Unweighted against weighted.
-- **Reading a 0 in LCHO for a Small PRP as "owns none".**
+- **Reading a Small PRP's NULL LCHO as 0, or its total as including LCHO.** The publisher did not count it; the total it gave leaves it out.
 - **Treating a file name or link as evidence of which release a file is.** Read the cover and the Version History.
 
 ## History
