@@ -50,15 +50,21 @@ bodies (county councils, a police and crime commissioner, a mayoral combined
 authority) and the Police Force table are counted and listed, not stored.
 
 The withdrawn-only rule (WITHDRAWN_ONLY_NOT_SUPPORT, Scott 2026-10-10): an
-authority whose every EFS request on the pages was withdrawn is not in the EFS
-support list, so its rows are not stored (Bexley, Bournemouth, Christchurch
-and Poole, North Northamptonshire). It is a named rule with its evidence:
-a named authority with any request not withdrawn halts (the rule no longer
-holds), and an authority not named whose every request was withdrawn halts
-until it is named. Edition 1 'as loaded' keeps their rows as held; the
-editions stored by load do not carry them, and refresh-latest removes them
-from live only with --accept-key-changes YEAR. Withdrawn rows of an
-authority with support in another year are kept (status 'withdrawn').
+authority whose every EFS request on the pages was withdrawn, and which has
+no capitalisation direction listed, is not in the EFS support list, so its
+rows are not stored (Bournemouth, Christchurch and Poole; North
+Northamptonshire). It is a named rule with its evidence: a named authority
+with any request not withdrawn halts (the rule no longer holds), and an
+authority not named whose every request was withdrawn halts until it is
+named in the rule or in its 'kept' list. Bexley is in the 'kept' list (Scott,
+2026-10-10): its 2020-21 page lists a Bexley capitalisation direction and an
+amended one, a capitalisation direction is a form of EFS support, and those
+documents have not been read; its rows are stored as parsed (the withdrawn
+requests as status 'withdrawn', amount NULL). Edition 1 'as loaded' keeps
+the named authorities' rows as held; the editions stored by load do not
+carry them, and refresh-latest removes them from live only with
+--accept-key-changes YEAR. Withdrawn rows of an authority with support in
+another year are kept (status 'withdrawn').
 
 S.114 notices: there is no central register, so the input is the curated
 register data/reference/la_s114_notices.csv, read through the manual-file
@@ -235,21 +241,13 @@ CODE_RE = re.compile(r"E[0-9]{8}")
 WITHDRAWN = "Council provided with in-principle support but withdrew its request"
 WITHDRAWN_ONLY_NOT_SUPPORT = {
     "name": "WITHDRAWN_ONLY_NOT_SUPPORT",
-    "decided": ("Scott, 2026-10-10: the EFS flag is dropped for Bexley, "
+    "decided": ("Scott, 2026-10-10: the EFS flag is dropped for "
                 "Bournemouth, Christchurch and Poole and North "
                 "Northamptonshire because every EFS request they made was "
-                "withdrawn; a withdrawn request is not EFS support. Stored as "
-                "an additive edition; edition 1 keeps the rows as held."),
+                "withdrawn and no capitalisation direction is listed for "
+                "them; a withdrawn request is not EFS support. Stored as an "
+                "additive edition; edition 1 keeps the rows as held."),
     "codes": {
-        "E09000004": ("Bexley: the 2020-21 and 2021-22 pages say '" + WITHDRAWN
-                      + "'; Bexley is on no other year page. The 2020-21 "
-                      "page also lists 'Bexley capitalisation direction "
-                      "2020-21' and an amended one ('This capitalisation "
-                      "direction was amended in December 2024'; change note "
-                      "of 13 March 2025 'Added varied directions for: Bexley, "
-                      "Eastbourne, Luton, Nottingham, Peterborough and "
-                      "Wirral'); its table row still says the request was "
-                      "withdrawn (pages read 2026-10-10)."),
         "E06000058": ("Bournemouth, Christchurch and Poole: the 2022-23 page "
                       "says '" + WITHDRAWN + "'; it is on no other year page "
                       "and has no capitalisation direction listed (pages read "
@@ -258,6 +256,20 @@ WITHDRAWN_ONLY_NOT_SUPPORT = {
                       + WITHDRAWN + "'; it is on no other year page and has "
                       "no capitalisation direction listed (pages read "
                       "2026-10-10)."),
+    },
+    # authorities whose every request row is withdrawn but which the rule
+    # does not cover (their rows are stored as parsed), each with why
+    "kept": {
+        "E09000004": ("Bexley (kept, Scott 2026-10-10): the 2020-21 and "
+                      "2021-22 pages say '" + WITHDRAWN + "', but the 2020-21 "
+                      "page also lists 'Bexley capitalisation direction "
+                      "2020-21' and an amended one ('This capitalisation "
+                      "direction was amended in December 2024'; change note "
+                      "of 13 March 2025 'Added varied directions for: Bexley, "
+                      "Eastbourne, Luton, Nottingham, Peterborough and "
+                      "Wirral'). A capitalisation direction is a form of EFS "
+                      "support and the direction documents have not been "
+                      "read, so Bexley keeps its rows and its EFS flag."),
     },
 }
 
@@ -1071,6 +1083,11 @@ def apply_withdrawn_rule(by_period, held=None) -> tuple:
     (it needs a decision, then a name in the rule)."""
     rule = globals()["WITHDRAWN_ONLY_NOT_SUPPORT"]
     named = set(rule["codes"])
+    kept_codes = set(rule.get("kept") or ())
+    both = sorted(named & kept_codes)
+    if both:
+        raise ValueError(f"{rule['name']} names {both} both as dropped and "
+                         "as kept")
     allrecs = {}
     for y, recs in list((held or {}).items()) + list(by_period.items()):
         if y in by_period and recs is not by_period[y]:
@@ -1087,13 +1104,15 @@ def apply_withdrawn_rule(by_period, held=None) -> tuple:
                          "the rule no longer holds for it: take it to Scott "
                          "and change the rule")
     loose = sorted(c for c, v in allrecs.items() if c not in named
+                   and c not in kept_codes
                    and all(s == "withdrawn" for _, s in v))
     if loose:
         raise ValueError(f"{loose}: every EFS row is a withdrawn request "
                          f"({ {c: sorted(y for y, _ in allrecs[c]) for c in loose} }) "
                          f"but {rule['name']} does not name them; the EFS "
                          "flag for them is a decision for Scott: name them "
-                         "in the rule, with the page text as evidence")
+                         "in the rule (or its 'kept' list), with the page "
+                         "text as evidence")
     kept, dropped = {}, []
     for y, recs in by_period.items():
         keep = []
@@ -2397,6 +2416,9 @@ def _prepare_efs(args, cur, writing) -> Plan:
           + (", ".join(f"{c} {y}" for c, y, _ in dropped) or "none"))
     for c in sorted({c for c, _, _ in dropped}):
         print(f"  evidence {c}: {rule['codes'][c]}")
+    for c, why in sorted((rule.get("kept") or {}).items()):
+        if c in codes:
+            print(f"  not covered by the rule, stored as parsed: {why}")
     statements = other_year_statements(parsed)
     for s in statements:
         print(f"  statement on the {s['source_year']} page: {s['name']} "

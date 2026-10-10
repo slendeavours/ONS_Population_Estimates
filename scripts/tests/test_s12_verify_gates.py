@@ -186,6 +186,20 @@ class VerifyGates(unittest.TestCase):
         self.assertTrue(any(x.startswith("w1-read la_efs_support")
                             for x in lines))
 
+    def test_the_w1_read_efs_set_drops_only_bcp_and_north_northamptonshire(self):
+        # Scott, 2026-10-10: Bexley is kept; only E06000058 and E06000061
+        # leave the EFS set (the real note line is then rows=49 of 51)
+        self.assertEqual(v.RULE_CODES, frozenset({"E06000058", "E06000061"}))
+        self.assertNotIn("E09000004", v.RULE_CODES)
+        self.seed()
+        live = v.code_set(self.cur, E.live_table)
+        lines = {x.split(" lad24cd-set")[0]: x
+                 for x in v.note_lines_for(self.cur, E, S)
+                 if " lad24cd-set " in x}
+        self.assertEqual(lines["w1-read la_efs_support"],
+                         v.set_line("w1-read", v.EFS_T,
+                                    live - {"E06000058", "E06000061"}))
+
     def test_the_map_set_gate_needs_the_note(self):
         self.seed()
         ok, detail = v.real_map_sets(self.cur, E, S,

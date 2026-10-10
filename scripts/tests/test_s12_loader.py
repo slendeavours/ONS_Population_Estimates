@@ -93,8 +93,9 @@ def p26(updated=R2, croydon_note=None, **kw):
 
 
 def p21(updated="2025-03-13T17:20:32+00:00"):
-    return page("2021-22", [("Bexley", W), ("Croydon", "£50.0m"),
-                            ("Luton", W)],
+    return page("2021-22", [("Bexley", W),
+                            ("Bournemouth, Christchurch and Poole", W),
+                            ("Croydon", "£50.0m"), ("Luton", W)],
                 directions=("Croydon capitalisation direction 2021-22",),
                 updated=updated, history=[])
 
@@ -605,10 +606,13 @@ class MigrateBase(Fixture):
 
     def legacy(self, cur):
         """Seed the zz live tables as the n8n load left them (2021-22 with
-        Bexley's withdrawn request, 2025-26 as the first figures) and patch
+        withdrawn requests of Bexley, kept by Scott, and of Bournemouth,
+        Christchurch and Poole, under the withdrawn-only rule; 2025-26 as the
+        first figures) and patch
         the held-state constants to them."""
         seed_live_efs(cur, [
             ("E09000004", "2021-22", None, "withdrawn"),
+            ("E06000058", "2021-22", None, "withdrawn"),
             ("E09000008", "2021-22", Decimal("50.000"), "agreed-in-principle"),
             ("E06000032", "2021-22", None, "withdrawn"),
             ("E09000003", "2025-26", Decimal("55.700"), "agreed-in-principle"),
@@ -661,7 +665,7 @@ class Migrate(MigrateBase):
             self.assertEqual(count(cur, "zz_s12_efs_editions"), 0)
             text, logged = self.ok(cur, ["migrate-legacy", "--commit"])
             logged.assert_called_once()
-            for p, n in (("2021-22", 3), ("2025-26", 5)):
+            for p, n in (("2021-22", 4), ("2025-26", 5)):
                 self.assertEqual(editions(cur, p), [(1, None, n)])
                 self.assertEqual(core.rows_differing(cur, ZZ_EFS, p, 1), 0)
             for p in ("2017-18", "2020-21", "2021-22"):
@@ -780,32 +784,40 @@ class Migrate(MigrateBase):
                                     "2021-22", "--acknowledge", "2025-26",
                                     "--commit"])
             self.assertIn("withdrawn-only", text)
-            self.assertIn("E09000004", text)
-            # edition 1 keeps Bexley as held; edition 2 does not
+            self.assertIn("E06000058", text)
+            self.assertIn("not covered by the rule, stored as parsed: Bexley",
+                          text)
+            # edition 1 keeps BCP as held; edition 2 does not; Bexley stays
             self.assertEqual(editions(cur, "2021-22"),
-                             [(1, None, 3), (2, 1, 2)])
+                             [(1, None, 4), (2, 1, 3)])
             cur.execute("SELECT edition FROM public.zz_s12_efs_editions "
-                        "WHERE lad24cd = 'E09000004'")
+                        "WHERE lad24cd = 'E06000058'")
             self.assertEqual([r[0] for r in cur.fetchall()], [1])
+            cur.execute("SELECT amount_m, status FROM "
+                        "public.zz_s12_efs_editions WHERE lad24cd = "
+                        "'E09000004' AND edition = 2")
+            self.assertEqual(cur.fetchone(), (None, "withdrawn"))
             # Luton's withdrawn 2021-22 row stays: it had support in 2025-26
             cur.execute("SELECT status FROM public.zz_s12_efs_editions WHERE "
                         "lad24cd = 'E06000032' AND financial_year = '2021-22' "
                         "AND edition = 2")
             self.assertEqual(cur.fetchone()[0], "withdrawn")
-            self.assertEqual(live(cur, "E09000004", "status", "2021-22"),
+            self.assertEqual(live(cur, "E06000058", "status", "2021-22"),
                              "withdrawn")
             rc, text, _ = self.run_main(cur, ["refresh-latest", "--commit"])
             self.assertEqual(rc, "halt", text)
-            self.assertIn("removed 1 (E09000004)", text)
+            self.assertIn("removed 1 (E06000058)", text)
             self.ok(cur, ["refresh-latest", "--accept-key-changes", "2021-22",
                           "--commit"])
-            self.assertEqual(live(cur, "E09000004", "status", "2021-22"),
+            self.assertEqual(live(cur, "E06000058", "status", "2021-22"),
                              "absent")
+            self.assertEqual(live(cur, "E09000004", "status", "2021-22"),
+                             "withdrawn")
             cur.execute("SELECT DISTINCT lad24cd FROM public.zz_s12_efs_live "
                         "ORDER BY 1")
             self.assertEqual([r[0] for r in cur.fetchall()],
                              ["E06000032", "E08000032", "E09000003",
-                              "E09000008", "E09000022"])
+                              "E09000004", "E09000008", "E09000022"])
 
     def test_a_value_going_to_null_needs_a_named_flip(self):
         with rolled_back(self.conn) as cur:

@@ -45,7 +45,8 @@ Gates:
      editions (gate 14 semantics); the unevidenced count reported
                                                            (seeded + real)
   9  the map sets: distinct lad24cd in la_efs_support (the before-state set
-     less the three WITHDRAWN_ONLY_NOT_SUPPORT codes) and in la_s114_notices
+     less the two WITHDRAWN_ONLY_NOT_SUPPORT codes, E06000058 and
+     E06000061; Bexley E09000004 is kept) and in la_s114_notices
      equal the decision note's w1-read lines               (seeded + real)
  10  older-page guard: the rank is the page's own (never the file name); an
      older register halts; --allow-older-file is logged
@@ -79,10 +80,11 @@ lad24cd|amount_m|status|hra_only; S.114: lad24cd|notice_date|financial_year|
 reason|date_confirmed|attribution|successor_codes|attribution_note; rows
 sorted, LF-joined, NULL as ''; not the live source, which edition 1 does not
 carry). w1-before is the set of lad24cd with any EFS row before the
-migration; w1-read for EFS is that set less the three codes of
-WITHDRAWN_ONLY_NOT_SUPPORT (Scott's decision (a), 2026-10-10: the EFS flag is
-dropped for them), and for S.114 the set of lad24cd with any notice (not
-changed). The set hash is sha256 of the sorted codes, LF-joined.
+migration; w1-read for EFS is that set less the codes of
+WITHDRAWN_ONLY_NOT_SUPPORT (Scott, 2026-10-10: the EFS flag is dropped for
+Bournemouth, Christchurch and Poole E06000058 and North Northamptonshire
+E06000061; Bexley E09000004 is kept, in the rule's 'kept' list), and for
+S.114 the set of lad24cd with any notice (not changed). The set hash is sha256 of the sorted codes, LF-joined.
 `python scripts/s12_financial_stress_editions_verify.py --print-note-lines`
 prints them for the live tables as they stand (read-only); run it before
 migrate-legacy and paste the lines into the decision note.
@@ -1387,9 +1389,10 @@ def note_set_line(note, label, table):
 
 def real_map_sets(cur, efs=REAL_EFS, s114=REAL_S114, note=NOTE):
     """The map sets: the distinct lad24cd of the live EFS table hash to the
-    note's w1-read line (the before-state set less the three
-    WITHDRAWN_ONLY_NOT_SUPPORT codes), contain none of the three, and equal
-    edition 1's set less the three, whose own hash is the w1-before line; the
+    note's w1-read line (the before-state set less the
+    WITHDRAWN_ONLY_NOT_SUPPORT codes, E06000058 and E06000061), contain
+    neither, and equal edition 1's set less them, whose own hash is the
+    w1-before line (Bexley, in the rule's 'kept' list, stays); the
     distinct lad24cd of live S.114 hash to its w1-read line and equal edition
     1's set (a notice is never removed)."""
     _need(cur, efs, s114)
@@ -1632,8 +1635,9 @@ def gate_11_stop_conditions(cur):
          lambda e: e.site(tl.p25(), tl.p26(croydon_note="110.3")), load,
          "differs")
     case("withdrawn-only rule: a named authority now has support",
-         lambda e: e.site(tl.p25(extra_rows=[("Bexley", c_in.format("5.0"))]),
-                          tl.p21()), load, "no longer holds", halts=True)
+         lambda e: e.site(tl.p25(extra_rows=[(
+             "Bournemouth, Christchurch and Poole", c_in.format("5.0"))]),
+             tl.p21()), load, "no longer holds", halts=True)
     case("withdrawn-only rule: an unnamed authority is withdrawn only",
          lambda e: e.site(tl.p21()), load, "does not name them", halts=True)
     case("an unknown name",

@@ -684,26 +684,48 @@ class WithdrawnRule(unittest.TestCase):
     def test_named_withdrawn_only_authorities_are_dropped(self):
         w = ("Council provided with in-principle support but withdrew its "
              "request")
-        by = {"2020-21": self.recs("2020-21", [("Bexley", w), ("Peterborough", w),
+        bcp = "Bournemouth, Christchurch and Poole"
+        by = {"2020-21": self.recs("2020-21", [(bcp, w), ("Peterborough", w),
                                                ("Luton", "£35.0m (support "
                                                          "agreed in-principle)")]),
-              "2021-22": self.recs("2021-22", [("Bexley", w), ("Luton", w)]),
+              "2021-22": self.recs("2021-22", [(bcp, w), ("Luton", w)]),
+              "2024-25": self.recs("2024-25", [("North Northamptonshire",
+                                                w)]),
               "2026-27": self.recs("2026-27", [("Peterborough", "£5.68m "
                                                 "(support agreed "
                                                 "in-principle)")])}
         kept, dropped = m.apply_withdrawn_rule(by)
         self.assertEqual(sorted((c, y) for c, y, _ in dropped),
-                         [("E09000004", "2020-21"), ("E09000004", "2021-22")])
+                         [("E06000058", "2020-21"), ("E06000058", "2021-22"),
+                          ("E06000061", "2024-25")])
         self.assertEqual(sorted(r["lad24cd"] for r in kept["2020-21"]),
                          ["E06000031", "E06000032"])
         self.assertEqual([r["status"] for r in kept["2021-22"]], ["withdrawn"])
+        self.assertEqual(len(kept["2024-25"]), 0)
+
+    def test_bexley_is_kept_with_its_withdrawn_rows(self):
+        w = ("Council provided with in-principle support but withdrew its "
+             "request")
+        rule = m.WITHDRAWN_ONLY_NOT_SUPPORT
+        self.assertEqual(sorted(rule["codes"]), ["E06000058", "E06000061"])
+        self.assertIn("E09000004", rule["kept"])
+        self.assertIn("capitalisation direction", rule["kept"]["E09000004"])
+        self.assertNotIn("Bexley", rule["decided"])
+        by = {"2020-21": self.recs("2020-21", [("Bexley", w)]),
+              "2021-22": self.recs("2021-22", [("Bexley", w)])}
+        kept, dropped = m.apply_withdrawn_rule(by)
+        self.assertEqual(dropped, [])
+        self.assertEqual([(r["lad24cd"], r["amount_m"], r["status"])
+                          for y in ("2020-21", "2021-22") for r in kept[y]],
+                         [("E09000004", None, "withdrawn")] * 2)
 
     def test_a_named_authority_with_support_halts(self):
-        by = {"2020-21": self.recs("2020-21", [("Bexley", "£5.0m (support "
-                                                          "agreed in-principle)")])}
+        by = {"2020-21": self.recs("2020-21", [(
+            "Bournemouth, Christchurch and Poole",
+            "£5.0m (support agreed in-principle)")])}
         with self.assertRaises(ValueError) as cm:
             m.apply_withdrawn_rule(by)
-        self.assertIn("E09000004", str(cm.exception))
+        self.assertIn("E06000058", str(cm.exception))
 
     def test_an_unnamed_withdrawn_only_authority_halts(self):
         w = ("Council provided with in-principle support but withdrew its "
