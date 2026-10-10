@@ -229,7 +229,11 @@ class InsertColumns(unittest.TestCase):
 # real specs that opt in to whole_period_cols and editions-only columns by
 # design (the engine options were added for them); the "unchanged" tests
 # cover every other real spec, and WholePeriodOptIn checks these
-OPTED_IN = {"s23_rsh_stock_editions.SPEC"}
+OPTED_IN = {"s23_rsh_stock_editions.SPEC",
+            "s6_asylum_editions.SPEC_SUPPORT",
+            "s6_asylum_editions.SPEC_UNALLOCATED",
+            "s6_asylum_editions.SPEC_NON_ENGLAND",
+            "s6_asylum_editions.SPEC_GROUPS"}
 
 
 def real_specs(opted_in=True) -> dict:
@@ -262,6 +266,22 @@ class WholePeriodOptIn(unittest.TestCase):
         live_cols, _ = core._insert_cols(spec)
         self.assertFalse(set(spec.editions_only_cols) & set(live_cols))
         self.assertTrue(set(prov) <= set(live_cols))
+
+    def test_s6_opts_in_with_the_release_label(self):
+        """S6: live source_edition from the editions metadata column
+        release_label, whole-period; no editions-only data columns."""
+        specs = real_specs()
+        for name in ("SPEC_SUPPORT", "SPEC_UNALLOCATED", "SPEC_NON_ENGLAND",
+                     "SPEC_GROUPS"):
+            with self.subTest(spec=name):
+                spec = specs[f"s6_asylum_editions.{name}"]
+                self.assertEqual(spec.whole_period_cols, ("source_edition",))
+                self.assertEqual(spec.whole_period_pairs,
+                                 (("source_edition", "release_label"),))
+                self.assertEqual(spec.editions_only_cols, ())
+                live_cols, src = core._insert_cols(spec)
+                self.assertEqual(dict(zip(live_cols, src))["source_edition"],
+                                 "e.release_label")
 
 
 class WholePeriodValidation(unittest.TestCase):
