@@ -1369,6 +1369,21 @@ def code_set(cur, table, edition1=False):
     return {r[0] for r in cur.fetchall()}
 
 
+def named_removal_codes(cur, editions_table):
+    """The authorities whose every edition 1 notice is named in the loader's
+    S114_REMOVALS (a removal that leaves the authority with no notice, so its
+    s114_flag goes); a named removal of one of several notices loses none."""
+    named = {(c, d) for c, d in m.S114_REMOVALS}
+    if not named:
+        return set()
+    cur.execute(f"SELECT lad24cd, notice_date FROM public.{editions_table} "
+                "WHERE edition = 1")
+    keys = {}
+    for code, d in cur.fetchall():
+        keys.setdefault(code, set()).add((code, d.isoformat()))
+    return {c for c, ks in keys.items() if ks <= named}
+
+
 def set_line(label, table, codes):
     return (f"{label} {table} lad24cd-set rows={len(codes)} "
             f"{hash_fields(set_sha(codes))}")
@@ -1394,7 +1409,8 @@ def real_map_sets(cur, efs=REAL_EFS, s114=REAL_S114, note=NOTE):
     neither, and equal edition 1's set less them, whose own hash is the
     w1-before line (Bexley, in the rule's 'kept' list, stays); the
     distinct lad24cd of live S.114 hash to its w1-read line and equal edition
-    1's set (a notice is never removed)."""
+    1's set less the authorities whose only notices are named S114_REMOVALS
+    (a notice is otherwise never removed)."""
     _need(cur, efs, s114)
     if not Path(note).exists():
         return False, f"decision note {Path(note).name} not written"
@@ -1403,6 +1419,7 @@ def real_map_sets(cur, efs=REAL_EFS, s114=REAL_S114, note=NOTE):
     ed1 = code_set(cur, efs.editions_table, True)
     s_live = code_set(cur, s114.live_table)
     s_ed1 = code_set(cur, s114.editions_table, True)
+    s_expect = s_ed1 - named_removal_codes(cur, s114.editions_table)
     for label, table, codes in (
             ("w1-before", EFS_T, ed1), ("w1-read", EFS_T, live),
             ("w1-read", S114_T, s_live)):
@@ -1423,10 +1440,10 @@ def real_map_sets(cur, efs=REAL_EFS, s114=REAL_S114, note=NOTE):
         bad.append(f"live EFS codes differ from edition 1 less the rule "
                    f"codes: live-only {sorted(live - (ed1 - RULE_CODES))}, "
                    f"missing {sorted((ed1 - RULE_CODES) - live)}")
-    if s_live != s_ed1:
-        bad.append(f"live S.114 codes differ from edition 1: live-only "
-                   f"{sorted(s_live - s_ed1)}, missing "
-                   f"{sorted(s_ed1 - s_live)}")
+    if s_live != s_expect:
+        bad.append(f"live S.114 codes differ from edition 1 less the named "
+                   f"removals: live-only {sorted(s_live - s_expect)}, missing "
+                   f"{sorted(s_expect - s_live)}")
     return not bad, "; ".join(bad[:3]) if bad else (
         f"live la_efs_support has {len(live)} authorities with a row (edition "
         f"1 {len(ed1)} less {len(RULE_CODES)} under the rule) and "

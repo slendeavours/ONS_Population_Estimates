@@ -319,6 +319,8 @@ class Fixture(unittest.TestCase):
                 mock.patch.object(m, "PAGE_ROOTS", (self.root,)), \
                 mock.patch.object(m, "S114_ROOTS", (self.root,)), \
                 mock.patch.object(m, "S114_FILE", self.register), \
+                mock.patch.object(m, "S114_REMOVALS",
+                                  getattr(self, "removals", {})), \
                 mock.patch.object(m, "log_run") as logged, \
                 contextlib.redirect_stdout(out):
             try:
@@ -931,6 +933,25 @@ class S114Load(MigrateBase):
             self.assertIn("never removes", text)
             self.assertEqual(editions(cur, "2021-22", "zz_s12_s114_editions"),
                              [(1, None, 1)])
+
+    def test_a_named_removal_is_listed_and_an_unnamed_one_is_hard(self):
+        import datetime as dt
+        base = {"reason": "x", "date_confirmed": "exact",
+                "attribution": "direct", "successor_codes": None,
+                "attribution_note": None, "evidence_url": None,
+                "evidence_title": None, "checked_on": None}
+        a = dict(base, lad24cd="E09000008", notice_date=dt.date(2022, 1, 1))
+        b = dict(base, lad24cd="E09000008", notice_date=dt.date(2022, 5, 1))
+        with mock.patch.object(m, "S114_REMOVALS", {}):
+            hard, _, _ = m.s114_period_problems([b], [a, b], kind="revised")
+        self.assertTrue(hard)
+        with mock.patch.object(m, "S114_REMOVALS", {
+                ("E09000008", "2022-01-01"): {"decided": "d",
+                                              "searched": "s"}}):
+            hard, _, listed = m.s114_period_problems([b], [a, b],
+                                                     kind="revised")
+        self.assertFalse(hard)
+        self.assertTrue(any("named removal E09000008" in x for x in listed))
 
     def test_a_date_correction_is_listed_and_needs_accept_key_changes(self):
         with rolled_back(self.conn) as cur:

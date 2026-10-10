@@ -56,7 +56,7 @@ before-state la_s114_notices 2023-24 rows=3 sha256-first32=04e0bdb3d1a2c62d282aa
 before-state la_s114_notices 2024-25 rows=1 sha256-first32=544be56f1a1bb8bec4687cb4c7582c83 sha256-last32=40b7fdd3227aef61fa9d5762b9a2378c
 w1-before la_efs_support lad24cd-set rows=51 sha256-first32=5c77d2ae27f8569a6d7fa9d28d258732 sha256-last32=0945a7c78631007ed2e81ea3fd7d76be
 w1-read la_efs_support lad24cd-set rows=49 sha256-first32=68660011660571d6ae84ce98c7a522b9 sha256-last32=f8ef0624e759d337fed31994a31ea7f0
-w1-read la_s114_notices lad24cd-set rows=11 sha256-first32=0f73bd85f0e758ea2edca2fdf3f8539e sha256-last32=9ebda63bd1c7307ba56b01db4c20719b
+w1-read la_s114_notices lad24cd-set rows=10 sha256-first32=b8b3f79595de90a09f49db56ac666c86 sha256-last32=6c428cdf500d4638a288f9041100cbea
 
 ## How the tables came to hold what they hold (checked 2026-10-10 against the database, the run log and the docs)
 
@@ -218,3 +218,84 @@ From `ONS_Population_Estimates`:
   `refresh-latest --accept-key-changes 2022-23 --accept-key-changes 2024-25` (and remove the two codes from
   `WITHDRAWN_ONLY_NOT_SUPPORT` in the loader before the next page load, or the next load will drop them again).
 - The `loaded_at` of the 52 refreshed rows is not put back to March by a restore; the March values are in edition 1.
+
+## 2026-10-10 (later): S.114 evidence, and two named removals
+
+Manual research, done on 2026-10-10 by web search and by opening the pages (a page that could not be opened is not counted
+as evidence). Primary source first: the council's own section 114 report, the meeting papers that received it, or the
+council's own statement. Wikipedia, the IfG explainer and similar summaries were read but are not evidence. The register
+`data/reference/la_s114_notices.csv` is now the 12-column form with `register_as_at,2026-10-10`; 13 notices, all with
+`evidence_url`, `evidence_title` and `checked_on` 2026-10-10 (unevidenced: 0 of 13). The nine held columns are as held, except
+the three date corrections below.
+
+### The 15 notices
+
+| Council | Notice | Evidence | Kind | Date |
+|---|---|---|---|---|
+| Hillingdon | 2000-07-01 (month only) | none | removed, see below | |
+| Hackney | 2000-10-17 | LGC, 19 Oct 2000 | press report quoting the council's managing director and the treasurer's report; no council document found | as held (the day is not stated in the report) |
+| Northamptonshire | 2018-02-02 | Local Government Lawyer, 5 Feb 2018 | press report quoting the council's statement; no council document found. The inspector's Best Value Inspection report (gov.uk) also gives 2 February 2018 | as held |
+| Northamptonshire | 2018-07 (month only) | Local Government Lawyer, 24 Jul 2018 | press report quoting the council leader; no council document found | still month only (the report is dated 24 July; the day of issue is not stated) |
+| Croydon | 2020-11-11 | Croydon's own second report, 2 Dec 2020 (para 1.3 gives 11 Nov 2020) | council document | as held |
+| Slough | 2021-07-02 | the s.114 report itself, 2 Jul 2021 | council document | as held |
+| Nottingham | 2021-12 (month only) | council agenda 4 Jan 2022: reports "dated 15th December 2021" | council meeting papers | corrected to 2021-12-15, exact |
+| Croydon | 2022-01-01 (month only) | none | removed, see below | |
+| Northumberland | 2022-05 (month only) | council minutes system, County Council 8 Jun 2022: report issued 23 May 2022 | council meeting papers | corrected to 2022-05-23, exact |
+| Croydon | 2022-11-22 | the s.114 notice (Appendix 1, Council 12 Dec 2022) | council document | as held |
+| Thurrock | 2022-12-19 | the s.114 report (timetable: notice 19 Dec 2022) | council document | as held |
+| Woking | 2023-06-07 | council news, 7 Jun 2023 | the council's own statement; the report itself not located | as held |
+| Birmingham | 2023-09-05 | the s.114 report, date of report 5 Sep 2023 | council document | as held |
+| Nottingham | 2023-11-29 | the s.114(3) report, date of report 29 Nov 2023 | council document | as held |
+| Barnet | 2025-01 (month only) | joint s5 / s114(2)(a) report to Full Council 28 Jan 2025, "Date of Report 20th January 2025" | council meeting papers | corrected to 2025-01-20, exact |
+
+Notes. Northumberland keeps `financial_year` 2021-22 although 23 May 2022 falls in 2022-23 (the loader prints a warning). The
+loader pairs a date correction only inside one year; a move to 2022-23 would be a removal from one year and an addition to
+another. The held value is kept for Scott to decide. Croydon's second 2020 notice (2 December 2020) is a real notice in the
+council's own papers but is not in the register; it was not added (the flag is unchanged), for Scott to decide. Searches that
+needed more than one try: Hackney (the Public Finance article of 19 Oct 2000 could not be opened, it sits behind a bot check
+which was not bypassed; the LGC archive page of the same date could be read), Northamptonshire (the county council's own site
+and committee papers no longer exist; searches of the successor councils' sites and gov.uk found only the inspector's report
+and the commissioners' reports), Woking (the report itself was not found, only the news statement).
+
+### Unsupported notices removed by Scott's decision
+
+Scott's decision of 2026-10-10 (restated twice): a notice that cannot be backed by a primary source, nor by a council
+statement or a press report quoting the council, is removed, as a named and listed step. Both rows stay in edition 1 of
+`la_s114_notices_editions`; edition 2 omits them; `S114_REMOVALS` in the loader names them with what was searched.
+
+1. **Hillingdon, E09000017, 2000-07-01 ("Overspend", month only).** Searches run: (a) web search for a Hillingdon section 114
+   notice in 2000 with the overspend wording; (b) a search for the borough treasurer's report, July 2000; (c) a search of the
+   Hillingdon committee papers site (modgov.hillingdon.gov.uk) and hillingdon.gov.uk with the same terms (only 2020s papers
+   returned: the current finance crisis and the "not minded to issue" statements of 2025); (d) the LGC archive by site filter
+   and by "Hillingdon" with "treasurer" and "s114" (only the Hackney article of 19 Oct 2000 returned); (e) the Public Finance
+   archive by site filter (an October 2000 article about Hackney was returned; it could not be opened, so what it says about
+   Hillingdon is not used); (f) Hansard 2000-2001 through the Parliament API, searches "Hillingdon" with "section 114",
+   "treasurer", "overspend" and "financial" (no mention of a notice; one debate on Hillingdon in March 2001 was read and does
+   not mention it); (g) searches for BBC and local press (Uxbridge Gazette) coverage (nothing). What does name it: Wikipedia's
+   list (5 July 2000) and the IfG explainer ("Hillingdon and Hackney councils were the first and second to do so, in 2000"),
+   both secondary. The notice may well be real; the finding is only that no primary source or council statement could be found
+   or opened. To bring it back once a source is found: restore edition 1 for 2000-01 (restore-edition), or add the row to the
+   register with its evidence and load, then `refresh-latest --accept-key-changes 2000-01`, and take E09000017 out of
+   `S114_REMOVALS`.
+2. **Croydon, E09000008, 2022-01-01 ("Unlawful expenditure", month only).** Searches run: (a) web search for the Croydon
+   notices (found the 11 November 2020 one, the 2020 row); (b) the council's own pages: the s114 page, the newsroom and the
+   committee papers system (the 12 Dec 2022 Council papers and the 22 Nov 2022 notice, which says "the original S114(3) notices
+   were issued in 2020"; the 2 Dec 2020 report; the March 2021 revocation report); (c) a site-filtered search of croydon.gov.uk
+   for "section 114 notice January 2022" (the only January 2022 item is the auditor's Report in the Public Interest on Fairfield
+   Halls, 26 Jan 2022, which is not a section 114 report); (d) searches of LGC, Public Finance, Local Government Lawyer and
+   LocalGov for a Croydon s114(2) / unlawful-expenditure report in 2022 (none; the 2022 notice is the third, 22 Nov 2022, under
+   s114(3)); (e) the IfG explainer, which counts three Croydon notices (11 Nov 2020, 2 Dec 2020, 22 Nov 2022). The row looks
+   like a mislabel of another notice. Croydon keeps its other three rows, so its flag is unchanged.
+
+Effect on the map. The distinct `lad24cd` in `la_s114_notices` goes from 11 to 10: Hillingdon (E09000017) loses its
+`s114_flag`; Croydon keeps it (three other notices). The `w1-read la_s114_notices` line above was updated deliberately to the
+10-code set; gate 9 now reads edition 1's set less the authorities whose every notice is a named removal. The map and W1 were
+not run; the live tables change only through the loader.
+
+### What was written
+
+`load --only s114` (preview read in full, `--simulate`, `--commit`): edition 2 for all 8 years, 18 rows, register_as_at
+2026-10-10. `refresh-latest --accept-key-changes 2000-01 --accept-key-changes 2021-22 --accept-key-changes 2024-25`
+(preview, `--simulate`, `--commit`): 3 keys inserted, 5 deleted (the three date corrections, Hillingdon, Croydon 2022-01-01),
+before/after guard passed. `status`: 0 notices without evidence. W1, `refresh_map.py`, the export, `push.py` and `git push` were
+not run.

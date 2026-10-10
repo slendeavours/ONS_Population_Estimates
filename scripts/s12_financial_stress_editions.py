@@ -294,10 +294,34 @@ ACKNOWLEDGED_FLIPS = {
     },
 }
 
-# Named S.114 removals (none). A removal changes s114_flag, so it is Scott's
+# Named S.114 removals (the two listed in the decision note, 2026-10-10). A removal changes s114_flag, so it is Scott's
 # decision, made as a listed step with what was searched:
 # {(lad24cd, 'yyyy-mm-dd'): {'decided': ..., 'searched': ...}}.
-S114_REMOVALS = {}
+S114_REMOVALS = {
+    ("E09000017", "2000-07-01"): {
+        "decided": "Scott, 2026-10-10 (unsupported notices are removed as a "
+                   "named, listed step)",
+        "searched": "Hillingdon 2000: no council document, council statement "
+                    "or readable press report found. Searched 2026-10-10: "
+                    "web searches for the treasurer's s114 report and "
+                    "council statement, the Hillingdon committee papers "
+                    "site and council website, the LGC archive, the Public "
+                    "Finance archive (its page could not be opened), "
+                    "Hansard 2000-01 (no mention). Only Wikipedia and the "
+                    "IfG explainer (both secondary) name it. See the "
+                    "decision note, 'Unsupported notices removed'."},
+    ("E09000008", "2022-01-01"): {
+        "decided": "Scott, 2026-10-10 (unsupported notices are removed as a "
+                   "named, listed step)",
+        "searched": "Croydon January 2022 'unlawful expenditure': no such "
+                    "notice found. Searched 2026-10-10: the council's own "
+                    "s114 pages and newsroom, the council committee papers "
+                    "(the 22 November 2022 notice refers only to the 2020 "
+                    "notices before it), LGC, Public Finance, Local "
+                    "Government Lawyer, the IfG explainer (Croydon issued "
+                    "three: 11 November 2020, 2 December 2020, 22 "
+                    "November 2022). See the decision note."},
+}
 
 # ---------------------------------------------------------------------------
 # The held state (migrate-legacy preconditions), surveyed 2026-10-10
