@@ -116,8 +116,9 @@ Furness (E06000064), North Yorkshire (E06000065), Somerset (E06000066), East Suf
 After the refresh the live table has 9 NULL `households_on_register` (was 5, plus the four Cumberland years), no zero
 (was 1: Cumberland 2015, now NULL), 341 NULL `jointly_managed_register` (was 312), and 15 NULL
 `reasonable_preference` (was 3,256). 3,241 rows now carry `loaded_at` 2026-10-10 (edition 2's); 15 keep 2026-04-01 (the
-`cc5a`-`[x]` rows: no value changed on the refresh). `jointly_managed_register` is the publisher's `cc2a`, "housing register
-is jointly managed with other authorities"; the 2024-25 ODS has no `cc2a` column or definition, so the loader reads the CSV's
+`cc5a`-`[x]` rows: no value changed on the refresh). `jointly_managed_register` holds the publisher's `cc2a`, the Localism Act criteria question (the 2023-24 data dictionary:
+"Have you changed your housing register (or waiting list) criteria since last year in light of the changes in the Localism
+Act 2011?"); it is not a jointly-managed flag, whatever the column name suggests. The 2024-25 ODS has no `cc2a` column or definition, so the loader reads the CSV's
 column and, where the ODS lacks it, requires every `cc2a` in the newest year to be `[z]` (they are).
 
 **Not changed by the load: 2025 `households_on_register`** (0 differences for 296 of 296) and the England 2025 sum,
@@ -137,8 +138,9 @@ column and, where the ODS lacks it, requires every `cc2a` in the newest year to 
   Cumberland's `reasonable_preference` for 2015 to 2018 (3,110 in 2015, for example); Telford's `cc5a` is 0 in 2015 and
   from 2021 to 2024 (49 in 2016 to 2020), and the 2025 value is `[x]`. If the same reading applies, those cells would be
   NULL (and Cumberland's `cc5a` sums NULL for 2015 to 2018). Not done: it would be a second correction, with its own
-  edition. The other `cc5a` zeros (24 cells in edition 2 in all, 5 of them Telford and 4 of them Milton Keynes
-  E06000042 2015 to 2018, the rest single cells or short runs on single-code authorities) are published zeros.
+  edition. In edition 2 the `cc5a` zeros number 24 cells in all: 5 are Telford's, none is Allerdale's own (its four zeros
+  sit inside Cumberland's 2015 to 2018 sums), and the other 19 (4 of them Milton Keynes E06000042 2015 to 2018, the rest
+  single cells or short runs on single-code authorities) are published zeros.
 - **Observations from the files, not acted on:** the publisher's 2021 and 2022 figures for Hartlepool (2,744 / 530) are
   identical, and so are Redcar and Cleveland's (2,926 / 708); in `la_code_lookup` the note on E07000246 reads
   "Mendip -> Somerset" although E07000246 is Somerset West and Taunton in the national list (the target Somerset is right).
@@ -189,7 +191,7 @@ From `ONS_Population_Estimates`:
    `python scripts/s13_lahs_editions_verify.py` (exit 0). **Run `refresh-latest` before W1:** it copies the edition's
    `loaded_at` onto the live rows, so a W1 run made before it would not carry the release, and `refresh_map.py --check`
    is the safeguard. S13 is a W1 input (national aggregates and LA signals read the newest year).
-3. The June revision (the publisher revises the previous year's return each June; 2024-25 changed on 25 June 2026): a file
+3. The June revision (the publisher revises the previous year's return each June (the open data page's change history records a scheduled June update every year 2021 to 2026; see the source note); 2024-25 changed on 25 June 2026): a file
    restating held years is compared per year; unchanged years are logged only. A revised year is REJECTED unless the
    preview is read and the year named with `--acknowledge YYYY` (England total moving over 2%, or more than 20 authorities
    changing). A 0-to-NULL or NULL-to-0 change is never released by `--acknowledge`; it needs a named, decided correction.

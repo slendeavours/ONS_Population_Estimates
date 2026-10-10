@@ -60,7 +60,7 @@ None of these was fixed by it.
 
 The two zero rules in `scripts/s13_lahs_editions.py` cover households on the register (`cc1a`) only. `cc5a`
 (`reasonable_preference`) is also 0 for Allerdale 2014-15 to 2017-18, which sums as 0 into Cumberland's figure for 2015 to 2018, and
-for Telford and Wrekin in 2014-15 and 2020-21 to 2023-24; 24 cells of edition 2 are 0 in all. They are stored as published. If the
+for Telford and Wrekin in 2014-15 and 2020-21 to 2023-24; 24 cells of edition 2 are 0 in all: Telford accounts for 5, Allerdale for none of its own (its four zeros are inside Cumberland's sums), and the other 19 are on single-code authorities. They are stored as published. If the
 same reading applies they would be NULL, which would be a second named correction with its own edition. Not done; for Scott.
 See [2026-10-10-s13-editions-first-load.md](2026-10-10-s13-editions-first-load.md).
 

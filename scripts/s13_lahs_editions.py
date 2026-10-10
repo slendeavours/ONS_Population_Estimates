@@ -241,10 +241,23 @@ DEFINITIONS = {
              "reasonable preference"),
 }
 EXPECTED_AREAS = 296
-# When the next first release is expected: data, not a claim. The 2024-25
-# ODS Cover says 'Next Update November 2026 to February 2027'; from 1 March
-# 2027 an open data file still ending in 2024-25 is warned about.
-EXPECTED_RELEASES = {"2025-26": date(2027, 3, 1)}
+# When the next first release is expected. The publisher's stated cadence is
+# annual: the 2024-25 ODS Cover says 'Next Update November 2026 to February
+# 2027' for 2025-26, so the year ending March Y+1 is overdue from 1 March of
+# Y+2, derived from the newest year the file holds, so it works every cycle.
+# EXPECTED_RELEASES holds a date the publisher has announced, as data that
+# overrides the derived one: {"YYYY-YY": the date the warning starts}.
+EXPECTED_RELEASES = {}
+
+
+def expected_next_release(newest_label, announced=None) -> tuple:
+    """(label, date from which it is overdue) of the year after
+    `newest_label` ('2024-25' gives '2025-26'): the announced date if held,
+    else 1 March of the year after the year ending would be reported."""
+    end = label_year(newest_label)
+    lb = f"{end}-{(end + 1) % 100:02d}"
+    table = EXPECTED_RELEASES if announced is None else announced
+    return lb, table.get(lb, date(end + 2, 3, 1))
 
 # ---------------------------------------------------------------------------
 # The two zero rules (the only places a published 0 becomes NULL)
@@ -600,14 +613,15 @@ def discovery_note(newest_label, held_periods, today=None) -> list:
     out = [f"the open data file on the page runs to {newest_label}, which is "
            "already held; no newer year is listed on the page"]
     today = today or _today()
-    for lb, when in sorted(EXPECTED_RELEASES.items()):
-        if lb > newest_label and today >= when:
-            out.append(f"WARNING: LAHS {lb} was expected by {when:%d %B %Y} "
-                       "(the held ODS's 'Next Update') and today is "
-                       f"{today:%d %B %Y}, but the open data file still ends "
-                       f"in {newest_label}. It may be late, or discovery may "
-                       "be missing it (check the GOV.UK pages by hand; --file "
-                       "PATH --ods PATH loads downloaded files)")
+    lb, when = expected_next_release(newest_label)
+    if today >= when:
+        out.append(f"WARNING: LAHS {lb} was expected by {when:%d %B %Y} "
+                   "(the publisher's annual cadence, or its announced "
+                   "date) and today is "
+                   f"{today:%d %B %Y}, but the open data file still ends "
+                   f"in {newest_label}. It may be late, or discovery may "
+                   "be missing it (check the GOV.UK pages by hand; --file "
+                   "PATH --ods PATH loads downloaded files)")
     return out
 
 

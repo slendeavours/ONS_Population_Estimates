@@ -441,6 +441,21 @@ class Discovery(unittest.TestCase):
         self.assertEqual(m.discovery_note("2025-26", ["2025"]), [])
         self.assertTrue(m.change_history(page))
 
+    def test_the_overdue_warning_works_for_every_cycle(self):
+        self.assertEqual(m.expected_next_release("2024-25"),
+                         ("2025-26", date(2027, 3, 1)))
+        self.assertEqual(m.expected_next_release("2025-26"),
+                         ("2026-27", date(2028, 3, 1)))
+        self.assertEqual(m.expected_next_release("2099-00"),
+                         ("2100-01", date(2102, 3, 1)))
+        lines = m.discovery_note("2025-26", ["2026"], today=date(2028, 2, 28))
+        self.assertFalse(any("WARNING" in x for x in lines))
+        lines = m.discovery_note("2025-26", ["2026"], today=date(2028, 3, 1))
+        self.assertTrue(any("WARNING" in x and "2026-27" in x for x in lines))
+        self.assertEqual(m.expected_next_release(
+            "2024-25", {"2025-26": date(2026, 12, 1)}),
+            ("2025-26", date(2026, 12, 1)))
+
 
 # ---------------------------------------------------------------------------
 # Labels and cells

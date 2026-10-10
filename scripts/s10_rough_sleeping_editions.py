@@ -209,11 +209,24 @@ TABLES_RE = re.compile(r"Rough sleeping snapshot in England: autumn "
                        r"([0-9]{4}) - tables")
 ACCESSIBLE_RE = re.compile(r"Rough sleeping snapshot in England: autumn "
                            r"([0-9]{4}) - tables \(accessible\)")
-# When the next release is expected: data, not a claim. The autumn 2025
-# file's Cover says 'Next Release: Winter 2026/2027'; winter ends with
-# February, so from 1 March 2027 a missing autumn 2026 release is warned
-# about. {year of the release: the date the warning starts}.
-EXPECTED_RELEASES = {2026: date(2027, 3, 1)}
+# When the next release is expected. The publisher's stated cadence is annual:
+# the autumn Y snapshot is published the following winter (the autumn 2025
+# Cover says 'Next Release: Winter 2026/2027' for autumn 2026), and winter ends
+# with February. So the autumn Y+1 release is overdue from 1 March of Y+2,
+# derived from the newest release listed, so it works every cycle.
+# EXPECTED_RELEASES holds a date the publisher has announced, as data that
+# overrides the derived one: {year of the release: the date the warning starts}.
+EXPECTED_RELEASES = {}
+
+
+def expected_next_release(newest_year, announced=None) -> tuple:
+    """(year, date from which it is overdue) of the release after
+    `newest_year`: the announced date if one is held for that year, else 1
+    March of the year after it would be published (cadence: annual, winter
+    publication)."""
+    nxt = int(newest_year) + 1
+    table = EXPECTED_RELEASES if announced is None else announced
+    return nxt, table.get(nxt, date(nxt + 1, 3, 1))
 
 # ---------------------------------------------------------------------------
 # The held state (migrate-legacy preconditions), surveyed 2026-10-10
@@ -434,14 +447,15 @@ def discovery_note(collection_json, held_periods, today=None) -> list:
     out = [f"the newest release the collection lists is autumn {nl}, which "
            "is already held; no newer release is listed in the collection"]
     today = today or _today()
-    for y, when in sorted(EXPECTED_RELEASES.items()):
-        if y > nl and today >= when:
-            out.append(f"WARNING: the autumn {y} release was expected by "
-                       f"{when:%d %B %Y} (the held file's 'Next Release') and "
-                       f"today is {today:%d %B %Y}, but the collection does "
-                       "not list it. It may be late, or discovery may be "
-                       "missing it (check the GOV.UK collection page by hand; "
-                       "--file PATH loads a downloaded file)")
+    y, when = expected_next_release(nl)
+    if today >= when:
+        out.append(f"WARNING: the autumn {y} release was expected by "
+                   f"{when:%d %B %Y} (the publisher's annual cadence, "
+                   "winter publication, or its announced date) and "
+                   f"today is {today:%d %B %Y}, but the collection does "
+                   "not list it. It may be late, or discovery may be "
+                   "missing it (check the GOV.UK collection page by hand; "
+                   "--file PATH loads a downloaded file)")
     return out
 
 

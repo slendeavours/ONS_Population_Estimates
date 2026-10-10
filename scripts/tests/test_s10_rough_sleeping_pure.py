@@ -370,6 +370,22 @@ class Discovery(unittest.TestCase):
                                  today=date(2027, 2, 27))
         self.assertFalse(any(x.startswith("WARNING") for x in lines))
 
+    def test_the_overdue_warning_works_for_every_cycle(self):
+        # autumn 2026 held: autumn 2027 is overdue from 1 March 2028
+        # (published the winter after the autumn).
+        c = collection(2026)
+        held = ["2026"]
+        lines = m.discovery_note(c, held, today=date(2028, 2, 28))
+        self.assertFalse(any(x.startswith("WARNING") for x in lines))
+        lines = m.discovery_note(c, held, today=date(2028, 3, 1))
+        self.assertTrue(any(x.startswith("WARNING") and "autumn 2027" in x
+                            for x in lines), lines)
+        self.assertEqual(m.expected_next_release(2030),
+                         (2031, date(2032, 3, 1)))
+        # an announced date, when one is held, overrides the derived one
+        self.assertEqual(m.expected_next_release(2025, {2026: date(2027, 1, 5)}),
+                         (2026, date(2027, 1, 5)))
+
 
 # ---------------------------------------------------------------------------
 # Reading the file

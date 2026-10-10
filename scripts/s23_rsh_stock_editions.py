@@ -374,7 +374,18 @@ DOC_TITLE_RE = re.compile(r"Registered provider social housing stock and rents "
 SERIES_RE = re.compile(r"social housing|stock and rents|stock.*rents?", re.I)
 # The releases the publisher has announced but the collection may not yet list:
 # {(y1, y2): date}. Data, not a claim: 'announced for 27 October 2026, 09:30'.
+# The release is annual (stock at 31 March y2, published the autumn of y2), so
+# when no date is announced the next release is overdue from 1 December of y2,
+# derived from the newest release listed; an announced date overrides that.
 ANNOUNCED_RELEASES = {(2025, 2026): date(2026, 10, 27)}
+
+
+def expected_next_release(newest, announced=None) -> tuple:
+    """((y1, y2), date from which it is overdue) of the release after
+    `newest` = (y1, y2)."""
+    nxt = (int(newest[0]) + 1, int(newest[1]) + 1)
+    table = ANNOUNCED_RELEASES if announced is None else announced
+    return nxt, table.get(nxt, date(nxt[1], 12, 1))
 TOOL_TITLE = "Registered providers look-up tool"
 
 
@@ -483,14 +494,15 @@ def discovery_note(collection_json, held_periods, today=None) -> list:
            f"(stock date {stock}), which is already held; no newer release "
            "is listed in the collection"]
     today = today or _today()
-    for (y1, y2), when in sorted(ANNOUNCED_RELEASES.items()):
-        if y2 > nl[1] and today >= when:
-            out.append(f"WARNING: the {y1} to {y2} release was announced for "
-                       f"{when:%d %B %Y} and today is {today:%d %B %Y}, but "
-                       "the collection does not list it. It may not be "
-                       "published yet, or discovery may be missing it (check "
-                       "the GOV.UK collection page by hand; --file PATH "
-                       "loads a downloaded tool)")
+    (y1, y2), when = expected_next_release(nl)
+    if today >= when:
+        out.append(f"WARNING: the {y1} to {y2} release was expected by "
+                   f"{when:%d %B %Y} (announced, or the annual cadence) "
+                   f"and today is {today:%d %B %Y}, but "
+                   "the collection does not list it. It may not be "
+                   "published yet, or discovery may be missing it (check "
+                   "the GOV.UK collection page by hand; --file PATH "
+                   "loads a downloaded tool)")
     return out
 
 

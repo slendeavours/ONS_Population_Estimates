@@ -335,6 +335,18 @@ class Discovery(unittest.TestCase):
         self.assertEqual(m.discovery_note(c2, ["2025-03-31"],
                                           today=date(2026, 11, 3)), [])
 
+    def test_the_overdue_warning_works_for_every_cycle(self):
+        self.assertEqual(m.expected_next_release((2025, 2026)),
+                         ((2026, 2027), date(2027, 12, 1)))
+        self.assertEqual(m.expected_next_release((2024, 2025)),
+                         ((2025, 2026), date(2026, 10, 27)))
+        c = collection(TITLE.format(2025, 2026))
+        out = m.discovery_note(c, ["2026-03-31"], today=date(2027, 11, 30))
+        self.assertEqual(len(out), 1, out)
+        out = m.discovery_note(c, ["2026-03-31"], today=date(2027, 12, 1))
+        self.assertEqual(len(out), 2, out)
+        self.assertIn("2026 to 2027", out[1])
+
     def test_the_look_up_tool_attachment(self):
         page = release_page(2024, 2025, [
             ("Registered provider social housing in England (PDF)", "a.pdf"),

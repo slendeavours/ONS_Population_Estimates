@@ -39,13 +39,14 @@ After the migration the live table is untouched, so both hashes of the live tabl
   between 2026-04-01 and 2026-08-16 (other numbers are missing from the table). The live table held the 2,443 values
   from 2026-03-26 until 2026-08-19, so every run in that span read England as 2,443 against a published 4,793;
   `docs/METHODOLOGY.md` states the figure for run 17 (2026-08-16) and the correction in run 18. That every earlier run
-  read the same values follows from the table not changing; it is not a separate measurement of each run.
+  read the same values follows from the table not changing; where the table holds the run (`staging_national`: runs 4, 5, 6, 7, 9, 12, 15 and 17) it records `rough_sleeping_current` 2,443 directly, and only the runs missing from the table are inferred.
 - **Rewrite, 2026-08-19 23:59:03 UTC:** the table was rewritten from the publisher's autumn 2025 file
   (`scripts/verify/src/rs_autumn2025.ods`, the same bytes as the file now held in `data/raw/s10_rough_sleeping/`). It
   left **no run-log row** (none was written between 2026-08-19 22:00 and 2026-08-20 02:00 UTC) and **no committed code**
   (the workflow's code was the n8n Code node, and nothing in the repo loaded it). The only evidence is the live data:
-  every row carries that one `loaded_at`, and the live table differs from the backup in 269 of 296 authorities.
-  `docs/METHODOLOGY.md` records the 269.
+  every row carries that one `loaded_at`, and the live table differs from the backup in `rough_sleeping` for 269 of 296
+  authorities (271 in `rough_sleeping_prev_year`; 290 of 296 differ in at least one of the two values).
+  `docs/METHODOLOGY.md` records the 269, on rough sleeping.
 - **Runs 18 onward** (W1 run 18 on 2026-08-20) carry England 4,793, matching the publication.
 - **The backup keeps the wrong values.** `la_rough_sleeping_bak_20260820` still holds the 2021 and 2020 numbers under the
   2025 and 2024 headings. It is evidence and was not touched. Nothing should read it as data.
