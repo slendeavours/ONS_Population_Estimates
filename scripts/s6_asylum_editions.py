@@ -1103,6 +1103,14 @@ def d11_codes_by_period(file) -> dict:
     return out
 
 
+def name_pick(code, name, marker=None) -> tuple:
+    """The order of the rows of one key for choosing its published name:
+    the highest publisher code wins, then the greatest name, then marker.
+    A total order on the row's own values, so the choice is the same
+    whatever order the file lists the rows in."""
+    return (code or "", name or "", marker or "")
+
+
 def build_d11_records(file, resolve) -> tuple:
     """(by_period, merges, duplicates) of a read Asy_D11 (read_d11).
     by_period: {period ISO: {'support': [...], 'unallocated': [...],
@@ -1115,7 +1123,12 @@ def build_d11_records(file, resolve) -> tuple:
     non-England (country from the prefix); E06-E09 codes are resolved
     (resolve: {code: lad24cd} or a callable); anything else raises. People
     are summed per key; published_la_name (and source_marker, country) are
-    the last source row's in file order. merges: keys reached by distinct
+    those of the key's row with the highest publisher code (ties: the
+    greatest name, then marker), so they never depend on row order (a
+    reordered release gives the same records; name_pick). This reproduces
+    every held name, which the old build took from the last row in file
+    order (the held files list a merged key's highest code last; the
+    December 2025 file does not). merges: keys reached by distinct
     codes (a reorganisation merge); duplicates: keys reached twice by the
     same code. More than DUPLICATE_HALT duplicates raise ValueError."""
     get = _getter(resolve)
@@ -1153,7 +1166,9 @@ def build_d11_records(file, resolve) -> tuple:
                              "E06-E09, S12, W06 or N09 code and not 'N/A'")
         slot = acc[tag].setdefault((p, key), {"people": 0})  # not a source value
         slot["people"] += r["people"]
-        slot.update(meta)
+        pick = name_pick(code, la, marker)
+        if "_pick" not in slot or pick > slot["_pick"]:
+            slot.update(meta, _pick=pick)
         sources.setdefault((tag, p, key), []).append(r)
     merges, dups = [], []
     for (tag, p, key), rows in sorted(sources.items(), key=str):

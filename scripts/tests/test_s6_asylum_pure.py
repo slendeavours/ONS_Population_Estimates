@@ -632,6 +632,31 @@ class Records(Tmp):
             (("E06000002", "Section 95", "Dispersal Accommodation"),
              [200, 9])])
 
+    def test_the_name_never_depends_on_row_order(self):
+        import random
+        q = dtext("2022-12-31")
+        rows = d11_rows(["2022-12-31"] + Q3, add=[
+            [q, "Section 95", "Yorkshire and The Humber", "Hambleton",
+             "E07000164", "Dispersal Accommodation", 4],
+            [q, "Section 95", "Yorkshire and The Humber", "Craven",
+             "E07000163", "Dispersal Accommodation", 6],
+            [q, "Section 95", "West Midlands", "Middlesbrough (old name)",
+             "E06000002", "Dispersal Accommodation", 9]])
+        f = m.read_d11(write_d11(self.path("a.xlsx"), rows=rows))
+        want = m.build_d11_records(f, resolver)[0]
+        sup = {(r["lad24cd"], r["support_type"], r["accommodation_type"]): r
+               for r in want["2022-12-31"]["support"]}
+        # the highest code wins although it is listed first
+        self.assertEqual(sup[("E06000065", "Section 95",
+                              "Dispersal Accommodation")]["published_la_name"],
+                         "Hambleton")
+        for seed in range(5):
+            shuffled = dict(f, rows=list(f["rows"]))
+            random.Random(seed).shuffle(shuffled["rows"])
+            self.assertEqual(m.build_d11_records(shuffled, resolver)[0], want)
+            shuffled["rows"].reverse()
+            self.assertEqual(m.build_d11_records(shuffled, resolver)[0], want)
+
     def test_six_same_code_duplicates_halt(self):
         add = []
         for q in ["2022-03-31", "2022-06-30", "2022-09-30", "2022-12-31",
@@ -649,6 +674,57 @@ class Records(Tmp):
         with mock.patch.object(m, "DUPLICATE_HALT", 6):
             _, _, dups = m.build_d11_records(f, resolver)
         self.assertEqual(len(dups), 6)
+
+
+RAW = Path(__file__).resolve().parents[2] / "data" / "raw" / "s6_asylum"
+# la_code_lookup's single-target new_unitary rows the held Asy_D11 files use
+# (2018 onward), for a resolver that needs no database
+UNITARY = {"E07000027": "E06000064", "E07000028": "E06000063",
+           "E07000029": "E06000063", "E07000030": "E06000064",
+           "E07000031": "E06000064", "E07000163": "E06000065",
+           "E07000164": "E06000065", "E07000165": "E06000065",
+           "E07000168": "E06000065", "E07000169": "E06000065",
+           "E07000187": "E06000066", "E07000188": "E06000066",
+           "E07000189": "E06000066", "E07000246": "E06000066"}
+
+
+def real_resolver(code):
+    import geography
+    code = geography.canonical(code, geography.RECODES_FALLBACK)
+    return UNITARY.get(code, code)
+
+
+@unittest.skipUnless((RAW / "support-local-authority-datasets-jun-2026.xlsx")
+                     .is_file() and (RAW / "support-local-authority-datasets-"
+                                     "dec-2025.xlsx").is_file(),
+                     "the held Asy_D11 files are not on disk")
+class RealRowOrder(unittest.TestCase):
+    """Read-only, on the held files: the records do not depend on row
+    order, and the December 2025 file (which lists the four 2022-2023
+    Somerset merges in another order) gives the June 2026 file's names."""
+
+    def test_shuffled_rows_and_the_december_file(self):
+        import random
+        june = m.read_d11(RAW / "support-local-authority-datasets-jun-2026"
+                          ".xlsx")
+        want = m.build_d11_records(june, real_resolver)[0]
+        shuffled = dict(june, rows=list(june["rows"]))
+        random.Random(6).shuffle(shuffled["rows"])
+        self.assertEqual(m.build_d11_records(shuffled, real_resolver)[0], want)
+        dec = m.read_d11(RAW / "support-local-authority-datasets-dec-2025"
+                         ".xlsx")
+        got = m.build_d11_records(dec, real_resolver)[0]
+        shared = sorted(set(got) & set(want))
+        self.assertEqual(len(shared), 32)
+        for p in shared:
+            for tag in m.D11_TAGS:
+                self.assertEqual(got[p][tag], want[p][tag], (p, tag))
+        som = [r for r in want["2022-12-31"]["support"]
+               if r["lad24cd"] == "E06000066" and r["support_type"] ==
+               "Section 95" and r["accommodation_type"] ==
+               "Dispersal Accommodation"]
+        self.assertEqual([r["published_la_name"] for r in som],
+                         ["Somerset West and Taunton"])
 
 
 class Reconcile(Tmp):
