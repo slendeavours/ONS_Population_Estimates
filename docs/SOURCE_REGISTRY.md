@@ -328,6 +328,21 @@ live table reaches a revision only through `refresh-latest --commit`.
 `check_sources.py` (`find_s23`) reads the collection. Not a W1 or map input.
 Record: `docs/decisions/2026-10-09-s23-editions-first-load.md`.
 
+S6 (Home Office asylum support by local authority: Asy_D11 and Reg_02) is on
+the same engine since 2026-10-10, with four editions tables (one for each live
+table) and four file-check ledgers. Asy_D11 is a time series that restates every
+quarter since 2014 (so far without changing a cell in a shared period since
+December 2025; the publisher's June 2024 second edition revised accommodation
+types and geography); Reg_02 is one snapshot per file and has been reissued as
+files for their own quarter (August 2024, December 2024, November 2025). Each
+file's statement about each quarter is stored as an edition and reaches live only
+through `refresh-latest --commit`. The loader finds the newest releases through
+the GOV.UK content API and reads each file's identity from its own cover;
+`check_sources.py` (`find_s6`) reads the newest "year ending" in the data tables
+page's change notes. The old build upserted every period on every run (15 runs);
+it is retired to `scripts/historical/`. Not a W1 or map input. Record:
+`docs/decisions/2026-10-10-s6-editions-first-load.md`.
+
 S11 (the CQC register) is on the same engine since 2026-10-09 but is
 snapshots, not revisions: each monthly file is a dated copy of the register
 (the period is the as-at date on the file's README sheet), stored as its own

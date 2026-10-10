@@ -1,307 +1,432 @@
 # S6 — Home Office asylum support by local authority
 
-## Publisher and series
+Rewritten 2026-10-10 when S6 moved onto the period-editions engine. Every
+definition below is taken from the publisher's own `Notes` and `List_of_Fields`
+sheets in the held files (`data/raw/s6_asylum/`, year ending June 2026) and is
+marked with the note number; a statement that is the pipeline's own, not the
+publisher's, says so. The record of the move is
+[`decisions/2026-10-10-s6-editions-first-load.md`](decisions/2026-10-10-s6-editions-first-load.md).
+
+## Publisher and publications
 
 | | S6a | S6b |
 |---|---|---|
 | **Publisher** | Home Office | Home Office and MHCLG |
-| **Series** | Immigration system statistics, quarterly release | Regional and local authority data on immigration groups |
-| **Table code** | `Asy_D11` | `Reg_02` |
-| **Publication page** | `https://www.gov.uk/government/statistical-data-sets/immigration-system-statistics-data-tables` | `https://www.gov.uk/government/statistical-data-sets/immigration-system-statistics-regional-and-local-authority-data` |
-| **Format** | `.xlsx`, 1.33 MB | `.ods`, 272 KB |
-| **Edition loaded** | year ending June 2026 | year ending June 2026 |
-| **Shape** | Quarterly time series | Snapshot per edition, retained |
-| **Native geography** | LAD code published in the file | LTLA (ONS code) |
-| **Refresh cadence** | Quarterly, roughly 8 weeks after quarter end | Quarterly |
+| **Publication** | Immigration system statistics data tables: Asy_D11, *Asylum seekers in receipt of Home Office support by Local Authority* (quarterly time series) | Regional and local authority data on immigration groups: Reg_02, *Immigration groups, by Local Authority* (one snapshot per file) |
+| **GOV.UK page** | `https://www.gov.uk/government/statistical-data-sets/immigration-system-statistics-data-tables` | `https://www.gov.uk/government/statistical-data-sets/immigration-system-statistics-regional-and-local-authority-data` |
+| **Format** | `.xlsx` | `.ods`, or `.xlsx` (the year ending March 2025 file) |
+| **Held release** | year ending June 2026, published 27 August 2026 | year ending March 2026 and year ending June 2026 |
+| **Native geography** | LAD code in the file | LTLA (ONS code) |
+| **Cadence** | Quarterly, Thursdays 09:30 (27 November 2025, 26 February, 21 May, 27 August 2026) | Same days |
+| **Next update** | 26 November 2026 (year ending September 2026, new period 2026-09-30) | Same |
 
-Download URLs are **discovered from the landing page at run time**. GOV.UK asset
-URLs change with every release, so none are hardcoded.
+A third file, **Asy_D09** (*Asylum seekers in receipt of Home Office support*,
+by nationality, region, support type, accommodation type and UK region) is
+downloaded and read on every `load` as the independent reconciliation for the
+Asy_D11 totals. It is never loaded into a table.
 
-A third table, `Asy_D09` (asylum seekers in receipt of support by nationality,
-support type, accommodation type and UK region), is downloaded and read at
-verification time only. It is **never loaded into a table**. It provides the
-independent per-period reconciliation reference for Checks 8a and 8b.
+## Discovery and file identity
 
-## Date range and floor
+The loader reads both GOV.UK pages through the content API
+(`/api/content/government/statistical-data-sets/...`). It does not read link
+text from the HTML and it hard-codes no asset URL.
 
-Asy_D11 carries 2014 Q1 to 2026 Q2. S6 loads **2018 Q1 forward — 34 quarters,
-2018-03-31 to 2026-06-30**.
+- The data tables page must be titled "Immigration system statistics data
+  tables" and carry exactly one `.xlsx` attachment titled "Asylum seekers in
+  receipt of Home Office support by local authority detailed datasets, year
+  ending <Month YYYY>" (Asy_D11) and exactly one "... support detailed
+  datasets, year ending <Month YYYY>" (Asy_D09). **That page lists only the
+  newest** of each, so a quarter that is missed cannot be loaded from the page
+  later; `--file` with an archived copy is the route.
+- The regional page must be titled "Regional and local authority data on
+  immigration groups". It lists every quarter since March 2023 (14 attachments
+  today, `.ods` or `.xlsx`, one per year-ending); two files claiming one
+  quarter, or a title that no longer matches, halt and list the titles seen.
+  `--release "Month YYYY"` picks another quarter.
+- Every run prints the release it saw as newest for each publication and the
+  page's latest change note. After the held file's "Next update" date, if
+  nothing newer is listed, it prints a WARNING naming that date.
+- **Old asset URLs 301-redirect to the newest file** (the March 2026 Asy_D11
+  URL serves the June 2026 file). A URL is therefore not evidence of a
+  release. The loader records the final URL and reads the identity from the
+  file itself: the cover sheet (title, "year ending <Month yyyy>",
+  "Published: <d Month yyyy>", "Next update: ..."), Asy_D11's `Contents`
+  "Period covered" and its data sheet's latest date, and Reg_02's title date and
+  header row. The rank of a file is (year-ending date, published date) from its
+  cover, never its name, URL, media id or the link text.
+- **An older file never replaces a newer one**, per period, on every path
+  (page, `--release`, `--file`). Equal rank with different content stops unless
+  the period is named with `--accept-reissue PERIOD`: the publisher's November
+  2025 reissues of the Reg_02 March 2024 and September 2024 files kept their old
+  cover dates ("Published: 22 August 2024" and "16 December 2024").
+- Files are kept in `data/raw/s6_asylum/` (git-ignored) under their own names;
+  a download never overwrites a same-named file with different content.
 
-The floor is applied because Section 4 carries no local authority geography
-before 2018: those rows are published as a single national aggregate marked
-`N/A - Section 4 (pre-2018)`. Earlier quarters cannot be aggregated consistently
-across support types, so loading them would produce an England series that
-silently omits one support type. 5,006 of 29,645 rows are excluded; 24,639
-remain in scope.
+## Tables, grain and what they hold
 
-## Tables
+Four live tables, each the **latest-edition layer** of an append-only editions
+table (`<table>_editions`, with a file-check ledger `<table>_editions_file_checks`).
+The live tables keep their names, keys and columns.
 
-| Table | Rows | People | Natural key |
-|---|---:|---:|---|
-| `la_asylum_support` | 21,953 | 2,245,677 | `(period_ending, lad24cd, support_type, accommodation_type)` |
-| `la_asylum_support_unallocated` | 84 | 225,515 | `(period_ending, support_type, accommodation_type, na_reason)` |
-| `asylum_support_non_england` | 2,553 | 342,947 | `(period_ending, lad_code, support_type, accommodation_type)` |
-| `la_immigration_groups` | 7,104 | 1,225,707 | `(period_ending, lad24cd, pathway, sub_pathway)` |
-| `asylum_series_breaks` | 2 | — | `break_id` |
-| `vw_la_asylum_support_totals` | 8,157 | — | view |
+| Live table | Source | Grain (natural key with `period_ending`) | Rows | People |
+|---|---|---|---:|---:|
+| `la_asylum_support` | Asy_D11, English authorities | `lad24cd, support_type, accommodation_type` | 21,953 | 2,245,677 |
+| `la_asylum_support_unallocated` | Asy_D11, rows with no local authority | `support_type, accommodation_type, na_reason` | 84 | 225,515 |
+| `asylum_support_non_england` | Asy_D11, Scotland, Wales, Northern Ireland | `lad_code, support_type, accommodation_type` | 2,553 | 342,947 |
+| `la_immigration_groups` | Reg_02, English authorities | `lad24cd, pathway, sub_pathway` | 7,104 | 1,225,707 |
+| `asylum_series_breaks` | the pipeline's own reference rows | `break_id` | 2 | n/a |
+| `vw_la_asylum_support_totals` | view over `la_asylum_support` | | 8,157 | n/a |
 
-`la_immigration_groups` holds **one snapshot per edition** — 3,552 rows each at
-2026-03-31 and 2026-06-30. It held one until 2026-09-04, because the loader
-stamped every edition with a date fixed in source and so overwrote the previous
-snapshot in place. See the note under Reg_02 below.
+(Rows and people as held on 2026-10-10, 34 quarters for the three Asy_D11 tables
+and two Reg_02 snapshots.) The three Asy_D11 tables are always applied together,
+one quarter at a time, in one savepoint.
 
-### Row count reconciliation
+**Periods.** Asy_D11 is a time series from 31 March 2014 (50 quarters in the
+June 2026 file); S6 loads 31 March 2018 onward (34 quarters to 2026-06-30). The
+pipeline starts at 2018 because the publisher says local authority and region
+data are available for Section 4 only from 2018 (Asy_D11 note 14) and the file
+marks the earlier Section 4 rows `N/A - Section 4 (pre-2018)`. 24,639 of the
+file's 29,645 rows are in scope; 5,006 are earlier. Reg_02 holds one snapshot
+per loaded file, 3,552 rows each at 2026-03-31 and 2026-06-30.
+
+### Row count reconciliation (June 2026 file)
 
 ```
- 24,639  rows in scope (Asy_D11, 2018-01-01 forward)
--    49  absorbed by SUM aggregation across 35 collision keys
-         (34 reorganisation merges, 1 duplicate key)
+ 24,639  Asy_D11 rows in scope (2018-01-01 forward)
+-    49  absorbed by summing across 35 keys
+         (34 reorganisation merges, 1 same-code duplicate)
 = 24,590  rows landed across the three Asy_D11 tables
+          (21,953 + 84 + 2,553)
 ```
 
-People totals are unaffected — aggregation preserves `SUM`. Per-key detail is in
+People totals are unaffected, because merged and duplicate rows are summed. The
+merges (predecessor districts onto one successor unitary, from the Cumbria,
+North Yorkshire and Somerset reorganisations of 2023) and the one same-code
+duplicate (2023-03-31, Wolverhampton E08000031, Section 98, Dispersal: published
+twice, under North West 4 and West Midlands 12, summed to 16) are listed in the
+`load` preview and in
 [`s6_source_anomalies.md`](s6_source_anomalies.md).
 
-## Dimensions
+## Definitions (the publisher's words, by note number)
 
-**Support type:** Section 4, Section 95, Section 98.
+These are the Home Office's definitions; the pipeline adds none.
 
-**Accommodation type**, normalised to title case so the source's
-`Subsistence Only` and `Subsistence only` collapse to one value:
-Dispersal Accommodation, Initial Accommodation, Contingency Accommodation -
-Hotel, Contingency Accommodation - Other, Other Accommodation, Subsistence Only.
+- **Who is counted.** People in receipt of Home Office support, main applicants
+  and dependants (Asy_D11 note 1). Unaccompanied asylum seeking children
+  supported by local authorities are excluded (note 8; Reg_02 note 29, which
+  adds that DfE publishes UASC in England by local authority).
+- **What the number is.** The number of people in receipt of support **as at the
+  end of the period**, not the total supported through it (notes 2 and 7). The
+  number changes daily (note 7).
+- **Which authority.** The local authority (and region) of the person's
+  **registered address** (`List_of_Fields`).
+- **Support type** (note 3): Section 95 is support for asylum seekers with a
+  claim or appeal outstanding, and for failed asylum seekers who had children
+  in their household when appeal rights were exhausted. Section 98 is temporary
+  accommodation for asylum seekers who would otherwise be destitute and are
+  awaiting a verdict on a Section 95 application or are on Section 95 waiting
+  for dispersal accommodation. Section 4 is support for those whose claim has
+  been finally refused who are destitute and temporarily cannot leave the UK.
+- **Accommodation type** (note 4): initial accommodation (shelter while a
+  support request is assessed), dispersal accommodation (longer term, for those
+  whose support claim has been agreed), contingency accommodation (temporary,
+  including hotels, used when initial or dispersal accommodation is
+  insufficient), other accommodation (alternative sites including Bibby
+  Stockholm, Wethersfield and Crowborough, plus a very small number whose
+  accommodation type could not be determined). **Subsistence only** is cash
+  support without accommodation (note 5).
+- **Section 4 before 31 March 2023** is all shown as dispersal accommodation,
+  because Section 4 regulations require recipients to be accommodated; the
+  publisher adds that since March 2020 some have been housed in contingency
+  hotels (note 6).
+- **Provisional.** The Atlas casework system began on 12 March 2018; data from
+  2018 onward "should be considered provisional" until the transitional work is
+  complete (note 12).
+- **Geography coverage by support type** (notes 14 to 16): Section 4 has local
+  authority and region data from 2018; Section 98 only from 31 December 2022;
+  none for subsistence only from 31 December 2023 to 31 December 2024. The
+  authority list changes with local government reorganisation (note 9).
 
-**Reg_02 pathways:** `homes_for_ukraine`, `afghan_resettlement`,
-`supported_asylum`, `all_pathways`, each with a `total` sub-pathway plus the
-published "of which" breakdowns — 12 rows per LA.
+The accommodation spellings in the file are normalised to title case, so
+`Subsistence only` (252 rows in the June 2026 file) and `Subsistence Only` are
+one value. The six stored values are Dispersal Accommodation, Initial
+Accommodation, Contingency Accommodation - Hotel, Contingency Accommodation -
+Other, Other Accommodation and Subsistence Only. A new value, a changed header
+or a new support type stops the load.
 
-## Series breaks
+### Reg_02 (immigration groups)
 
-**Two structural breaks make the England series non-comparable across parts of
-the window.** They are recorded machine-readably in `asylum_series_breaks`, not
-only in this document, because anyone querying `vw_la_asylum_support_totals`
+Reg_02 is the Home Office's local authority table for groups of interest to
+authorities (Reg_02 note 1). It is built from local management information and
+"should be treated as provisional" (note 3); the data are as at the last day of
+the quarter or the closest date possible, and can change daily (note 4). Each
+authority has 12 stored rows: `homes_for_ukraine` (total), `afghan_resettlement`
+(total, transitional, settled_la_housing, settled_prs_housing),
+`supported_asylum` (total, initial_accommodation, dispersal, contingency,
+other, subsistence_only) and `all_pathways` (total).
+
+- **Homes for Ukraine** counts **arrivals**, by the sponsor's or accommodation
+  address postcode, and is not wholly comparable with the Afghan and asylum
+  columns, which are stock populations (Homes for Ukraine note 1). Super-sponsor
+  arrivals have no local authority breakdown in Reg_02 (note 7).
+- **Afghan Resettlement Programme** and **supported asylum** are stock
+  populations at the last day of the quarter (Afghan note 11; asylum note 22). For supported asylum the
+  location is the last recorded correspondence, so it may include people being moved
+  or who have recently moved (note 23).
+- **Population and percentage.** Each authority row carries the published
+  `Population`, stored on every row of the authority. The published
+  `Percentage of population (%)` is stored on the `all_pathways` / `total` row
+  as published: a **ratio** (a value such as 0.0050, not 0.50), despite the
+  "(%)" in the header, rounded to four decimals by the column type
+  (`numeric(8,4)`). In the held figures it behaves as the all-pathways total
+  divided by `Population` (592 of 592 rows; City of London, June 2026: 7 /
+  15,111 = 0.000463). This is the pipeline's own check, not a publisher
+  definition: note 5 only says "per capita percentages".
+
+## Values and markers
+
+**Asy_D11.** The publisher documents no marker and no zero. In the June 2026
+file every `People` value is a whole number of at least 1. The loader therefore
+halts on a blank, zero, negative, text or non-integer `People` cell, naming the
+sheet, row and column; `people` stays `NOT NULL`. No claim is made about a `-`
+in Asy_D11.
+
+**Reg_02.** The publisher defines one marker: `*` means fewer than 5 people,
+suppressed for disclosure control, with secondary suppression "where needed";
+suppressed figures are left out of "All pathways (total)" (Homes for Ukraine
+note 9). A `*` is stored as `people` NULL, `suppressed` true and
+`source_marker` `*`; a published 0 stays 0. In the June 2026 file there are 2
+`*` cells (both Homes for Ukraine: City of London and Isles of Scilly) and 1,310
+published zeros. **Any other non-integer cell in a pathway column (blank, `-`,
+`:`, text) halts.** The publisher's notes do not define `-`, a blank or a zero;
+`-` appears in the June 2026 file only in the `Unknown` row's population and
+percentage cells, and that row is not loaded.
+
+Every load reports, per column, the NULL, `*` and zero counts, and a Reg_02 cell
+that moves between 0 and `*` against the held edition needs
+`--acknowledge PERIOD`.
+
+**City of London and Isles of Scilly.** The publisher says that in Reg_02 the
+all-pathways totals and the per-capita percentages for these two authorities do
+not include Homes for Ukraine arrivals, because of suppression; the suppressed
+figures are in Reg_01's totals (Reg_02 note 5). The `all_pathways` / `total`
+row of each carries a `source_marker` beginning `LOWER BOUND`. **That text is
+the pipeline's marker, written by the old build and kept exactly as held; it is
+not a publisher statement.** What the publisher states is note 5 and the
+`*` definition above; "higher by between 1 and 4" is the held marker's
+reading of "fewer than 5", and the publisher's secondary suppression note means
+the true figure cannot be assumed to follow it exactly. No other authority is
+affected (294 of 296 `all_pathways` rows carry no marker).
+
+**An authority with no row.** Asy_D11 lists an authority in a period only where
+it has people in the table, and the minimum published value is 1. The pipeline
+stores no row for an authority the file does not list, so absence in these
+tables means **no published figure**, and no zero is stored for it. This is how
+the data is held; the publisher's notes do not say what an absent row means.
+Reg_02, in contrast, lists every English authority (296) and shows 0 supported
+asylum for each authority that Asy_D11 does not list (this holds on both held
+files). Coverage is therefore reported as a count and never gated against 296
+for Asy_D11.
+
+### Rows with no local authority
+
+Where an Asy_D11 row has no usable local authority, the pipeline stores it in
+`la_asylum_support_unallocated` with the verbatim source text in `na_reason`,
+and `accommodation_type` `not_stated` where the source gives none. Three
+reasons occur:
+
+| `na_reason` | Rows | People | Periods |
+|---|---:|---:|---|
+| `N/A - Section 98 (pre-Dec 2022)` | 19 | 202,558 | 2018-03-31 to 2022-09-30 |
+| `N/A - Subsistence Only (Dec 2023 - Dec 2024)` | 5 | 18,598 | 2023-12-31 to 2024-12-31 |
+| `Unknown` | 60 | 4,359 | 2018-06-30 to 2023-09-30 |
+
+The first two follow the publisher's notes 15 and 16. The `Unknown` rows are
+published as such. Asy_D11 also carries a region column, `UK Region / Nation`,
+which is **not stored**: five LAD codes carry more than one region across 2018
+onward (Middlesbrough E06000002, Herefordshire E06000019, South Cambridgeshire
+E07000012, North Devon E07000043, Wolverhampton E08000031; checked 2026-10-10,
+comparing case-insensitively), so region comes from `la_boundaries`.
+
+## Series breaks (as held)
+
+Two reporting changes make the `la_asylum_support` total non-comparable across
+parts of the window. They are held in `asylum_series_breaks` (two rows, checked
+by the verify script) because someone querying `vw_la_asylum_support_totals`
 will not read prose.
 
 | First period | Last period | Support type | What changed |
 |---|---|---|---|
-| 2022-12-31 | *(ongoing)* | Section 98 | Gained LA geography. Before this, all Section 98 people were a single national row. |
-| 2023-12-31 | 2024-12-31 | Section 95 | Subsistence Only lost LA geography for five consecutive quarters. |
+| 2022-12-31 | ongoing | Section 98 | Gained local authority geography (note 15). Before this all Section 98 people are in the unallocated table. |
+| 2023-12-31 | 2024-12-31 | Section 95 | Subsistence only lost local authority geography for five quarters (note 16); those people are in the unallocated table. |
 
-Consequences:
+- The `la_asylum_support` total rises from 53,749 to 98,375 between 2022-09-30
+  and 2022-12-31. That is a reporting change (37,142 Section 98 people sat in
+  the unallocated table at 2022-09-30), not arrivals.
+- The count of authorities present falls from 273 at 2023-09-30 to 244 at
+  2023-12-31 and 237 at 2024-03-31, and is 279 at 2025-03-31. 32 English
+  authorities appear at 2023-09-30 only through subsistence-only rows; 26 of
+  them are absent at 2023-12-31 and 13 are absent in all five periods (checked
+  2026-10-10). The held `asylum_series_breaks` text for this break says all 32
+  disappear from 2023-12-31, which overstated it by 6; the row was corrected on
+  2026-10-10 ([decision](decisions/2026-10-10-s6-series-break-80-correction.md)).
+- **The first period with local authority data for every support type is
+  2025-03-31** (notes 14 to 16), and from then the unallocated table has no new
+  rows.
 
-- England rises from **53,749 to 98,375** between 2022-09-30 and 2022-12-31.
-  That is a reporting change, not 44,000 arrivals. Do not plot the England
-  total across that boundary without a break marker.
-- LA counts and England totals are depressed for the five periods from
-  2023-12-31 to 2024-12-31. 32 English LAs that appeared only via
-  subsistence-only claimants at 2023-09-30 vanish entirely from 2023-12-31 and
-  return at 2025-03-31. The apparent 273 → 237 → 286 swing in LA coverage is
-  substantially this artefact, not dispersal contracting and recovering.
+## Reconciliations (from the files, on every `load`)
 
-**The first fully comparable period for England totals is 2025-03-31.** From
-that quarter onward every support type carries LA geography and the unallocated
-table is empty.
+- The Asy_D11 data sheet equals the pivot sheet's cached figures for the latest
+  eight quarters, by region and in the Grand Total (97,519 at 2026-03-31 and
+  93,293 at 2026-06-30).
+- England + non-England + unallocated equals the data sheet total in every
+  period, and England and unallocated equal Asy_D09 in every period.
+- Reg_02: each pathway total equals the sum of its "of which" parts, there are
+  exactly 296 English authorities, and the supported-asylum column equals
+  Asy_D11 for each authority (296 of 296 at March and June 2026).
 
-On a like-for-like basis excluding subsistence-only throughout, the underlying
-pattern is real: from the 2023-09-30 peak to 2026-03-31, England fell 23.5%
-while the LA count rose 11.6% and people-per-LA fell 31.4%. The supported
-population contracted while spreading across more councils.
+## Geography
 
-## Suppression conventions
+Codes go through `geography.resolve('6', ...)`, per table and period, never a
+private dictionary. `DATASET_FORM['6']` is `mixed` (one form per table per
+period):
 
-The two sources differ, deliberately.
+- Asy_D11 uses Barnsley and Sheffield as E08000016 and E08000019 from 31 March
+  2014 to 30 September 2025 and E08000038 and E08000039 from 31 December 2025 to
+  30 June 2026; never both in one period. The switch follows the publication,
+  not the 1 April 2025 boundary date (the June and September 2025 quarters still
+  use the old codes). Reg_02 uses the old codes at March 2026 and the new at
+  June 2026.
+- The tables hold the old codes throughout (`la_boundaries` is LAD May 2024 and
+  has no E08000038 or E08000039).
+- The district codes of the 2023 Cumbria, North Yorkshire and Somerset
+  reorganisations (14 codes seen up to 2023-03-31) resolve forward through
+  `la_code_lookup` rows of type `new_unitary` that have exactly one target in
+  `la_boundaries`. Anything else is UNEXPLAINED and stops the load.
+- Non-England codes (S12, W06, N09) are stored as published in
+  `asylum_support_non_england.lad_code`, with `country` from the prefix.
 
-**Asy_D11 has no suppression.** All 28,439 `People` values are numeric, with no
-markers and no blank cells. The minimum is 1 and zero never appears.
-`la_asylum_support` therefore carries **no `suppressed` column**.
+### History: the Cumbria workaround (removed 26 July 2026)
 
-**An absent LA means "not published", not "none".** Because zeros are never
-published, a local authority missing from a period had no published figure —
-which is not the same as having no supported asylum seekers. Coverage is
-reported as a count, never gated against 296.
+The original build (25 July 2026) carried its own resolution layer for three
+codes that `la_code_lookup` then handled wrongly or not at all: E07000027
+(Barrow-in-Furness), E07000028 (Carlisle) and E07000189 (South Somerset). Until
+the lookup was corrected, S6 was the only source resolving them correctly. The
+lookup was corrected on 26 July 2026 (see
+[`decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md`](decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md)
+and
+[`decisions/2026-07-26-la-code-lookup-full-audit.md`](decisions/2026-07-26-la-code-lookup-full-audit.md)),
+the local recodes were removed in commit a975f50 that evening, and the reload
+reproduced the earlier checksum byte for byte. There is no S6-specific
+geography layer now; the three codes resolve through `la_code_lookup` like the
+others.
 
-### The distribution check confirms this independently
+## Editions
 
-Check 5 tests the published distribution shape on the **at or above 100** side,
-because that quantity is computed from the source with no adjustment:
+An edition is what one file says about one period of one table. A held period
+that a file restates unchanged gets a ledger row only; a changed period is
+stored as the next edition and reaches the live table only through
+`refresh-latest`; a new period is stored as edition 1 with its live rows in the
+same transaction. Edition 1 of each table is the data exactly as held on
+2026-10-10 (34 + 28 + 34 + 2 periods; 31,694 rows), and the held files read
+again reproduce every held row and every stored column (0 differences).
+
+Each live table's `source_edition` is one label, the cover's "year ending
+<Month yyyy>", set on every row of a refreshed period; it is never compared.
+
+Where several rows reach one key (a reorganisation merge, or the same code
+published twice), `published_la_name` (and `source_marker` and `country`) comes
+from the row with the **highest publisher code**, ties broken by the greatest
+name and then marker, never from file order. Of the rules tried against the held
+names, only this one reproduced every held name; "last row in the file" failed
+on the December 2025 file, which orders its rows differently.
+
+What the publisher has revised, so far (and the reason the series is flagged
+`revises_back_series`):
+
+| When | What changed |
+|---|---|
+| Asy_D11 December 2025, March 2026, June 2026 files | No cell in any shared period (48, then 49 periods); each release added one quarter |
+| Asy_D11 13 June 2024 | "Second edition": accommodation types revised and corrections to the stated geographical distribution; totals unchanged (also Asy_D09 and Reg_02) |
+| Reg_02 22 August 2024 | Earlier files revised (support and accommodation type, geography) |
+| Reg_02 16 December 2024 | Afghan figures revised (232 Northern Ireland cases) |
+| Reg_02 27 November 2025 | March 2024 and September 2024 files reissued ("minor revision" to accommodation types; totals unaffected), covers not updated |
+
+The Asy_D11 revision of June 2024 predates the first load, so it is not in the
+editions tables, and the earlier Reg_02 snapshots are not loaded (follow-up in
+the decision note).
+
+## Stop conditions
+
+A period that breaks a condition is REJECTED: nothing is stored for it, no
+ledger row is written and the run exits 1. `--acknowledge PERIOD` releases a
+threshold breach; it never releases a partial file. In the two small
+Asy_D11 tables (`la_asylum_support_unallocated`, 1 to 4 rows a quarter, and
+`asylum_support_non_england`) fewer rows than the held edition is a key change,
+not a partial file: for example the publisher reassigning an `Unknown` row to an
+authority. It is REJECTED until the period is named with `--acknowledge`, after
+reading what moved. A table with no rows at all where the held edition has some
+is still a partial file. A Reg_02 file for a quarter earlier than the newest
+held one and not held itself (a back-fill, such as `--only reg02 --release
+"March 2025"`) halts unless `--allow-older-file` is given.
+
+| Condition | Limit |
+|---|---|
+| New Asy_D11 quarter, England total against the previous period | 15% |
+| New quarter, authority count against the previous period | 30 |
+| New quarter, any authority's total | 1,500 people |
+| Revision, a table's total | 2% |
+| Revision, authorities whose totals change | 40 |
+| Revision, any authority's total | 500 people |
+| Revision, rows added or removed | 10% of the held rows |
+| PARTIAL FILE: authorities fewer than the held edition | 10 (never released) |
+| PARTIAL FILE: rows fewer than the held edition (`la_asylum_support` only; the small tables use "rows removed" above, released by `--acknowledge`) | 10% (never released) |
+| Same-code duplicate keys in one file | more than 5 halts |
+| Reg_02 English authorities | exactly 296 |
+| Reg_02 reissue, any pathway's England total | 5% |
+| Reg_02 reissue, authorities changing | 30 |
+
+These were calibrated on 2024-12-31 to 2026-06-30 (national moves of -9.7% to
++5.5% a quarter; the June 2024 revision left totals unchanged). They are the
+loader's own choices, not the publisher's.
+
+## Running it
+
+From `ONS_Population_Estimates`. Everything previews unless `--commit` is given.
 
 ```
-LAs at or above 100, from the source : 344 present - 164 under 100 = 180
-Published                            : 181 of 361 under 100, therefore 180 at or above
-Difference                           : 0
+python scripts/s6_asylum_editions.py status
+python scripts/s6_asylum_editions.py load                  # preview; downloads to data/raw/s6_asylum
+python scripts/s6_asylum_editions.py load --commit
+python scripts/s6_asylum_editions.py refresh-latest        # preview; then --commit
+python scripts/s6_asylum_editions_verify.py                # 22 gates, writes nothing
 ```
 
-Confirming decomposition of the Home Office denominator:
-
-```
-361 = 296 England + 32 Scotland + 22 Wales + 11 Northern Ireland
-```
-
-The denominator is the full UK LAD set, which is why LAs absent from the file
-fall in the under-100 bucket — and that is what makes this an independent
-confirmation of the zero-handling finding rather than a restatement of it.
-
-```
-344 present = 286 England + 58 non-England
- 17 absent  =  10 England +  7 non-England
-```
-
-The 10 absent English LAs are Isle of Wight, Isles of Scilly, Derbyshire Dales,
-Mid Devon, Cotswold, Tewkesbury, Hart, New Forest, Malvern Hills and East
-Hertfordshire — the same ten Check 9 reports as present in Reg_02 but absent
-from Asy_D11.
-
-**Reg_02 does have suppression.** `*` marks fewer than 5 people withheld for
-disclosure control; `-` marks not applicable. `la_immigration_groups` retains
-`suppressed`, with `people` set to NULL and the verbatim marker in
-`source_marker`.
-
-### Understated totals — City of London and Isles of Scilly
-
-For these two LAs the published all-pathways total **excludes** the suppressed
-Homes for Ukraine pathway rather than hiding it inside. City of London's
-published total of 7 is 6 (Afghan) + 1 (Asylum); the true figure is higher by
-between 1 and 4.
-
-Both are flagged in-band: the `all_pathways` / `total` row for each carries a
-`source_marker` stating that the total is a lower bound. No other LA is
-affected — 294 of 296 all-pathways rows carry no flag.
-
-### Geography sentinels
-
-Where a row has no resolvable local authority, the key columns carry
-`not_stated` and the verbatim source string is preserved in `na_reason`. Three
-distinct reasons occur:
-
-| Reason | Rows | People | Periods |
-|---|---:|---:|---|
-| `N/A - Section 98 (pre-Dec 2022)` | 19 | 202,558 | 2018-03-31 → 2022-09-30 |
-| `N/A - Subsistence Only (Dec 2023 - Dec 2024)` | 5 | 18,598 | 2023-12-31 → 2024-12-31 |
-| `Unknown` | 60 | 4,359 | 2018-06-30 → 2023-09-30 |
-
-Section 98 rows carry **no accommodation type before 2023** — 2018 Q1 through
-2022 Q4 of the loaded window, five years. The accommodation breakdown is
-structurally incomplete for that support type across that span. Those rows are
-in the unallocated table, so `la_asylum_support` never contains `not_stated` in
-`accommodation_type` in the current edition, but the column permits it.
-
-## Geography resolution
-
-Code-first cascade. 99.64% of in-scope rows carry a usable LAD code, so
-name-based matching is never reached.
-
-| Method | Distinct pairs |
-|---|---:|
-| 1 — direct match against `la_boundaries` | 292 |
-| 2 — forward via `la_code_lookup` | 14 |
-| 3–5 — name-based | 0 |
-| non-England (routed to `asylum_support_non_england`) | 61 |
-| unallocated | 3 |
-
-Sixteen pre-2023 district codes and the two Barnsley/Sheffield recodes resolve
-forward. Merging several abolished districts onto one successor unitary
-collapses 34 natural keys, which are summed before upsert.
-
-### Dependency — geography is correct here and inconsistent elsewhere
-
-**S6 uses a build-local resolution layer for three codes that `la_code_lookup`
-handles wrongly or not at all.** See
-[`decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md`](decisions/2026-07-25-la-code-lookup-cumbria-off-by-one.md).
-
-| Code | Area | S6 resolves to | `la_code_lookup` resolves to |
-|---|---|---|---|
-| E07000027 | Barrow-in-Furness | E06000064 Westmorland and Furness | E06000063 Cumberland (**wrong**) |
-| E07000028 | Carlisle | E06000063 Cumberland | *no entry* |
-| E07000189 | South Somerset | E06000066 Somerset | *no entry* |
-
-Until the remediation lands, **the database is inconsistent across sources on
-Cumbria, and S6 is the only correct one**. Affected local authorities:
-**Cumberland (E06000063)** and **Westmorland and Furness (E06000064)**. Do not
-reconcile S6 against another source on those two LAs. Somerset (E06000066) is
-affected only by the omission, so other sources under-count rather than
-misattribute.
+The procedure each quarter, and what each halt means, is in
+[`QUARTERLY_REFRESH.md`](QUARTERLY_REFRESH.md). There is no `sync-new`:
+`migrate-legacy` (one-off, already run) recorded the held periods.
 
 ## Known caveats
 
-- Figures are based on the **registered address** of the person, which is not
-  necessarily where they regularly reside.
-- **Unaccompanied asylum-seeking children are excluded.** UASC are supported by
-  local authority children's services, not Home Office asylum support. This is
-  not a count of all asylum seekers in an area. DfE publishes UASC by local
-  authority separately.
-- Both sources cover the **whole UK**. This pipeline is England only; the
-  361-LA universe is filtered to 296, with Scotland, Wales and Northern Ireland
-  retained in `asylum_support_non_england` so the counts reconcile.
-- The Home Office has revised these tables historically — accommodation type in
-  June 2024, geographic distribution in August 2024, accommodation types again
-  in November 2025. Each load is a **full replace** of the periods it covers.
-  Do not assume prior periods are immutable.
-- The published **`UK Region / Nation` column is unreliable**: five LAD codes
-  are assigned to more than one region across the window. It is not stored.
-  Region is derived from `la_boundaries`.
-- Data is extracted on the last day of the quarter, or the closest possible
-  date, and can change daily. Treat as provisional.
-
-## Refresh procedure
-
-1. Run `python scripts/s6_asylum_build.py` from the repository root. Discovery,
-   download, parse, resolve, validate, upsert and logging all happen in one
-   transaction.
-2. The script discovers the current edition from both landing pages. No URL or
-   edition label needs editing between quarters.
-3. All 13 verification checks must pass. Any failure rolls the whole
-   transaction back and exits non-zero — partial or suspect data is never left
-   behind.
-4. **Two kinds of constant live in `scripts/s6_asylum_verify.py` and they move
-   differently.** `ANCHOR_PERIOD`, `ANCHORS_ENGLAND`, `ANCHORS_NON_ENGLAND`,
-   `ANCHOR_UK_TOTAL`, `PUBLISHED_LA_UNIVERSE` and `PUBLISHED_UNDER_100` are a
-   *reconciliation anchor*: a period whose published figures have been sourced
-   by hand from that release's "How many people are in the UK asylum system?"
-   narrative page. They do not have to move every quarter, because Asy_D11 is a
-   full time series and each new edition still contains the anchored period —
-   an unchanged anchor that still reconciles is evidence the back series was
-   not silently revised.
-
-   What that buys is limited, and the limit should be stated rather than
-   assumed: **checks 3, 5, 8a and 8b verify the anchored period, not the newest
-   one.** A quarter loaded without re-anchoring is verified by checks 1, 2, 4,
-   6, 7, 9, 10, 11 and 12 — including the Reg_02 cross-source reconciliation at
-   its own period — but its England and UK headline totals have not been
-   compared against anything the Home Office published in prose.
-
-   Re-anchor when you want that comparison on the newest quarter, and expect to
-   source six figures by hand to do it. As of 2026-09-04 the anchor is
-   2026-03-31 while the loaded series runs to 2026-06-30.
-
-   Reg_02's period is **not** one of these constants and must never be
-   hardcoded — see below.
-5. If a new series break appears, add it to `SERIES_BREAKS` in
-   `scripts/s6_asylum_build.py` and update the first fully comparable period here.
-
-### Reg_02's period comes from the edition, never from a constant
-
-Reg_02 is a single snapshot per edition, so its `period_ending` is a property of
-whichever file was discovered. `parse_reg_02` derives it from the edition label
-through `_edition_period()`, which hard-stops on a label it cannot parse rather
-than falling back to an assumed date.
-
-It was fixed at `ANCHOR_PERIOD` until 2026-09-04. Because every edition was
-stamped with the same date, each refresh **overwrote the previous snapshot in
-place** — the row count stayed at 3,552, every key stayed unique, coverage
-stayed complete, and a quarter of history disappeared with no signal at all.
-The first refresh after the original build is what exposed it: Check 9 failed
-with 263 of 286 authorities divergent, because it was comparing a June snapshot
-against March Asy_D11.
-
-Two lessons worth keeping. **One constant was doing two jobs** — a fixed
-verification anchor and a moving data period — and only the second was wrong.
-And **a cross-source gate earns its keep on the second edition, not the first**:
-nothing internal to Reg_02 could have caught this, because Reg_02 on its own
-reconciled perfectly every time.
+- Figures are people at the end of each quarter, by registered address; they are
+  not a count of all asylum seekers in an area, because UASC supported by local
+  authorities are excluded.
+- Asy_D11 covers the whole UK; this pipeline holds English authorities in
+  `la_asylum_support` and Scotland, Wales and Northern Ireland in
+  `asylum_support_non_england`, so the totals reconcile.
+- Data from 2018 onward is provisional (Asy_D11 note 12). Reg_02 is extracted
+  from local management information and databases and is provisional (note 3);
+  the publisher says the Homes for Ukraine and Afghan data have not been quality
+  assured to the level of Official Statistics (Homes for Ukraine note 8, Afghan
+  note 12).
+- Homes for Ukraine in Reg_02 counts arrivals, and it is not comparable with the
+  stock columns.
 
 ## Scope
 
 S6 is **standalone**. It is not wired into Workflow 1, adds no column to
-`staging_la_signals`, adds no tenant type, and adds no map layer — the same
-pattern as S19 PIP. No composite index, score or ranking combines S6 with any
-other source.
+`staging_la_signals`, adds no tenant type and no map layer, and no score or
+ranking combines it with another source. If it is ever wired in, run
+`refresh-latest --commit` in the same session before W1, because refresh copies
+the edition's `loaded_at` and `refresh_map.py` would otherwise not see a revision
+as new.

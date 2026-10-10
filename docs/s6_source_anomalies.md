@@ -1,5 +1,7 @@
 # S6 source anomalies
 
+> **Superseded 2026-10-10.** This file was rewritten on every run of the old verify module (`s6_asylum_verify.py`, now retired to `scripts/historical/`); its last committed version is from 4 September 2026 (commit 33defee) and it is no longer regenerated. S6 is now loaded by `scripts/s6_asylum_editions.py`, which lists the reorganisation merges and same-code duplicates in its `load` preview; the explanation is in `docs/s6_asylum_source.md` and the record in `docs/decisions/2026-10-10-s6-editions-first-load.md`. The text below is left as written.
+
 Anomalies found in the Home Office source files during the S6 load, and the aggregation decisions taken in response. Written by `s6_asylum_verify.py` on every run.
 
 ## Row count reconciliation

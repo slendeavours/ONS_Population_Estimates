@@ -164,12 +164,16 @@ DATASET_FORM = {
           "File_10_-_IoD2025_Local_Authority_District_Summaries__lower-tier__"
           "v2.xlsx and imd_2025_la_summary.csv (data/reference) carry "
           "E08000016/19 only."),
-    "6": ("unverified",
-          "Asy_D11 and Reg_02 carry E08000038/39 (docs/s6_asylum_source.md: "
-          "the two recodes resolve forward), but no file is on disk and "
-          "la_asylum_support keeps no publisher code, so whether earlier "
-          "periods carry E08000016/19 is not known. At the next load, list "
-          "the codes by period_ending and record new or mixed."),
+    "6": ("mixed",
+          "Read 2026-10-10 from the files in data/raw/s6_asylum: Asy_D11 "
+          "(support-local-authority-datasets-jun-2026.xlsx, Data_Asy_D11) "
+          "carries Barnsley and Sheffield as E08000016/19 for 31 Mar 2014 to "
+          "30 Sep 2025 and as E08000038/39 for 31 Dec 2025 to 30 Jun 2026, "
+          "never both in one period (the switch follows the publication, "
+          "not the 1 April 2025 date); Reg_02 carries E08000016/19 in the "
+          "March 2026 file and E08000038/39 in the June 2026 file. One form "
+          "per table per period; scripts/s6_asylum_editions.py resolves "
+          "each table's codes by period."),
     "7": ("old",
           "la_boundaries is LAD May 2024 and holds E08000016/19; this "
           "source defines the canonical key."),

@@ -50,7 +50,7 @@ LOADERS = {
     "S2": ["ro4_editions.py"],
     "S3": ["s3_mye_refresh.py"],
     "S4": ["s4_care_leaver_editions.py"],
-    "S6": ["s6_asylum_build.py"],
+    "S6": ["s6_asylum_editions.py"],
     "S8b": ["s8b_hb_editions.py"],
     "S9a": ["s9a_drd_editions.py"],
     "S9b": ["s9b_crfd_editions.py"],

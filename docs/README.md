@@ -106,11 +106,11 @@ CHANGELOG.md                                Dated record of pipeline changes
   s18_pipr_workbook_structure.md            PIPR workbook spec (S18 build reference)
   s19_pip_source.md                         Source 19 (DWP PIP claimants) register entry
   s19_pip_w1_integration.md                 S19 PIP W1 integration summary (run 11)
-  s6_asylum_source.md                       Source 6 (Home Office asylum support) register entry
-  s6_source_anomalies.md                    S6 source anomalies, regenerated on every run
+  s6_asylum_source.md                       Source 6 (Home Office asylum support) register entry: discovery, definitions from the publisher's notes, tables, editions
+  s6_source_anomalies.md                    S6 source anomalies as last written by the old verify module (historical; no longer regenerated)
   geography_dimension.md                    la_geography / la_succession dimension tables
   S9_BUILD_SUMMARY.md                       S9 sources build summary
-  S6_BUILD_SUMMARY.md                       S6 asylum support build summary
+  S6_BUILD_SUMMARY.md                       S6 original build summary of 25 July 2026 (superseded)
   S22_BUILD_SUMMARY.md                      S22 Council Taxbase empty homes build summary
   s22_source_structure.md                   Source 22 register entry: file structure, dates, release-page figures
   s22_verification.md                       S22 verification suite results
@@ -130,7 +130,8 @@ CHANGELOG.md                                Dated record of pipeline changes
   /historical/                              Retired n8n-era patch scripts, kept for provenance
   sync_readme_sources.py                    Regenerates the README source table (--check fails if stale)
   export_map_data.py                        Builds the three published data files from the pipeline database
-  s6_asylum_build.py / s6_asylum_verify.py  Source 6 ETL and its 13 halting checks - standalone, not in W1
+  s6_asylum_editions.py                     Source 6 (Home Office asylum support: Asy_D11 and Reg_02) editions loader, four tables - standalone, not in W1 (old s6_asylum_build.py / s6_asylum_verify.py are in scripts/historical/)
+  s6_asylum_editions_verify.py              Source 6 editions gates (22), writes nothing
   s14_lha_rates_build.py                    Source 14 (VOA/DWP LHA rates) ETL
   s15_hpi_editions.py                       Source 15 (Land Registry UK HPI) editions loader (old s15_hpi_build.py is in scripts/historical/)
   /verify/                                  Source reconciliation against publication (2026-08 assurance)

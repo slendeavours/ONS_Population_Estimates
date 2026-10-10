@@ -315,10 +315,32 @@ SOURCES = [
     dict(
         source_code="6",
         revises_back_series=True,
-        revision_note=("The Home Office has revised these tables historically: "
-            "accommodation type in June 2024, geographic distribution in "
-            "August 2024, accommodation types again in November 2025. "
-            "Each load is a full replace of the periods it covers."),
+        revision_note=(
+            "Asy_D11 is a time series that restates every quarter since 2014 "
+            "in each release. The December 2025, March 2026 and June 2026 "
+            "files agree on every cell of every period they share (48, then "
+            "49 periods), so each release added one quarter. The publisher "
+            "has restated back periods: a second edition of 13 June 2024 "
+            "revised accommodation types and corrected the stated "
+            "geographical distribution, totals unchanged (also Asy_D09 and "
+            "Reg_02). Reg_02 is one snapshot per file and has been reissued "
+            "as files for their own quarter: 22 August 2024 (earlier files "
+            "revised: support and accommodation type, geography), 16 "
+            "December 2024 (Afghan figures, 232 Northern Ireland cases) and "
+            "27 November 2025 (the March 2024 and September 2024 files "
+            "reissued with a minor revision to accommodation types, totals "
+            "unaffected, covers not updated). Each file's statement about "
+            "each quarter is stored as an edition (la_asylum_support_"
+            "editions, la_asylum_support_unallocated_editions, "
+            "asylum_support_non_england_editions and "
+            "la_immigration_groups_editions); the live tables are the latest "
+            "edition of each quarter and move only through refresh-latest "
+            "--commit. The old build (scripts/historical/s6_asylum_build.py) "
+            "upserted every period of the file on every run and was run 15 "
+            "times (run-log 69 to 82 and 98); the 4 September 2026 run "
+            "rewrote earlier periods with values identical to those it "
+            "replaced. Record: docs/decisions/2026-10-10-s6-editions-first-"
+            "load.md."),
         source_name="Home Office Asy_D11 / Reg_02",
         publisher="Home Office / MHCLG",
         series_name=("Immigration system statistics, quarterly release "
@@ -327,55 +349,117 @@ SOURCES = [
         landing_page_url=("https://www.gov.uk/government/statistical-data-sets/"
                           "immigration-system-statistics-data-tables"),
         acquisition_method="landing_page",
+        api_endpoint="https://www.gov.uk/api/content",
+        auth_required=False,
         known_gotchas=(
-            "Download URLs are discovered from the landing page at run time. "
-            "GOV.UK asset URLs change with every release, so none are "
-            "hardcoded. Reg_02 has its own landing page: "
+            "The loader finds the files through the GOV.UK content API of "
+            "both pages: the data tables page (Asy_D11 and Asy_D09) and "
             "https://www.gov.uk/government/statistical-data-sets/"
-            "immigration-system-statistics-regional-and-local-authority-data. "
-            "S6 uses a build-local resolution layer for three codes that "
-            "la_code_lookup handled wrongly or not at all (E07000027, "
-            "E07000028, E07000189); the workaround was retired on 2026-07-26 "
-            "once the lookup was corrected."),
+            "immigration-system-statistics-regional-and-local-authority-data "
+            "(Reg_02). The data tables page lists only the newest Asy_D11, "
+            "so a missed quarter cannot be loaded from the page later "
+            "(--file with an archived copy). The Reg_02 page lists every "
+            "quarter since March 2023, as .ods and, for the year ending "
+            "March 2025, .xlsx (header 'Population ' with a trailing "
+            "space). Old asset URLs 301-redirect to the newest file, so a "
+            "URL is not evidence of a release: the loader records the final "
+            "URL and reads the file's identity from its own cover sheet. A "
+            "reissued Reg_02 file keeps the old cover date (November 2025 "
+            "reissues of March 2024 and September 2024), so an equal-rank "
+            "file with different content stops unless named with "
+            "--accept-reissue PERIOD. Barnsley and Sheffield are "
+            "E08000016/19 in Asy_D11 to September 2025 and E08000038/39 from "
+            "December 2025, and in Reg_02 old at March 2026 and new at June "
+            "2026 (geography 'mixed', one form per table per period)."),
         cadence="quarterly", cadence_months=3, expected_lag_days=56,
         publication_window="Quarterly, roughly 8 weeks after quarter end",
         target_table="la_asylum_support", geography_level="LAD24",
-        join_path=("Code-first cascade: direct match against la_boundaries, "
-                   "then forward via la_code_lookup. Name-based matching is "
-                   "never reached."),
-        build_script_path="scripts/s6_asylum_build.py",
+        join_path=("Codes resolve through scripts/geography.py "
+                   "(geography.resolve) per table and period; the 2023 "
+                   "Cumbria, North Yorkshire and Somerset district codes "
+                   "resolve forward through la_code_lookup new_unitary rows "
+                   "with a single target in la_boundaries. A code that "
+                   "resolves no other way stops the load."),
+        build_script_path="scripts/s6_asylum_editions.py",
         node_docs_path="docs/nodes/s6_node1..s6_node9",
         source_doc_path="docs/s6_asylum_source.md",
-        verification_checks={"script": "scripts/s6_asylum_verify.py", "checks": 13,
-                             "gate": "any failure rolls the whole transaction "
-                                     "back and exits non-zero"},
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s6_asylum_editions_verify.py",
+            "checks": 22,
+            "first_load": "2026-10-10",
+            "migration_proof": ("migrate-legacy: the loader's parser on the "
+                                "held June 2026 Asy_D11 and Asy_D09 files and "
+                                "the March and June 2026 Reg_02 files "
+                                "reproduced every held row and every stored "
+                                "column (21,953, 84, 2,553 and 7,104 rows), "
+                                "0 differences; the data sheet equals the "
+                                "pivot cache for the latest eight quarters, "
+                                "England, non-England and unallocated equal "
+                                "the data total in every period, and Reg_02 "
+                                "supported asylum equals Asy_D11 for 296 of "
+                                "296 authorities"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an identity, header, value, reconciliation or "
+                     "geography failure or an older file, and rejects a "
+                     "quarter that breaks a change-size threshold"),
+            "retired": ("the old build and its 12-check verify module "
+                        "(s6_asylum_build.py, s6_asylum_verify.py) are "
+                        "retired; their 15 runs (run-log 69 to 82 and 98) "
+                        "keep status success")},
         caveats=[
-            "Figures are based on the registered address of the person, which "
-            "is not necessarily where they regularly reside.",
-            "Unaccompanied asylum-seeking children are excluded. UASC are "
-            "supported by local authority children's services, not Home "
-            "Office asylum support. This is not a count of all asylum seekers "
-            "in an area.",
-            "An absent LA means 'not published', not 'none'. Zeros are never "
-            "published, so coverage is reported as a count and never gated "
+            "Figures are people in receipt of Home Office support at the end "
+            "of the period, by the local authority of their registered "
+            "address (Asy_D11 notes 2 and 7 and List_of_Fields); the number "
+            "changes daily.",
+            "Unaccompanied asylum-seeking children supported by local "
+            "authorities are excluded (Asy_D11 note 8, Reg_02 note 29). This "
+            "is not a count of all asylum seekers in an area.",
+            "Data from 2018 onward is provisional (Asy_D11 note 12: the "
+            "Atlas casework system from 12 March 2018). Reg_02 is local "
+            "management information and provisional (note 3).",
+            "Local authority data exist for Section 4 only from 2018 (note "
+            "14), for Section 98 only from 31 December 2022 (note 15) and "
+            "not for subsistence only from 31 December 2023 to 31 December "
+            "2024 (note 16); two reporting changes are held in "
+            "asylum_series_breaks. All Section 4 recipients before 31 March "
+            "2023 are shown as dispersal accommodation (note 6).",
+            "An authority the file does not list has no row, so absence "
+            "means no published figure: the minimum published Asy_D11 value "
+            "is 1 and the pipeline stores no zero for an absent authority. "
+            "This is how the data is held; the publisher's notes do not say "
+            "what an absent row means. Coverage is a count, never gated "
             "against 296.",
-            "The Home Office has revised these tables historically. Each load "
-            "is a full replace of the periods it covers; do not assume prior "
-            "periods are immutable.",
-            "The published 'UK Region / Nation' column is unreliable — five "
-            "LAD codes are assigned to more than one region across the "
-            "window. It is not stored; region is derived from la_boundaries.",
-            "Data is extracted on the last day of the quarter, or the closest "
-            "possible date, and can change daily. Treat as provisional."],
+            "Reg_02 '*' means fewer than 5 people, suppressed (with "
+            "secondary suppression where needed) and left out of 'All "
+            "pathways (total)' (Homes for Ukraine note 9); it is stored NULL "
+            "with suppressed true. The City of London and Isles of Scilly "
+            "all-pathways totals and percentages exclude Homes for Ukraine "
+            "arrivals (note 5); their total rows carry a LOWER BOUND "
+            "source_marker that is the pipeline's own held text, not a "
+            "publisher statement. Homes for Ukraine counts arrivals, not "
+            "residents (Homes for Ukraine note 1).",
+            "The published 'UK Region / Nation' column is not stored: five "
+            "LAD codes carry more than one region across 2018 onward "
+            "(checked 2026-10-10); region is derived from la_boundaries."],
         completeness_note=(
-            "Two structural breaks make the England series non-comparable "
-            "before 2025-03-31; they are recorded in asylum_series_breaks. "
-            "Standalone: not wired into Workflow 1, adds no "
-            "staging_la_signals column, no tenant type and no map layer. "
-            "Additional tables: la_asylum_support_unallocated, "
-            "asylum_support_non_england, la_immigration_groups, "
-            "asylum_series_breaks."),
-        latest_period_loaded="Year ending March 2026 (2026-03-31)",
+            "Four editions tables (la_asylum_support_editions, "
+            "la_asylum_support_unallocated_editions, "
+            "asylum_support_non_england_editions, "
+            "la_immigration_groups_editions) with four file-check ledgers; "
+            "the four live tables are their latest-edition layers: "
+            "la_asylum_support 21,953 rows, la_asylum_support_unallocated "
+            "84, asylum_support_non_england 2,553 (34 quarters, 2018-03-31 "
+            "to 2026-06-30; unallocated to 2024-12-31) and "
+            "la_immigration_groups 7,104 (two Reg_02 snapshots, 2026-03-31 "
+            "and 2026-06-30; earlier Reg_02 snapshots are not loaded). "
+            "Edition 1 is the data exactly as held. Two reporting changes "
+            "make the England series non-comparable before 2025-03-31; they "
+            "are held in asylum_series_breaks. Standalone: not wired into "
+            "Workflow 1, adds no staging_la_signals column, no tenant type "
+            "and no map layer. Asy_D09 is read for reconciliation and not "
+            "loaded."),
+        latest_period_loaded="2026-06-30",
         refresh_tier="B", status="active",
         publish_github=True, publish_map=False,
     ),
