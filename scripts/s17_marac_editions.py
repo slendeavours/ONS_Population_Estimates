@@ -34,10 +34,15 @@ sheet, row and column. A published 0 stays 0, except under the named rules
 in ZERO_RULES, each with its evidence and listed in every preview:
 NORFOLK_2023_24_NOT_SUBMITTED and WEST_MIDLANDS_2023_24_NOT_SUBMITTED (a
 row published as 0 MARACs and 0 cases with 'No population data' and
-'#DIV/0!': a non-submission, every measure NULL not_submitted) and
-LANCASHIRE_HOUSING_NOT_COUNTED (Scott's ruling of 2026-10-10: Lancashire's
-published 0 housing referrals in 2023-24 to 2025-26 are NULL not_counted).
-A rule whose published form no longer matches the file halts. value_flag is
+'#DIV/0!': a non-submission, every measure NULL not_submitted). There is no
+other zero rule. Lancashire's housing referrals, published as 0 in 2023-24,
+2024-25 and 2025-26, stay published zeros (Scott, 2026-10-10): none of the
+three files carries a note about Lancashire (every cell of every sheet read
+on 2026-10-10); the only Lancashire note in any held file is 2022-23's (one
+Marac did not submit, July 2022 to March 2023), a year whose housing figure
+is 13. The n8n-era note that the 2023-24 and 2024-25 figures were
+footnoted as incomplete is not borne out by the files; do not reintroduce a
+not-counted rule on that claim. A rule whose published form no longer matches the file halts. value_flag is
 an editions-only column: the reason for the NULLs of a row (one reason per
 row; two in one row halt). Values are rounded half up to the live column's
 scale before they are compared or stored, exactly as the live columns hold
@@ -69,8 +74,9 @@ under data/raw or data/reference, a regular file, no symlink).
 Geography (rule 4): S17 is keyed by police force area (geography.py
 declares '17' 'none'); lad24cd comes through la_pfa_mapping, which is read,
 never written. The English police force areas are exactly
-la_pfa_mapping.pfa_name_safelives: a missing one, an unknown one or a Welsh
-force taken as English halts.
+la_pfa_mapping.pfa_name_safelives, 39 of them (the West Midlands force
+included; the held table carried 38 until the first load, Scott 2026-10-10):
+a missing one, an unknown one or a Welsh force taken as English halts.
 
 marac_cases is a W1 input (05_la_signals.sql reads cases_discussed and
 cases_per_10k_adult_females at MAX(financial_year) via la_pfa_mapping): run
@@ -161,7 +167,7 @@ SCALES = {"marac_count": 0, "cases_discussed": 2, "recommended_cases": 2,
           "housing_referrals": 2}
 FLAG_TYPES = (("value_flag", "text"),)          # editions-only
 COMPARED = VALUES + ("value_flag",)
-FLAGS = ("not_submitted", "no_population", "not_counted")
+FLAGS = ("not_submitted", "no_population")
 CASES_COLUMNS = VALUES[:7]
 # the five measures the English police force areas must sum to England on
 RECONCILED = ("marac_count", "cases_discussed", "recommended_cases",
@@ -273,34 +279,12 @@ NORFOLK_2023_24_NOT_SUBMITTED = {
         "2021-22: the zeros are a non-submission, not a count."),
 }
 
-LANCASHIRE_HOUSING_NOT_COUNTED = {
-    "name": "LANCASHIRE_HOUSING_NOT_COUNTED",
-    "pfa": "Lancashire", "years": ("2023-24", "2024-25", "2025-26"),
-    "columns": ("housing_referrals",), "flag": "not_counted",
-    "published": {"housing_referrals": 0},
-    "decided": "Scott, 2026-10-10 (standing ruling: blanks, not zeros, for "
-               "Lancashire's zero Marac housing referrals); for him to "
-               "overrule",
-    "evidence": (
-        "The files publish Lancashire's housing referrals as 0 in 2023-24, "
-        "2024-25 and 2025-26, against 15, 32.5, 24, 23 and 13 in 2018-19 to "
-        "2022-23. None of the three files carries a note about Lancashire "
-        "(every cell of every sheet read on 2026-10-10); the only Lancashire "
-        "note in any held file is 2022-23's (one Marac did not submit from "
-        "July 2022 to March 2023). The n8n-era note recorded the 2023-24 "
-        "and 2024-25 figures as footnoted incomplete; the held files do not "
-        "bear that out. The Cases sheets give Lancashire 2 MARACs in "
-        "2023-24 and 2024-25 against 9 in 2022-23 and 2025-26. The rule "
-        "rests on Scott's ruling, not on a note in the files."),
-}
-
 WEST_MIDLANDS_2023_24_NOT_SUBMITTED = {
     "name": "WEST_MIDLANDS_2023_24_NOT_SUBMITTED",
     "pfa": "West Midlands", "years": ("2023-24",), "columns": VALUES,
     "flag": "not_submitted", "published": NOT_SUBMITTED_FORM,
-    "decided": "added 2026-10-10 on the evidence below, in the form of the "
-               "Norfolk rule; for Scott to confirm (the held table has no "
-               "West Midlands force row in any year)",
+    "decided": "Scott, 2026-10-10 (the West Midlands force is stored; its "
+               "2023-24 row is a non-submission like Norfolk's)",
     "evidence": (
         "Marac-data-2023-2024.xlsx publishes the West Midlands police force "
         "area in exactly the form of Norfolk 2023-24 (0 MARACs, 0 cases, "
@@ -312,7 +296,7 @@ WEST_MIDLANDS_2023_24_NOT_SUBMITTED = {
         "cases in 2025-26."),
 }
 
-ZERO_RULES = (NORFOLK_2023_24_NOT_SUBMITTED, LANCASHIRE_HOUSING_NOT_COUNTED,
+ZERO_RULES = (NORFOLK_2023_24_NOT_SUBMITTED,
               WEST_MIDLANDS_2023_24_NOT_SUBMITTED)
 
 # The NULL/value changes against the tip (rule 1.10) a load may store, each
@@ -320,15 +304,13 @@ ZERO_RULES = (NORFOLK_2023_24_NOT_SUBMITTED, LANCASHIRE_HOUSING_NOT_COUNTED,
 # lists per year ('<force>/<column>': (tip value, new value), at the live
 # scale, None for NULL) and nothing else.
 ACKNOWLEDGED_FLIPS = {
-    "s17-first-load-2026-10": {
-        "decided": "the S17 rule of the 2026-10-10 design (a published 0 "
-                   "stays 0; only the named rules make NULL); listed for "
-                   "Scott",
-        "why": ("edition 1 (as loaded) holds the published zeros the n8n "
-                "code read as NULL (parseFloat(x) || null); they are restored "
-                "to 0. Lancashire's 2025-26 housing referrals, held as the "
-                "published 0, become NULL under "
-                "LANCASHIRE_HOUSING_NOT_COUNTED"),
+    "s17-restored-zeros-2026-10": {
+        "decided": "Scott, 2026-10-10 (a published 0 stays 0; only the "
+                   "Norfolk and West Midlands 2023-24 rules make NULL)",
+        "why": ("edition 1 (as loaded) holds as NULL the published zeros the "
+                "n8n code read as NULL (parseFloat(x) || null); the files "
+                "publish them as 0 and no rule names them, so they are "
+                "restored to 0"),
         "periods": {
             "2018-19": {"City of London/repeat_cases": (None, "0.00"),
                         "City of London/repeat_cases_pct": (None, "0.0000"),
@@ -341,8 +323,9 @@ ACKNOWLEDGED_FLIPS = {
             "2021-22": {"Leicestershire/housing_referrals": (None, "0.00")},
             "2022-23": {"City of London/children_in_household":
                         (None, "0.00")},
-            "2024-25": {"City of London/housing_referrals": (None, "0.00")},
-            "2025-26": {"Lancashire/housing_referrals": ("0.00", None)},
+            "2023-24": {"Lancashire/housing_referrals": (None, "0.00")},
+            "2024-25": {"City of London/housing_referrals": (None, "0.00"),
+                        "Lancashire/housing_referrals": (None, "0.00")},
         },
     },
 }
@@ -414,7 +397,9 @@ LEGACY_FILES = {
         ("2025-26", "MARAC-DATA-2025-2026.xlsx",
          "3c1f06380fce49f530df8f20ab5eb26d", "0348d7902694b68916abaf8254bfa758",
          "MARAC-DATA-2025-2026.xlsx"))}
-# keys every held file has and the held table lacks, each explained
+# keys every held file has and the held table lacks, each explained: not
+# in edition 1 (as loaded = live as held); the first load adds them to the
+# next edition and refresh-latest inserts them (--accept-key-changes)
 LEGACY_EXPLAINED_KEYS = {
     "West Midlands": (
         "the held table has no row for the West Midlands police force area "

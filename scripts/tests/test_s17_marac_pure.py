@@ -67,7 +67,8 @@ def base_values(i):
 def fixture_values(values=None):
     """{name: {column: published}} of every force (English and Welsh), the
     City of London's and Lancashire's housing referrals a published 0 (as
-    in the held 2023-24 to 2025-26 files), then `values` overrides."""
+    in the held 2024-25 and 2025-26 files; both stay 0), then `values`
+    overrides."""
     out = {}
     names = [n for _, ns in REGIONS for n in ns] + list(WALES[1])
     for i, n in enumerate(names):
@@ -545,8 +546,7 @@ class Records(Tmp):
         self.assertEqual(n["value_flag"], "not_submitted")
         names = {a["rule"] for a in recs.applied}
         self.assertEqual(names, {"NORFOLK_2023_24_NOT_SUBMITTED",
-                                 "WEST_MIDLANDS_2023_24_NOT_SUBMITTED",
-                                 "LANCASHIRE_HOUSING_NOT_COUNTED"})
+                                 "WEST_MIDLANDS_2023_24_NOT_SUBMITTED"})
         self.assertEqual(len([a for a in recs.applied
                               if a["pfa"] == "Norfolk"]), len(m.VALUES))
         self.assertEqual(by_name(recs)["Suffolk"]["value_flag"], None)
@@ -565,34 +565,34 @@ class Records(Tmp):
             m.records(self.wb(year=2024, values=self.y2324(Norfolk=form)),
                       "2023-24", PFAS)
         self.assertIn("NORFOLK_2023_24_NOT_SUBMITTED", str(e.exception))
+        wm = dict(self.NORFOLK_2324, marac_count=7)
         with self.assertRaises(ValueError) as e:
-            m.records(self.wb("l.xlsx", values={"Lancashire": {
-                "housing_referrals": 7}}), "2025-26", PFAS)
-        self.assertIn("LANCASHIRE_HOUSING_NOT_COUNTED", str(e.exception))
+            m.records(self.wb("w.xlsx", year=2024, values=self.y2324(**{
+                "West Midlands": wm})), "2023-24", PFAS)
+        self.assertIn("WEST_MIDLANDS_2023_24_NOT_SUBMITTED", str(e.exception))
 
-    def test_the_lancashire_rule_fires_only_on_its_keys(self):
+    def test_lancashire_housing_zeros_stay_published_zeros(self):
+        """Scott, 2026-10-10: no not-counted rule for Lancashire; the files
+        carry no Lancashire note in 2023-24 to 2025-26."""
         z = {"housing_referrals": 0}
-        recs = m.records(self.wb(values={"Lancashire": z, "Cumbria": z}),
-                         "2025-26", PFAS)
-        r = by_name(recs)
-        self.assertIsNone(r["Lancashire"]["housing_referrals"])
-        self.assertEqual(r["Lancashire"]["value_flag"], "not_counted")
-        self.assertIsNotNone(r["Lancashire"]["cases_discussed"])
-        self.assertEqual(r["Cumbria"]["housing_referrals"], Decimal("0.00"))
-        self.assertEqual([(a["rule"], a["pfa"], a["column"])
-                          for a in recs.applied],
-                         [("LANCASHIRE_HOUSING_NOT_COUNTED", "Lancashire",
-                           "housing_referrals")])
-        # a year the rule does not name: the published 0 stays 0
-        r = by_name(m.records(self.wb("y.xlsx", year=2023, values={
-            "Lancashire": z}), "2022-23", PFAS))
-        self.assertEqual(r["Lancashire"]["housing_referrals"],
-                         Decimal("0.00"))
+        for year, label, extra in ((2024, "2023-24", self.y2324()),
+                                   (2025, "2024-25", {}),
+                                   (2026, "2025-26", {})):
+            with self.subTest(year=label):
+                recs = m.records(self.wb(f"z{year}.xlsx", year=year, values={
+                    "Lancashire": z, **extra}), label, PFAS)
+                r = by_name(recs)["Lancashire"]
+                self.assertEqual(r["housing_referrals"], Decimal("0.00"))
+                self.assertIsNone(r["value_flag"])
+                self.assertFalse([a for a in recs.applied
+                                  if a["pfa"] == "Lancashire"])
+        self.assertFalse([r for r in m.ZERO_RULES
+                          if r["pfa"] == "Lancashire"])
+        self.assertNotIn("not_counted", m.FLAGS)
 
     def test_exactly_the_named_rules(self):
         self.assertEqual([r["name"] for r in m.ZERO_RULES],
                          ["NORFOLK_2023_24_NOT_SUBMITTED",
-                          "LANCASHIRE_HOUSING_NOT_COUNTED",
                           "WEST_MIDLANDS_2023_24_NOT_SUBMITTED"])
         for r in m.ZERO_RULES:
             self.assertTrue(r["evidence"])
@@ -770,13 +770,20 @@ class StopConditions(unittest.TestCase):
         self.assertEqual(m.restored(new, tip), ["A housing_referrals"])
 
     def test_the_first_load_entry_lists_the_known_cells(self):
-        e = m.ACKNOWLEDGED_FLIPS["s17-first-load-2026-10"]
-        self.assertEqual(e["periods"]["2025-26"],
-                         {"Lancashire/housing_referrals": ("0.00", None)})
+        self.assertEqual(sorted(m.ACKNOWLEDGED_FLIPS),
+                         ["s17-restored-zeros-2026-10"])
+        e = m.ACKNOWLEDGED_FLIPS["s17-restored-zeros-2026-10"]
+        self.assertNotIn("2025-26", e["periods"])
+        self.assertEqual(e["periods"]["2023-24"],
+                         {"Lancashire/housing_referrals": (None, "0.00")})
         self.assertEqual(e["periods"]["2024-25"],
-                         {"City of London/housing_referrals":
-                          (None, "0.00")})
+                         {"City of London/housing_referrals": (None, "0.00"),
+                          "Lancashire/housing_referrals": (None, "0.00")})
         self.assertEqual(len(e["periods"]["2018-19"]), 5)
+        # every entry restores a NULL to 0: nothing goes to NULL
+        self.assertTrue(all(old is None and new is not None
+                            for cells in e["periods"].values()
+                            for old, new in cells.values()))
 
 
 @unittest.skipUnless(all((HELD / f).exists() for f in HELD_FILES.values()),
@@ -803,8 +810,10 @@ class HeldFiles(unittest.TestCase):
         for who in ("Norfolk", "West Midlands"):
             self.assertTrue(all(recs[who][c] is None for c in m.VALUES))
             self.assertEqual(recs[who]["value_flag"], "not_submitted")
-        self.assertIsNone(recs["Lancashire"]["housing_referrals"])
-        self.assertEqual(recs["Lancashire"]["value_flag"], "not_counted")
+        self.assertEqual(recs["Lancashire"]["housing_referrals"],
+                         Decimal("0.00"))
+        self.assertIsNone(recs["Lancashire"]["value_flag"])
+        self.assertEqual(len(recs), 39)
         self.assertEqual(recs["City of London"]["housing_referrals"],
                          Decimal("2.00"))
 

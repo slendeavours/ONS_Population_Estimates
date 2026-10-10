@@ -257,7 +257,7 @@ class Load(Fixture):
             path = self.file()
             text, logged = self.ok(cur, ["load", "--commit"])
             self.assertIn(f"{Y}: new", text)
-            self.assertIn("LANCASHIRE_HOUSING_NOT_COUNTED", text)
+            self.assertNotIn("LANCASHIRE", text)
             self.assertEqual(editions(cur), [(1, None, N)])
             self.assertEqual(count(cur, "zz_s17_live"), N)
             self.assertEqual(core.rows_differing(cur, ZZ, Y, 1), 0)
@@ -267,10 +267,9 @@ class Load(Fixture):
                                   "modified 2026-07-02T14:06:06Z)")
             self.assertEqual(live_val(cur, "City of London",
                                       "housing_referrals"), Decimal("0.00"))
-            self.assertIsNone(live_val(cur, "Lancashire",
-                                       "housing_referrals"))
-            self.assertEqual(ed_val(cur, "Lancashire", "value_flag", 1),
-                             "not_counted")
+            self.assertEqual(live_val(cur, "Lancashire",
+                                      "housing_referrals"), Decimal("0.00"))
+            self.assertIsNone(ed_val(cur, "Lancashire", "value_flag", 1))
             cur.execute("SELECT DISTINCT source FROM public.zz_s17_live")
             (source,), = cur.fetchall()
             self.assertIn(path.name, source)
@@ -634,9 +633,6 @@ class Migrate(Fixture):
                         r[c] = None
             r["live_source"] = f"SafeLives MARAC annual data {label}"
             rows.append(r)
-        if not defects:
-            # the Lancashire rule's NULL is what live holds too
-            pass
         m.insert_live(cur, m.profile(), label, rows)
         cur.execute("UPDATE public.zz_s17_live SET loaded_at = "
                     "'2026-03-30 22:22:38.090587+00' WHERE financial_year "
@@ -661,16 +657,19 @@ class Migrate(Fixture):
             plan, text = self.migrate(cur, files)
             self.assertIn("restored", text)
             self.assertIn("City of London housing_referrals", text)
-            self.assertIn("LANCASHIRE_HOUSING_NOT_COUNTED", text)
+            self.assertIn("Lancashire housing_referrals", text)
+            self.assertNotIn("LANCASHIRE", text)
             self.assertIn("West Midlands", text)
+            # edition 1 is live as held: no West Midlands row
             self.assertEqual(editions(cur), [(1, None, N - 1)])
+            self.assertEqual(ed_val(cur, "West Midlands", "marac_count", 1),
+                             "absent")
             cur.execute("SELECT DISTINCT release_label, source_file FROM "
                         "public.zz_s17_editions")
             (lb, sf), = cur.fetchall()
             self.assertEqual(lb, core.AS_LOADED_LABEL)
             self.assertTrue(sf.startswith("as loaded"))
-            self.assertEqual(ed_val(cur, "Lancashire", "value_flag", 1),
-                             "not_counted")
+            self.assertIsNone(ed_val(cur, "Lancashire", "value_flag", 1))
             self.assertIsNone(ed_val(cur, "City of London", "value_flag", 1))
             self.assertEqual(ledger(cur), [])      # the file differs
             self.assertTrue(pe.status(cur, m.profile())["ok"])
@@ -682,7 +681,8 @@ class Migrate(Fixture):
             self.assertEqual(rc, 1, text)
             self.assertIn("West Midlands", text)
             entry = {"decided": "test", "why": "test", "periods": {label: {
-                "City of London/housing_referrals": (None, "0.00")}}}
+                "City of London/housing_referrals": (None, "0.00"),
+                "Lancashire/housing_referrals": (None, "0.00")}}}
             with mock.patch.dict(m.ACKNOWLEDGED_FLIPS, {"t": entry}):
                 text, _ = self.ok(cur, ["load", "--commit", "--acknowledge",
                                         label, "--acknowledge-flips", "t"])
@@ -697,6 +697,9 @@ class Migrate(Fixture):
             self.assertEqual(live_val(cur, "City of London",
                                       "housing_referrals"), Decimal("0.00"))
             self.assertNotEqual(live_val(cur, "West Midlands"), "absent")
+            self.assertEqual(ed_val(cur, "West Midlands", "marac_count", 2), 4)
+            self.assertEqual(live_val(cur, "Lancashire", "housing_referrals"),
+                             Decimal("0.00"))
             self.assertTrue(pe.status(cur, m.profile())["ok"])
             text, _ = self.ok(cur, ["load", "--recheck", label])
             self.assertIn(f"{label}: unchanged", text)
