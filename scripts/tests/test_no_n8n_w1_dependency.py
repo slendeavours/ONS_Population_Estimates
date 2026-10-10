@@ -10,6 +10,9 @@ ALLOW = {
     "report_workflow_national_ta.py",
     # The S1 loaders retired from n8n; edits the S1 workflow row.
     "s1_n8n_retire_loaders.py",
+    # Retires the seven n8n loader workflows for the no-loader sources
+    # (none of them is W1); edits those workflow rows.
+    "n8n_retire_no_loader_sources.py",
     # Archives the old n8n W1 workflow (this is its whole purpose).
     "archive_n8n_w1.py",
 }
