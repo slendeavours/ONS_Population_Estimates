@@ -888,6 +888,23 @@ def dorset_problems(cur):
     return bad
 
 
+class _DorsetCur:
+    """Answers dorset_problems' two queries from a list of
+    (old_code, new_code, change_type) rows; la_boundaries holds E06000059."""
+
+    def __init__(self, rows):
+        self.rows, self.result = rows, []
+
+    def execute(self, sql, args=None):
+        if "la_code_lookup" in sql:
+            self.result = [r for r in self.rows if r[0] in set(args[0])]
+        else:
+            self.result = [("E06000059",)]
+
+    def fetchall(self):
+        return list(self.result)
+
+
 def real_codes(cur, spec=REAL, loader=LOADER, form="old", csv_sha=None,
                raw_dir=None, dorset=True):
     _need(cur, spec)
@@ -986,10 +1003,18 @@ def gate_3_codes(cur):
         ok, detail = real_codes(e.cur, ZZ, **dict(kw, csv_sha="0" * 64))
         if ok or "no .csv" not in detail:
             miss.append(f"a missing held file passed: {detail[:80]}")
-        ok, detail = real_codes(e.cur, ZZ, **dict(kw, dorset=True))
-        if ok or "E07000049" not in detail:
-            miss.append(f"Dorset without la_code_lookup rows passed: "
-                        f"{detail[:80]}")
+        # dorset_problems on stand-in cursors (the real la_code_lookup now
+        # holds the five rows, so the real table cannot show the failure)
+        none = dorset_problems(_DorsetCur([]))
+        full = dorset_problems(_DorsetCur(
+            [(c, "E06000059", "new_unitary") for c in DORSET]))
+        split = dorset_problems(_DorsetCur(
+            [(c, "E06000059" if c != DORSET[0] else "E06000058",
+              "new_unitary") for c in DORSET]))
+        if (len(none) != 5 or "E07000049" not in " ".join(none)
+                or full or not split):
+            miss.append(f"Dorset rows check: none {none[:1]} full {full} "
+                        f"split {split[:1]}")
         out["miss"] = miss
         # a file carrying the old Barnsley code as a publisher code halts
         # against the declared form 'old' and stores nothing
