@@ -63,7 +63,13 @@ DATASET_FORM = {
            "Rough sleeping snapshot autumn 2025 (data/reference .ods and "
            "rough_sleeping_snapshot_2025*.csv) carries E08000038/39 only; "
            "the 2026-08-14 scan found la_rough_sleeping on the new codes "
-           "only before resolution."),
+           "only before resolution. Read 2026-10-10: the autumn 2025 file "
+           "(data/raw/s10_rough_sleeping, Table_1_Total) carries "
+           "E08000038/39 for every year 2010-2025 (one row per authority, "
+           "the whole series on the new codes) and never E08000016/19. The "
+           "autumn 2024 file carried E08000016/19, so a --file of it halts "
+           "on this declaration (it also halts earlier, on its shifted "
+           "header)."),
     "11": ("none",
            "CQC locations carry no GSS codes for these authorities: the four "
            "Care directory with filters files of July, August, September and "
