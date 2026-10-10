@@ -521,6 +521,86 @@ class Load(Fixture):
             self.assertEqual(editions(cur, "2024"), [(1, None, N)])
             self.assertIn("rejected ['2024'", logged.call_args[0][2])
 
+    def test_a_pinned_correction_restores_the_same_file_under_a_new_rule(self):
+        """The cc5a extension of the zero rules (2026-10-10): a file loaded
+        under the households-only rules, read again under the extended
+        rules, stores the next edition of exactly the years and cells the
+        pinned correction names, only for that file, and only once."""
+        over = {("E07000026", "2017-18", "cc5a"): "0",
+                ("E06000020", "2023-24", "cc5a"): "0"}
+        old_rules = [mock.patch.dict(r, {"extra_columns": {}})
+                     for r in m.ZERO_RULES]
+        with rolled_back(self.conn) as cur:
+            with contextlib.ExitStack() as st:
+                for p in old_rules:
+                    st.enter_context(p)
+                csv_path, _ = self.files(overrides=over)
+                self.ok(cur, ["load", "--commit"])
+            self.assertEqual(ed_val(cur, "E06000020", "reasonable_preference",
+                                    "2024"), 0)
+            held_2018 = ed_val(cur, "E06000063", "reasonable_preference",
+                               "2018")
+            self.assertIsNotNone(held_2018)
+            sha = m.content_sha256(csv_path)
+            text, _ = self.ok(cur, ["load", "--commit"])
+            self.assertIn("nothing to do", text)
+            fix = {"periods": {"2018": {"cc5a_zero_rule": 1},
+                               "2024": {"cc5a_zero_rule": 1}},
+                   "decided": "Scott (test) 2026-10-10", "why": "test",
+                   "file_sha256": sha}
+            argv = ["load", "--commit", "--acknowledge-correction", "c"]
+            # pinned to another file: halts, nothing stored
+            with mock.patch.dict(m.ACKNOWLEDGED_CORRECTIONS, {
+                    "c": dict(fix, file_sha256="0" * 64)}):
+                rc, text, logged = self.run_main(cur, argv)
+            self.assertEqual(rc, "halt", text)
+            self.assertIn("pinned to", text)
+            # a count that is not exact: rejected, nothing stored
+            with mock.patch.dict(m.ACKNOWLEDGED_CORRECTIONS, {
+                    "c": dict(fix, periods={"2018": {"cc5a_zero_rule": 1},
+                                            "2024": {"cc5a_zero_rule": 2}})}):
+                rc, text, _ = self.run_main(cur, argv)
+            self.assertEqual(rc, 1, text)
+            self.assertIn("does not cover", text)
+            for p in PERIODS:
+                self.assertEqual(editions(cur, p), [(1, None, N)])
+            with mock.patch.dict(m.ACKNOWLEDGED_CORRECTIONS, {"c": fix}):
+                text, _ = self.ok(cur, argv[:1] + argv[2:])
+                self.assertIn("2018: value changes against the held edition: "
+                              "cc5a_zero_rule 1", text)
+                self.assertIn("2025 (checked", text)
+                self.assertIn("PREVIEW: nothing written", text)
+                text, logged = self.ok(cur, argv)
+            self.assertNotIn("--accept-reissue", text)
+            self.assertEqual(editions(cur, "2018"), [(1, None, N), (2, 1, N)])
+            self.assertEqual(editions(cur, "2024"), [(1, None, N), (2, 1, N)])
+            self.assertEqual(editions(cur, "2025"), [(1, None, N)])
+            self.assertIn("ACKNOWLEDGED c:", ed_val(cur, "E06000020",
+                                                    "release_label", "2024",
+                                                    edition=2))
+            self.assertIn("ACKNOWLEDGED c", logged.call_args[0][2])
+            # edition 1 untouched; edition 2 holds the NULLs
+            self.assertEqual(ed_val(cur, "E06000020", "reasonable_preference",
+                                    "2024", edition=1), 0)
+            self.assertIsNone(ed_val(cur, "E06000020",
+                                     "reasonable_preference", "2024",
+                                     edition=2))
+            self.ok(cur, ["refresh-latest", "--commit"])
+            self.assertIsNone(live_val(cur, "E06000063",
+                                       "reasonable_preference", "2018"))
+            self.assertIsNone(live_val(cur, "E06000020",
+                                       "reasonable_preference", "2024"))
+            self.assertIn(m.TELFORD_NO_REGISTER["extra_columns"][
+                "reasonable_preference"], live_val(cur, "E06000020",
+                                                   "source", "2024"))
+            self.assertTrue(pe.status(cur, m.profile())["ok"])
+            # the correction cannot be used again: nothing left to release
+            with mock.patch.dict(m.ACKNOWLEDGED_CORRECTIONS, {"c": fix}):
+                rc, text, _ = self.run_main(cur, argv)
+            self.assertEqual(rc, 1, text)
+            self.assertIn("does not cover", text)
+            self.assertEqual(editions(cur, "2018"), [(1, None, N), (2, 1, N)])
+
     def test_a_zero_null_flip_needs_a_named_correction(self):
         with rolled_back(self.conn) as cur:
             self.seed(cur, latest="12 February 2026")

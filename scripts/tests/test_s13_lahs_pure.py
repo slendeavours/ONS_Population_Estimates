@@ -697,7 +697,8 @@ class Records(Tmp):
         recs, applied = build(early)
         self.assertEqual(by_key(recs["2021"])["E06000020"][
             "households_on_register"], 0)
-        self.assertEqual([a["period"] for a in applied], ["2018"])
+        self.assertEqual([(a["period"], a["column"]) for a in applied],
+                         [("2018", "households_on_register")])
         self.assertEqual(by_key(recs["2019"])["E06000063"][
             "households_on_register"],
             sum(int(cell(c, "2018-19", "cc1a").replace(",", ""))
@@ -717,9 +718,67 @@ class Records(Tmp):
         self.assertEqual(m.ALLERDALE_ZERO["flag"], "not_counted")
         self.assertIn("Scott", m.ALLERDALE_ZERO["evidence"])
         for r in m.ZERO_RULES:
+            # the column each rule was first decided for (editions 1 and 2)
             self.assertEqual(r["column"], "households_on_register")
+            # extended to cc5a on 2026-10-10 (Scott): the same keys and years
+            self.assertEqual(m.rule_columns(r), ("households_on_register",
+                                                 "reasonable_preference"))
+            self.assertIn("2026-10-10", r["extra_columns"][
+                "reasonable_preference"])
         self.assertIn("reported 0 means not applicable",
                       m.TELFORD_NO_REGISTER["note"])
+
+    def test_the_rules_reach_cc5a_on_their_exact_keys_and_years(self):
+        years = ("2014-15", "2017-18", "2018-19", "2020-21", "2022-23",
+                 "2023-24", "2024-25")
+        over = {("E07000026", y, "cc5a"): "0" for y in years
+                if y <= "2018-19" and y != "2014-15"}
+        over.update({("E06000020", y, "cc5a"): "0" for y in years})
+        over[("E06000001", "2023-24", "cc5a")] = "0"   # a published zero
+        over[("E06000020", "2024-25", "cc1a")] = "7"   # Telford cc1a not 0
+        recs, applied = build(self.read(years=years, overrides=over))
+        cc5a = [(a["rule"], a["code"], a["period"]) for a in applied
+                if a["column"] == "reasonable_preference"]
+        self.assertEqual(cc5a, [("ALLERDALE_ZERO", "E07000026", "2018"),
+                                ("TELFORD_NO_REGISTER", "E06000020", "2023"),
+                                ("TELFORD_NO_REGISTER", "E06000020", "2024"),
+                                ("TELFORD_NO_REGISTER", "E06000020", "2025")])
+        # Cumberland 2018: Allerdale's cc5a 0 is not counted -> part_missing
+        cum = by_key(recs["2018"])["E06000063"]
+        self.assertIsNone(cum["reasonable_preference"])
+        self.assertIn("reasonable_preference=part_missing", cum["value_flag"])
+        # Allerdale 2019 (after the window): its 0 is summed as a value
+        self.assertEqual(by_key(recs["2019"])["E06000063"][
+            "reasonable_preference"],
+            sum(int(cell(c, "2018-19", "cc5a")) for c in PREDECESSORS[1:]))
+        # Telford 2015 and 2021 (before the window) stay 0
+        for p in ("2015", "2021"):
+            t = by_key(recs[p])["E06000020"]
+            self.assertEqual(t["reasonable_preference"], 0, p)
+            self.assertNotIn("reasonable_preference", t["value_flag"] or "")
+        # Telford 2023 to 2025 NULL not_applicable; its cc1a 7 untouched
+        for p in ("2023", "2024", "2025"):
+            t = by_key(recs[p])["E06000020"]
+            self.assertIsNone(t["reasonable_preference"], p)
+            self.assertIn("reasonable_preference=not_applicable",
+                          t["value_flag"])
+        self.assertEqual(by_key(recs["2025"])["E06000020"][
+            "households_on_register"], 7)
+        # the cc5a rule note rides on the row (live_source)
+        self.assertIn(m.TELFORD_NO_REGISTER["extra_columns"][
+            "reasonable_preference"], by_key(recs["2025"])["E06000020"][
+            "rule_note"])
+        self.assertNotIn(m.TELFORD_NO_REGISTER["note"], by_key(
+            recs["2025"])["E06000020"]["rule_note"])
+        # a published cc5a 0 elsewhere stays 0
+        self.assertEqual(by_key(recs["2024"])["E06000001"][
+            "reasonable_preference"], 0)
+        # a non-zero cc5a under a rule is untouched
+        recs, applied = build(self.read(years=("2017-18", "2024-25")))
+        self.assertEqual([a["column"] for a in applied],
+                         ["households_on_register"] * 2)
+        self.assertIsNotNone(by_key(recs["2025"])["E06000020"][
+            "reasonable_preference"])
 
     def test_three_predecessors_all_present_sum(self):
         rows = [{"code": c, "lad24cd_pub": "E06000063", "period": "2019",
@@ -998,6 +1057,20 @@ class Planning(unittest.TestCase):
         self.assertEqual(new, [])
         self.assertTrue(skip["2014"].startswith("older"))
 
+    def test_plan_periods_compares_a_pinned_corrections_years_again(self):
+        ranks = {"2024": R1, "2025": R1}
+        checked = {p: {("src", "sha")} for p in ranks}
+        new, rev, skip = m.plan_periods(["2024", "2025"], R1, ranks, checked,
+                                        "src", "sha", recheck=None,
+                                        allow_older=False,
+                                        correction_periods=["2024"])
+        self.assertEqual(rev, ["2024"])
+        self.assertTrue(skip["2025"].startswith("checked"))
+        with self.assertRaises(ValueError):
+            m.plan_periods(["2025"], R1, ranks, checked, "src", "sha",
+                           recheck=None, allow_older=False,
+                           correction_periods=["2019"])
+
     def test_tip_ranks_take_the_ledger_into_account(self):
         tips = {"2025": {"rank": R1}}
         checked = {"2025": {(m.ledger_source("u", R2, "2024-25", ["2025"]),
@@ -1151,6 +1224,84 @@ class Correction(unittest.TestCase):
                          3241)
         self.assertNotIn("predecessor_sum", a["periods"]["2025"])
         self.assertIn("Scott", a["decided"])
+
+    def test_classify_cc5a_zero_rule_group(self):
+        tip = recs({"E06000063": 10, "E06000020": None, "E06000001": 5},
+                   "2016")
+        new = recs({"E06000063": 10, "E06000020": None, "E06000001": 5},
+                   "2016", E06000063={
+                       "reasonable_preference": None,
+                       "predecessor_codes": "E07000026;E07000028;E07000029",
+                       "value_flag": "reasonable_preference=part_missing"})
+        g = m.classify_changes(new, tip, "2016")
+        self.assertEqual(g["cc5a_zero_rule"], ["E06000063"])
+        self.assertEqual(g["other"], [])
+        # Cumberland after Allerdale's window: other
+        self.assertEqual(m.classify_changes(
+            [dict(r, reporting_year="2019") for r in new],
+            [dict(r, reporting_year="2019") for r in tip], "2019")["other"],
+            ["E06000063"])
+        # Telford from 2022, not_applicable only
+        tip = recs({"E06000020": None}, "2023",
+                   E06000020={"reasonable_preference": 0})
+        new = recs({"E06000020": None}, "2023", E06000020={
+            "reasonable_preference": None,
+            "value_flag": "households_on_register=not_applicable; "
+                          "reasonable_preference=not_applicable"})
+        self.assertEqual(m.classify_changes(new, tip, "2023")[
+            "cc5a_zero_rule"], ["E06000020"])
+        self.assertEqual(m.classify_changes(
+            [dict(r, reporting_year="2021") for r in new],
+            [dict(r, reporting_year="2021") for r in tip], "2021")["other"],
+            ["E06000020"])
+        wrong = [dict(new[0], value_flag="reasonable_preference=suppressed")]
+        self.assertEqual(m.classify_changes(wrong, tip, "2023")["other"],
+                         ["E06000020"])
+        # another authority's cc5a going to NULL: other
+        tip = recs({"E06000001": 5}, "2023",
+                   E06000001={"reasonable_preference": 0})
+        new = recs({"E06000001": 5}, "2023", E06000001={
+            "reasonable_preference": None,
+            "value_flag": "reasonable_preference=not_applicable"})
+        self.assertEqual(m.classify_changes(new, tip, "2023")["other"],
+                         ["E06000001"])
+
+    def test_a_pinned_correction_names_its_file_and_its_cells(self):
+        pin = "ab" * 32
+        a = {"periods": {"2016": {"cc5a_zero_rule": 1}}, "decided": "x",
+             "why": "y", "file_sha256": pin}
+        g = {"cc5a_filled": [], "predecessor_sum": [], "allerdale": [],
+             "cc5a_zero_rule": ["E06000063"], "other": []}
+        with mock.patch.dict(m.ACKNOWLEDGED_CORRECTIONS, {"t": a}):
+            self.assertEqual(m.correction_file_problems("t", pin), [])
+            self.assertTrue(m.correction_file_problems("t", "cd" * 32))
+            self.assertEqual(m.correction_problems("t", "2016", g), [])
+            self.assertTrue(m.correction_problems(
+                "t", "2016", dict(g, cc5a_zero_rule=[])))
+            self.assertTrue(m.correction_problems(
+                "t", "2016", dict(g, cc5a_filled=["E06000001"])))
+        # an unpinned correction is not tied to a file
+        self.assertEqual(m.correction_file_problems(
+            "lahs-correction-2026-10", "cd" * 32), [])
+        # content outside the counted keys must not change
+        tip = recs({"E06000063": 10, "E06000001": 5}, "2016")
+        new = recs({"E06000063": 10, "E06000001": 5}, "2016", E06000063={
+            "reasonable_preference": None,
+            "value_flag": "reasonable_preference=part_missing"})
+        self.assertEqual(m.uncounted_changes(new, tip, ["E06000063"]), [])
+        new[1]["return_status"] = "Saved"
+        self.assertEqual(m.uncounted_changes(new, tip, ["E06000063"]),
+                         ["E06000001"])
+
+    def test_the_cc5a_correction_is_pinned_and_counts_seven_cells(self):
+        a = m.ACKNOWLEDGED_CORRECTIONS["lahs-cc5a-2026-10"]
+        self.assertEqual(a["file_sha256"], m.LEGACY_JUNE["sha256"])
+        self.assertEqual(a["periods"], {
+            p: {"cc5a_zero_rule": 1}
+            for p in ("2015", "2016", "2017", "2018", "2022", "2023",
+                      "2024")})
+        self.assertIn("Scott", a["decided"])
+        self.assertIn("2026-10-10", a["decided"])
 
 
 # ---------------------------------------------------------------------------

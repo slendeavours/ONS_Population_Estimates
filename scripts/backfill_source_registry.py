@@ -1067,11 +1067,14 @@ SOURCES = [
             "2,028 for 2018-19; the loader stores NULL (not_counted) under "
             "the standing blanks ruling, and Cumberland 2015 to 2018 is then "
             "NULL.",
-            "cc5a zeros are left as published (Allerdale 2014-15 to "
-            "2017-18, which sum as 0 into Cumberland's reasonable_"
-            "preference; Telford 2014-15 and 2020-21 to 2023-24; 24 cells in "
-            "all). Whether to read them as not counted is for Scott's "
-            "decision.",
+            "The same two rules apply to cc5a (reasonable_preference) for "
+            "the same keys and years (Scott, 2026-10-10): Allerdale's cc5a "
+            "zeros for 2014-15 to 2017-18 are not counted, so Cumberland's "
+            "reasonable_preference 2015 to 2018 is NULL (part_missing), and "
+            "Telford's cc5a zeros for 2022 to 2024 are NULL "
+            "(not_applicable): 7 cells, edition 3. Telford's 2015 and 2021 "
+            "cc5a zeros are before its rule and stay 0, as do 19 published "
+            "cc5a zeros on other authorities (21 in all).",
             "The reference date was 1 April up to 2017-18 and 31 March since "
             "(the dictionary's cc1a note). reporting_year is the year the "
             "LAHS year ends: 2024-25 is 2025."],

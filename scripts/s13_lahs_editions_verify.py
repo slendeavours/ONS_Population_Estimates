@@ -142,6 +142,32 @@ OUTPUT = []  # every line the gates print, for the secret-leak gate (22)
 NEVER_CODES = ("E08000038", "E08000039")
 DORSET = ("E07000049", "E07000050", "E07000051", "E07000052", "E07000053")
 CORRECTION = "lahs-correction-2026-10"
+# the second correction (2026-10-10): the zero rules extended to cc5a, pinned
+# to the June 2026 file, one cell per year (edition 3 of each year)
+CC5A_CORRECTION = "lahs-cc5a-2026-10"
+CC5A_PERIODS = ("2015", "2016", "2017", "2018", "2022", "2023", "2024")
+# the cells it makes NULL, (lad24cd, year): flag in the tip, value in
+# edition 2 (read 2026-10-10 from edition 2, before edition 3 was stored)
+CC5A_NULLED = {
+    ("E06000063", "2015"): ("part_missing", 3110),
+    ("E06000063", "2016"): ("part_missing", 2288),
+    ("E06000063", "2017"): ("part_missing", 1794),
+    ("E06000063", "2018"): ("part_missing", 1602),
+    ("E06000020", "2022"): ("not_applicable", 0),
+    ("E06000020", "2023"): ("not_applicable", 0),
+    ("E06000020", "2024"): ("not_applicable", 0),
+}
+# the published cc5a zeros that stay 0 in the tip: Telford's 2015 and 2021
+# (before its rule) and the 19 on other single-code authorities
+CC5A_ZEROS = (
+    ("E06000020", "2015"), ("E06000020", "2021"),
+    ("E06000042", "2015"), ("E06000042", "2016"), ("E06000042", "2017"),
+    ("E06000042", "2018"), ("E06000053", "2024"), ("E06000053", "2025"),
+    ("E07000009", "2019"), ("E07000010", "2017"), ("E07000068", "2019"),
+    ("E07000092", "2024"), ("E07000109", "2018"), ("E07000124", "2019"),
+    ("E07000124", "2020"), ("E07000124", "2021"), ("E07000124", "2022"),
+    ("E07000125", "2017"), ("E07000134", "2017"), ("E07000223", "2020"),
+    ("E08000031", "2020"))
 # the migration proof on the real files, surveyed 2026-10-10 (Task 4): of the
 # 3,256 held rows, 57 come from another predecessor's row of their key, 3 from
 # the June 2026 file (set 2026-08-20) and 3 are NULL under TELFORD_NO_REGISTER
@@ -1211,7 +1237,9 @@ def real_flags(cur, spec=REAL):
 
 
 def zero_rule_state():
-    """Problems unless ZERO_RULES is exactly the two named constants."""
+    """Problems unless ZERO_RULES is exactly the two named constants, each
+    first decided for cc1a and extended to cc5a (2026-10-10), with
+    evidence and a note per column."""
     names = [r["name"] for r in m.ZERO_RULES]
     bad = []
     if names != list(ALLOWED_RULE_NAMES):
@@ -1219,6 +1247,11 @@ def zero_rule_state():
     for r in m.ZERO_RULES:
         if r["column"] != m.HOUSEHOLDS or not r.get("evidence"):
             bad.append(f"{r['name']}: column or evidence wrong")
+        if m.rule_columns(r) != (m.HOUSEHOLDS, m.REASONABLE) or \
+                "2026-10-10" not in (r.get("extra_columns") or {}).get(
+                    m.REASONABLE, ""):
+            bad.append(f"{r['name']}: columns {m.rule_columns(r)}, expected "
+                       "cc1a and cc5a (cc5a decided 2026-10-10)")
     return bad
 
 
@@ -3232,27 +3265,73 @@ def correction_problems_static():
     if set(pers.get("2025", {})) != {"cc5a_filled"}:
         bad.append(f"{CORRECTION} 2025 names {pers.get('2025')}: only "
                    "cc5a_filled may change the map's year")
+    if c.get("file_sha256"):
+        bad.append(f"{CORRECTION} is pinned to a file; it was not")
+    return bad + cc5a_correction_problems_static()
+
+
+def cc5a_correction_problems_static():
+    """Problems unless the second correction is well formed: decided and
+    explained, pinned to the June 2026 file, exactly the years
+    CC5A_PERIODS with cc5a_zero_rule 1 each and nothing else (no 2025)."""
+    c = m.ACKNOWLEDGED_CORRECTIONS.get(CC5A_CORRECTION)
+    if c is None:
+        return [f"{CC5A_CORRECTION} is not in ACKNOWLEDGED_CORRECTIONS"]
+    bad = [f"{CC5A_CORRECTION} has no {k}" for k in ("decided", "why")
+           if not c.get(k)]
+    if c.get("file_sha256") != m.LEGACY_JUNE["sha256"]:
+        bad.append(f"{CC5A_CORRECTION} is not pinned to the June 2026 file")
+    want = {p: {"cc5a_zero_rule": 1} for p in CC5A_PERIODS}
+    if c.get("periods") != want:
+        bad.append(f"{CC5A_CORRECTION} periods are {c.get('periods')}, "
+                   f"expected cc5a_zero_rule 1 for each of "
+                   f"{', '.join(CC5A_PERIODS)}")
     return bad
 
 
+def _labelled(cur, spec, name):
+    """{period: [editions]} whose release label records ACKNOWLEDGED name."""
+    cur.execute(f"SELECT DISTINCT {spec.period_col}, edition FROM "
+                f"public.{spec.editions_table} WHERE release_label LIKE %s "
+                "ORDER BY 1, 2", (f"%ACKNOWLEDGED {name}:%",))
+    out = {}
+    for p, e in cur.fetchall():
+        out.setdefault(str(p), []).append(e)
+    return out
+
+
 def real_correction(cur, spec=REAL):
-    """The correction was applied: every year it names has an edition whose
-    release label records ACKNOWLEDGED <name>, and no edition outside its
-    years does."""
+    """The corrections were applied: every year the first names has edition
+    2 recording ACKNOWLEDGED <name> in its label and no other edition does;
+    the cc5a correction is edition 3 of exactly its years (superseding 2)
+    and no other edition records it."""
     _need(cur, spec)
     bad = correction_problems_static()
     names = m.ACKNOWLEDGED_CORRECTIONS.get(CORRECTION, {}).get("periods", {})
-    cur.execute(f"SELECT DISTINCT {spec.period_col} FROM "
-                f"public.{spec.editions_table} WHERE release_label LIKE %s",
-                (f"%ACKNOWLEDGED {CORRECTION}:%",))
-    got = sorted(str(r[0]) for r in cur.fetchall())
-    if got != sorted(names):
+    got = _labelled(cur, spec, CORRECTION)
+    if sorted(got) != sorted(names) or any(v != [2] for v in got.values()):
         bad.append(f"editions labelled ACKNOWLEDGED {CORRECTION} exist for "
-                   f"{got}, the correction names {sorted(names)} (not yet "
-                   "loaded?)")
+                   f"{got}, the correction names edition 2 of "
+                   f"{sorted(names)} (not yet loaded?)")
+    got3 = _labelled(cur, spec, CC5A_CORRECTION)
+    if sorted(got3) != list(CC5A_PERIODS) or \
+            any(v != [3] for v in got3.values()):
+        bad.append(f"editions labelled ACKNOWLEDGED {CC5A_CORRECTION} exist "
+                   f"for {got3}, expected edition 3 of each of "
+                   f"{', '.join(CC5A_PERIODS)} (not yet loaded?)")
+    else:
+        cur.execute(f"SELECT {spec.period_col}, supersedes FROM "
+                    f"public.{spec.editions_table} WHERE edition = 3 AND "
+                    f"{spec.period_col}::text = ANY(%s) GROUP BY 1, 2 "
+                    "ORDER BY 1", (list(CC5A_PERIODS),))
+        rows = [(str(p), s) for p, s in cur.fetchall()]
+        if rows != [(p, 2) for p in CC5A_PERIODS]:
+            bad.append(f"edition 3 of the cc5a years supersedes {rows}, "
+                       "expected edition 2 for each")
     return not bad, "; ".join(bad[:3]) if bad else (
-        f"{CORRECTION} is well formed and recorded in the label of an "
-        f"edition of each of its {len(got)} years")
+        f"{CORRECTION} is recorded in edition 2 of each of its {len(got)} "
+        f"years; {CC5A_CORRECTION} (pinned to the June 2026 file) in "
+        f"edition 3 of each of its {len(got3)} years and nowhere else")
 
 
 def gate_23_correction(cur):
@@ -3373,6 +3452,52 @@ def gate_23_correction(cur):
         if rc != 0 or "2018: unchanged" not in text:
             problems.append(f"the corrected file read again: rc {rc}")
     _in_savepoint(cur, lambda c: world(c, stores))
+
+    def pinned(e):
+        """A file loaded under the households-only rules, then re-read under
+        the rules extended to cc5a with a correction pinned to it."""
+        over = {("E07000026", "2017-18", "cc5a"): "0",
+                ("E06000020", "2023-24", "cc5a"): "0"}
+        with contextlib.ExitStack() as st:
+            for r in m.ZERO_RULES:
+                st.enter_context(mock.patch.dict(r, {"extra_columns": {}}))
+            csv_path, _ = e.files(overrides=over)
+            e.ok(e.cur, commit)
+        sha = m.content_sha256(csv_path)
+        fixp = {"periods": {"2018": {"cc5a_zero_rule": 1},
+                            "2024": {"cc5a_zero_rule": 1}},
+                "decided": "Scott (verify fixture)", "why": "verify fixture",
+                "file_sha256": sha}
+        argv = commit + ["--acknowledge-correction", "p"]
+        before = state(e.cur)
+        for label, fx, needle in (
+                ("another file", dict(fixp, file_sha256="0" * 64),
+                 "pinned to"),
+                ("a count one over", dict(fixp, periods={
+                    "2018": {"cc5a_zero_rule": 1},
+                    "2024": {"cc5a_zero_rule": 2}}), "whole or not at all")):
+            with mock.patch.dict(m.ACKNOWLEDGED_CORRECTIONS, {"p": fx}):
+                rc, text, _ = e.cmd(argv)
+            if rc not in (1, "halt") or needle not in text or \
+                    state(e.cur) != before:
+                problems.append(f"pinned, {label}: rc {rc}: {text[-140:]}")
+        with mock.patch.dict(m.ACKNOWLEDGED_CORRECTIONS, {"p": fixp}):
+            rc, text, _ = e.cmd(argv)
+            if rc != 0:
+                problems.append(f"pinned, exact: rc {rc}: {text[-140:]}")
+                return
+            if [tl.editions(e.cur, p) for p in PERIODS] != [
+                    [(1, None, N), (2, 1, N)], [(1, None, N), (2, 1, N)],
+                    [(1, None, N)]]:
+                problems.append("pinned: not exactly 2018 and 2024 stored")
+            if tl.ed_val(e.cur, "E06000020", m.REASONABLE, "2024",
+                         edition=1) != 0 or tl.ed_val(
+                    e.cur, "E06000020", m.REASONABLE, "2024") is not None:
+                problems.append("pinned: Telford 2024 cc5a not 0 -> NULL")
+            rc, text, _ = e.cmd(argv)
+            if rc != 1 or "does not cover" not in text:
+                problems.append("pinned: the correction released twice")
+    scenario(cur, pinned)
     problems += correction_problems_static()
     seeded = not problems
     sd = ("a load of a file changing every year needs the named "
@@ -3382,43 +3507,110 @@ def gate_23_correction(cur):
           "outside the named groups are each refused with nothing stored; "
           "the exact counts store edition 2 (label and run-log record the "
           "correction), refresh-latest brings live to it, no 2025 household "
-          "figure moves and the same file read again is unchanged; the "
-          f"real {CORRECTION} lists 2015 to 2025, three groups, and only "
-          "cc5a_filled for 2025" if seeded else "; ".join(problems[:3]))
+          "figure moves and the same file read again is unchanged; a "
+          "correction pinned to the same file re-reads only its years, is "
+          "refused on another file, stores whole or not at all, and has "
+          f"nothing to release once stored; the real {CORRECTION} lists "
+          "2015 to 2025, three groups, and only cc5a_filled for 2025, and "
+          f"{CC5A_CORRECTION} is pinned to the June 2026 file with "
+          "cc5a_zero_rule 1 for each of its seven years"
+          if seeded else "; ".join(problems[:3]))
     mixed(23, name, seeded, sd, cur, real_correction)
 
 
 # --------------------------------------------------------------- gate 24
 
+def real_zero_cells(cur, spec=REAL):
+    """The cc5a zero cells after the second correction: each CC5A_NULLED
+    cell is NULL in the tip with its flag and held its value in edition 2;
+    each CC5A_ZEROS cell is 0 in the tip with no cc5a flag; no other tip
+    cc5a is 0; edition 1 has no cc5a (not_loaded)."""
+    _need(cur, spec)
+    if not _live_periods(cur, spec):
+        return False, EMPTY
+    bad = []
+    tips = {}
+    for p in _live_periods(cur, spec):
+        cur.execute(f"SELECT lad24cd, {m.REASONABLE}, value_flag FROM "
+                    f"public.{spec.editions_table} WHERE "
+                    f"{spec.period_col} = %s AND edition = %s",
+                    (p, _tip(cur, spec, p)))
+        for k, v, f in cur.fetchall():
+            tips[(k, p)] = (v, dict(parse_flag(f)).get(m.REASONABLE))
+    for key, (flag, held) in sorted(CC5A_NULLED.items()):
+        v, f = tips.get(key, ("absent", None))
+        if v is not None or f != flag:
+            bad.append(f"{key[0]} {key[1]} cc5a {v!r} ({f}), expected NULL "
+                       f"{flag}")
+        cur.execute(f"SELECT {m.REASONABLE} FROM public.{spec.editions_table}"
+                    f" WHERE lad24cd = %s AND {spec.period_col} = %s AND "
+                    "edition = 2", (key[0], key[1]))
+        r = cur.fetchone()
+        if r is None or r[0] != held or isinstance(r[0], bool):
+            bad.append(f"{key[0]} {key[1]} edition 2 cc5a {r!r}, expected "
+                       f"{held} (edition 2 untouched)")
+    zeros = sorted(k for k, (v, _) in tips.items()
+                   if v is not None and not isinstance(v, bool) and v == 0)
+    if zeros != sorted(CC5A_ZEROS):
+        bad.append(f"tip cc5a zeros {len(zeros)}: extra "
+                   f"{sorted(set(zeros) - set(CC5A_ZEROS))[:4]}, missing "
+                   f"{sorted(set(CC5A_ZEROS) - set(zeros))[:4]}")
+    for k in CC5A_ZEROS:
+        if tips.get(k, (None, None))[1] is not None:
+            bad.append(f"{k} has a cc5a flag")
+    cur.execute(f"SELECT COUNT(*) FROM public.{spec.editions_table} WHERE "
+                f"edition = 1 AND {m.REASONABLE} IS NOT NULL")
+    if cur.fetchone()[0]:
+        bad.append("edition 1 holds a cc5a value")
+    return not bad, "; ".join(bad[:3]) if bad else (
+        f"{len(CC5A_NULLED)} cc5a cells NULL by the extended rules "
+        "(Cumberland 2015 to 2018 part_missing, Telford 2022 to 2024 "
+        "not_applicable), each holding its value in edition 2; "
+        f"{len(zeros)} published cc5a zeros stay 0 (Telford 2015 and 2021 "
+        f"and {len(zeros) - 2} on other single-code authorities); edition 1 "
+        "has no cc5a")
+
+
 def gate_24_zero_rules(cur):
     name = ("the two zero rules fire on their key, years and a published 0 "
-            "only; Cumberland is NULL while a part is NULL")
+            "only, in cc1a and cc5a; Cumberland is NULL while a part is "
+            "NULL; after the cc5a correction only the listed cc5a zeros are "
+            "NULL")
     problems = []
 
-    def row(code, year, h, flags=None):
+    def row(code, year, h, flags=None, rp=5):
         return {"code": code, "lad24cd_pub": code, "period": str(year),
                 "year": f"{year - 1}-{str(year)[2:]}", "line": 2,
                 "status": "S", m.HOUSEHOLDS: h, m.JOINTLY: False,
-                m.REASONABLE: 5, "flags": flags or {}, "rule_note": None}
+                m.REASONABLE: rp, "flags": flags or {}, "rule_note": None}
 
-    def fires(code, year, h=0):
-        out, applied = m.zero_rules([row(code, year, h)])
-        return bool(applied), out[0][m.HOUSEHOLDS]
-    for code, year, want in (
-            ("E06000020", 2021, False), ("E06000020", 2022, True),
-            ("E06000020", 2025, True), ("E06000020", 2030, True),
-            ("E07000026", 2014, False), ("E07000026", 2015, True),
-            ("E07000026", 2018, True), ("E07000026", 2019, False),
-            ("E07000028", 2016, False), ("E06000001", 2023, False),
-            ("E06000063", 2016, False)):
-        got, h = fires(code, year)
-        if got != want or (h is None) != want:
-            problems.append(f"{code} {year}: fired={got}, value {h!r}, "
-                            f"expected fired={want}")
-    for code, year in (("E06000020", 2023), ("E07000026", 2016)):
-        got, h = fires(code, year, 5)
-        if got or h != 5:
-            problems.append(f"{code} {year}: a non-zero value was changed")
+    def fires(code, year, h=0, col=m.HOUSEHOLDS):
+        r = row(code, year, 5, rp=h) if col == m.REASONABLE else \
+            row(code, year, h)
+        out, applied = m.zero_rules([r])
+        return bool(applied), out[0][col]
+    for col in (m.HOUSEHOLDS, m.REASONABLE):
+        for code, year, want in (
+                ("E06000020", 2021, False), ("E06000020", 2022, True),
+                ("E06000020", 2025, True), ("E06000020", 2030, True),
+                ("E06000020", 2015, False),
+                ("E07000026", 2014, False), ("E07000026", 2015, True),
+                ("E07000026", 2018, True), ("E07000026", 2019, False),
+                ("E07000028", 2016, False), ("E06000001", 2023, False),
+                ("E06000042", 2016, False), ("E06000063", 2016, False)):
+            got, h = fires(code, year, col=col)
+            if got != want or (h is None) != want:
+                problems.append(f"{code} {year} {col}: fired={got}, value "
+                                f"{h!r}, expected fired={want}")
+        for code, year in (("E06000020", 2023), ("E07000026", 2016)):
+            got, h = fires(code, year, 5, col=col)
+            if got or h != 5:
+                problems.append(f"{code} {year} {col}: a non-zero value was "
+                                "changed")
+    # a row with no zero in any column: nothing fires
+    out, applied = m.zero_rules([row("E06000020", 2023, 5)])
+    if applied:
+        problems.append("a rule fired on a row with no zero")
     rule = m.TELFORD_NO_REGISTER
     if (rule["code"], rule["first_year"], rule["last_year"],
             rule["column"], rule["flag"]) != ("E06000020", 2022, None,
@@ -3479,12 +3671,43 @@ def gate_24_zero_rules(cur):
             problems.append("Allerdale's 2019 published zero was read as "
                             "NULL (the rule ends in 2018)")
     scenario(cur, after_window)
-    report(24, name, not problems, "Telford and Wrekin's zero is NULL "
-           "(not_applicable) from 2022 and its rule note is kept in source, "
-           "Allerdale's 2015 to 2018 zeros are NULL so Cumberland is NULL "
-           "(part_missing), and nothing else changes: not another year, "
-           "code or non-zero value, and Allerdale's 2019 zero counts as a "
-           "value" if not problems else "; ".join(problems[:3]))
+
+    def cc5a(e):
+        e.files(years=("2017-18", "2018-19", "2024-25"), overrides={
+            ("E07000026", "2017-18", "cc5a"): "0",
+            ("E07000026", "2018-19", "cc5a"): "0",
+            ("E06000020", "2017-18", "cc5a"): "0",
+            ("E06000020", "2024-25", "cc5a"): "0",
+            ("E06000001", "2024-25", "cc5a"): "0"},
+            ods={"overrides": {("E06000020", "cc5a"): 0,
+                               ("E06000001", "cc5a"): 0}})
+        e.ok(e.cur, ["load", "--commit"])
+        rp = m.REASONABLE
+        if tl.live_val(e.cur, "E06000063", rp, "2018") is not None or \
+                "reasonable_preference=part_missing" not in tl.ed_val(
+                    e.cur, "E06000063", "value_flag", "2018"):
+            problems.append("Cumberland 2018 cc5a is not NULL part_missing")
+        if tl.live_val(e.cur, "E06000063", rp, "2019") != sum(
+                int(tl.cell(c, "2018-19", "cc5a")) for c in PREDECESSORS[1:]):
+            problems.append("Allerdale's 2019 cc5a zero was not summed")
+        if tl.live_val(e.cur, "E06000020", rp) is not None or \
+                "reasonable_preference=not_applicable" not in tl.ed_val(
+                    e.cur, "E06000020", "value_flag"):
+            problems.append("Telford 2025 cc5a is not NULL not_applicable")
+        if tl.live_val(e.cur, "E06000020", rp, "2018") != 0:
+            problems.append("Telford 2018 cc5a (before the rule) changed")
+        if tl.live_val(e.cur, "E06000001", rp) != 0:
+            problems.append("a published cc5a zero elsewhere changed")
+    scenario(cur, cc5a)
+    problems += zero_rule_state()
+    seeded = not problems
+    sd = ("Telford and Wrekin's zero is NULL (not_applicable) from 2022 and "
+          "its rule note is kept in source, Allerdale's 2015 to 2018 zeros "
+          "are NULL so Cumberland is NULL (part_missing), in cc1a and cc5a "
+          "alike, and nothing else changes: not another year, code, column "
+          "or non-zero value, and Allerdale's 2019 zero counts as a value"
+          if seeded else "; ".join(problems[:3]))
+    mixed(24, name, seeded, sd, cur, real_zero_cells)
 
 
 # --------------------------------------------------------------------- main

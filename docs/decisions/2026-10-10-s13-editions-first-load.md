@@ -208,3 +208,50 @@ From `ONS_Population_Estimates`:
 edition; `refresh-latest --commit` then applies it to the live table. To undo edition 2 for a year, restore edition 1 and
 refresh. Nothing is ever deleted from the editions tables. To reverse the Allerdale reading alone, change
 `ALLERDALE_ZERO` (or remove it), load with a new named correction, and refresh.
+
+## Addendum 2026-10-10: the zero rules reach `reasonable_preference` (edition 3)
+
+The sections above are left as written. This addendum records a later decision the same day; where it and the
+"Rules applied, for Scott to overrule" section disagree on `cc5a`, this addendum is the current state.
+
+**Decision (Scott, 2026-10-10).** The two zero rules apply to `cc5a` (`reasonable_preference`) as well as `cc1a`, for
+exactly their keys and years: `ALLERDALE_ZERO` (E07000026, 2014-15 to 2017-18, reporting years 2015 to 2018) reads
+Allerdale's `cc5a` zeros as NULL `not_counted`, so Cumberland's `reasonable_preference` sum for 2015 to 2018 is NULL
+`part_missing`; `TELFORD_NO_REGISTER` (E06000020, 2022 onward) reads Telford and Wrekin's `cc5a` zeros as NULL
+`not_applicable`. Telford's 2015 and 2021 `cc5a` zeros are before the rule's period and stay 0 as published.
+
+**What changed in the loader.** Each rule keeps `column` (`households_on_register`, the column first decided) and gains
+`extra_columns` with `reasonable_preference` and the note a row carries when the rule fires there. A second named
+correction, `lahs-cc5a-2026-10`, is pinned to the June 2026 file (sha256 starting 6b5f0105d34488c9): it is refused on
+any other file, compares only its seven years again although the file is in the ledger, releases exactly one
+`cc5a_zero_rule` cell per year and no other content change, stores whole or not at all, and has nothing left to release
+once stored. The preview, run before anything was written, showed a revised result for exactly the seven expected cells
+and nothing else; 2019 to 2021 and 2025 were skipped as already checked.
+
+**Edition 3 (7 periods, 296 rows each, 2,072 edition rows; run-log row 382).** Every value difference against edition 2:
+
+| Year | Authority | Edition 2 `reasonable_preference` | Edition 3 |
+| --- | --- | --- | --- |
+| 2015 | Cumberland E06000063 | 3,110 | NULL `part_missing` |
+| 2016 | Cumberland E06000063 | 2,288 | NULL `part_missing` |
+| 2017 | Cumberland E06000063 | 1,794 | NULL `part_missing` |
+| 2018 | Cumberland E06000063 | 1,602 | NULL `part_missing` |
+| 2022 | Telford and Wrekin E06000020 | 0 | NULL `not_applicable` |
+| 2023 | Telford and Wrekin E06000020 | 0 | NULL `not_applicable` |
+| 2024 | Telford and Wrekin E06000020 | 0 | NULL `not_applicable` |
+
+Four Allerdale zeros and three Telford zeros were made NULL by the rules; seven cells changed. Nothing else changed: no
+`households_on_register`, no `jointly_managed_register`, no 2019, 2020, 2021 or 2025 row. `refresh-latest` wrote those 7
+live rows (their `source` now ends with the cc5a rule note as well). Live `reasonable_preference`: 22 NULL (was 15) and 21
+zeros (was 24): Telford 2015 and 2021, and the 19 published zeros on other single-code authorities, all left as published.
+
+**Unchanged, checked before and after:** 2025 `households_on_register` for all 296 authorities hashes to the `w1-read`
+line above both times (the line is untouched), the England 2025 sum is 1,340,527, and an md5 over every edition 1 and
+edition 2 row is identical before and after (9d39ce9aa939ada6...). Editions 1 and 2 are untouched; edition 3 supersedes
+edition 2 in each of the seven years. `status`: OK. `scripts/s13_lahs_editions_verify.py`: 24 of 24 PASS, exit 0 (gate
+23 checks both corrections are recorded where they belong; gate 24 checks that after the migration only the seven listed
+`cc5a` cells are NULL and the 21 published zeros stay 0). W1, `refresh_map.py`, the export and `git push` were not run; no
+W1-read value changed.
+
+**To reverse:** `restore-edition YYYY 2` for each of the seven years (preview first), then `refresh-latest --commit`, and
+remove `extra_columns` from the two rules so a later load does not reapply them.

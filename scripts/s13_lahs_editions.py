@@ -70,7 +70,12 @@ concerns) are NULL with the reason in value_flag; any other non-number (a
 blank, '-', 'x', 'n/a', a negative, a decimal) halts (cell_int,
 cell_yes_no). A published 0 stays 0, except under exactly two parser rules,
 each a module constant with its evidence and listed in every preview
-(ZERO_RULES): TELFORD_NO_REGISTER and ALLERDALE_ZERO. A successor's total is
+(ZERO_RULES): TELFORD_NO_REGISTER and ALLERDALE_ZERO. Each reaches cc1a
+(households) and, from 2026-10-10 (Scott), cc5a (reasonable_preference) for
+the same code and years (rule_columns); edition 3 of 2015 to 2018 and 2022
+to 2024 holds the cc5a change (the pinned correction lahs-cc5a-2026-10).
+Telford's 2015 and 2021 cc5a zeros are before its rule and stay 0. A
+successor's total is
 NULL ('part_missing') unless every predecessor has a figure (rule 1.7); its
 cc2a is taken only when every predecessor agrees ('parts_disagree'
 otherwise). Predecessor sums for the 11 reorganised councils are a
@@ -274,7 +279,16 @@ TELFORD_NO_REGISTER = {
                  "register; LAHS reports 0 for it from 2022. The LAHS data "
                  "dictionary's cc1a note agrees: 'From 31 March 2021 Telford "
                  "& Wrekin Council does not operate a housing housing "
-                 "register (or waiting list)'."),
+                 "register (or waiting list)'. Extended to cc5a "
+                 "(reasonable_preference) for the same years by Scott on "
+                 "2026-10-10 (decision note 2026-10-10-s13-editions-first-"
+                 "load.md, addendum)."),
+    # columns the rule also reaches beyond `column`, each with the note the
+    # row carries when it fires there (decided later than `column`)
+    "extra_columns": {
+        REASONABLE: ("Telford and Wrekin's reported reasonable-preference 0 "
+                     "also means not applicable. Set NULL 2026-10-10"),
+    },
 }
 ALLERDALE_ZERO = {
     "name": "ALLERDALE_ZERO", "code": "E07000026", "successor": "E06000063",
@@ -287,9 +301,30 @@ ALLERDALE_ZERO = {
                  "him to overrule: Allerdale reported 0 households on its "
                  "register for 2014-15 to 2017-18 and figures in the "
                  "thousands from 2018-19; Cumberland 2015-2018 is then NULL "
-                 "because a part is NULL (rule 1.7)."),
+                 "because a part is NULL (rule 1.7). Extended to cc5a "
+                 "(reasonable_preference, also 0 for 2014-15 to 2017-18 and "
+                 "516 in 2018-19) by Scott on 2026-10-10 (decision note "
+                 "2026-10-10-s13-editions-first-load.md, addendum)."),
+    "extra_columns": {
+        REASONABLE: ("Allerdale (a predecessor) reported 0 reasonable-"
+                     "preference households 2014-15 to 2017-18, read as not "
+                     "counted (Scott, 2026-10-10)"),
+    },
 }
 ZERO_RULES = (TELFORD_NO_REGISTER, ALLERDALE_ZERO)
+
+
+def rule_columns(rule) -> tuple:
+    """The columns a zero rule reaches: its first-decided column, then its
+    extra_columns."""
+    return (rule["column"],) + tuple(rule.get("extra_columns") or ())
+
+
+def rule_note(rule, column) -> str:
+    """The note a row carries when `rule` fires on `column`."""
+    if column == rule["column"]:
+        return rule["note"]
+    return rule["extra_columns"][column]
 
 # ---------------------------------------------------------------------------
 # Stop conditions (see the module docstring and CALIBRATION)
@@ -324,13 +359,22 @@ February -> June 2026: 2015-2024 unchanged; 2025 6 authorities changed
 England 1,340,435 -> 1,340,527 (+0.007%).
 """
 
+# the June 2026 open data CSV's sha256 (split so the credential scan does
+# not flag it): LEGACY_JUNE and the pinned correction lahs-cc5a-2026-10
+LEGACY_JUNE_SHA256 = ("6b5f0105d34488c96a8b0669113da250"
+                      "7f3c34b1e52afdbde276c2357da57fe4")
+
 # The changes against the held edition a revised year may store under a
 # named, decided correction (--acknowledge-correction NAME): per reporting
 # year, exactly this many authorities in each group, and nothing outside
 # the groups (classify_changes). Groups: cc5a_filled (reasonable_preference
-# NULL -> the file's cc5a), predecessor_sum (households or cc2a of a
-# successor built from several predecessors), allerdale (Cumberland 2015 to
-# 2018 under ALLERDALE_ZERO).
+# NULL -> the file's cc5a), cc5a_zero_rule (reasonable_preference a value ->
+# NULL where a zero rule reaching cc5a fires), predecessor_sum (households
+# or cc2a of a successor built from several predecessors), allerdale
+# (Cumberland 2015 to 2018 under ALLERDALE_ZERO). A correction with
+# file_sha256 is pinned to that file (correction_file_problems), compares
+# its years again although the file is in the ledger, and may change
+# nothing outside its counted cells (uncounted_changes).
 ACKNOWLEDGED_CORRECTIONS = {
     "lahs-correction-2026-10": {
         "decided": ("Scott, 2026-10-10: predecessor sums for the 11 "
@@ -364,6 +408,31 @@ ACKNOWLEDGED_CORRECTIONS = {
             "2025": {"cc5a_filled": 290},
         },
     },
+    # The zero rules extended to cc5a (2026-10-10): the same June 2026 file
+    # read again, so the correction is pinned to it (file_sha256: refused on
+    # any other file) and releases nothing but these cells; once stored it
+    # has nothing left to release (each count would be 0, not 1).
+    "lahs-cc5a-2026-10": {
+        "decided": ("Scott, 2026-10-10: the zero rules apply to cc5a "
+                    "(reasonable_preference) for their exact keys and "
+                    "years: Allerdale's 2014-15 to 2017-18 zeros are not "
+                    "counted, Telford and Wrekin's from 2022 are not "
+                    "applicable"),
+        "why": ("edition 2 holds Allerdale's cc5a zeros summed into "
+                "Cumberland 2015 to 2018 (3,110, 2,288, 1,794, 1,602) and "
+                "Telford's cc5a zeros 2022 to 2024; under the extended rules "
+                "Cumberland's sums are NULL part_missing and Telford's NULL "
+                "not_applicable: 7 cells, one per year. Telford's 2015 and "
+                "2021 zeros (before the rule) and every other published zero "
+                "stay 0; no households_on_register and no 2025 value "
+                "changes"),
+        "file_sha256": LEGACY_JUNE_SHA256,
+        # counted read-only 2026-10-10: the June 2026 file under the
+        # extended rules against edition 2
+        "periods": {p: {"cc5a_zero_rule": 1}
+                    for p in ("2015", "2016", "2017", "2018", "2022", "2023",
+                              "2024")},
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -390,7 +459,7 @@ LEGACY_RANK = date(2026, 2, 12)
 LEGACY_JUNE = {
     "path": REPO / "data" / "raw" / "s13_lahs" /
     "LAHS_open_data_1978-79_to_2024-25.csv",
-    "sha256": "6b5f0105d34488c96a8b0669113da250" "7f3c34b1e52afdbde276c2357da57fe4",
+    "sha256": LEGACY_JUNE_SHA256,
 }
 N8N_SOURCE = "MHCLG LAHS Section C, year ending 31 March {}"
 NOT_LOADED = "not_loaded"   # value_flag of reasonable_preference in edition 1
@@ -951,34 +1020,44 @@ def parse_rows(rows) -> list:
     return out
 
 
-def _rule_fires(rule, r) -> bool:
-    y = int(r["period"])
+def _in_years(rule, period) -> bool:
+    y = int(period)
     last = rule["last_year"]
-    v = r[rule["column"]]
-    return (r["code"] == rule["code"] and y >= rule["first_year"]
-            and (last is None or y <= last)
+    return y >= rule["first_year"] and (last is None or y <= last)
+
+
+def _rule_fires(rule, r, column=None) -> bool:
+    """True when `rule` fires on row r in `column` (default: the rule's
+    first-decided column): its publisher code, its years, a published 0."""
+    v = r[column or rule["column"]]
+    return (r["code"] == rule["code"] and _in_years(rule, r["period"])
             and isinstance(v, int) and not isinstance(v, bool) and v == 0)
 
 
 def zero_rules(parsed) -> tuple:
     """(copies of the parsed rows with ZERO_RULES applied, [applied]). A
-    rule fires on its publisher code, its years and a published 0 in its
-    column, and nothing else: the value becomes NULL with the rule's flag
-    and the row carries the rule's note. applied: [{rule, code, period,
-    column}] sorted by period."""
+    rule fires on its publisher code, its years and a published 0 in one of
+    its columns (rule_columns: cc1a, and cc5a from 2026-10-10), and nothing
+    else: the value becomes NULL with the rule's flag and the row carries
+    the rule's note for that column. applied: [{rule, code, period,
+    column}] sorted by period, rule, column order."""
     out, applied = [], []
     for r in parsed:
         r = dict(r, flags=dict(r["flags"]))
+        notes = []
         for rule in ZERO_RULES:
-            if _rule_fires(rule, r):
-                r[rule["column"]] = None
-                r["flags"][rule["column"]] = rule["flag"]
-                r["rule_note"] = rule["note"]
-                applied.append({"rule": rule["name"], "code": r["code"],
-                                "period": r["period"],
-                                "column": rule["column"]})
+            for col in rule_columns(rule):
+                if _rule_fires(rule, r, col):
+                    r[col] = None
+                    r["flags"][col] = rule["flag"]
+                    notes.append(rule_note(rule, col))
+                    applied.append({"rule": rule["name"], "code": r["code"],
+                                    "period": r["period"], "column": col})
+        if notes:
+            r["rule_note"] = "; ".join(notes)
         out.append(r)
-    applied.sort(key=lambda a: (a["period"], a["rule"]))
+    order = {c: i for i, c in enumerate(VALUES)}
+    applied.sort(key=lambda a: (a["period"], a["rule"], order[a["column"]]))
     return out, applied
 
 
@@ -1260,18 +1339,27 @@ def ledger_complete(checked, where, sha, ranks, *, allow_older=False,
 
 
 def plan_periods(periods, rank, ranks, checked, source, sha, *, recheck,
-                 allow_older) -> tuple:
+                 allow_older, correction_periods=()) -> tuple:
     """(new, revised, skipped), as S10: new periods not held (a new period
     before the newest held year is a back-fill, skipped unless
     allow_older); held periods whose tip comes from a newer file skipped as
     older unless allow_older (the older-file guard, on every path); held
     periods whose (source, sha) the ledger records skipped as checked
-    unless --recheck names it. --recheck must be a held period of the file
-    (ValueError)."""
+    unless --recheck names it or it is one of correction_periods (the years
+    of a correction pinned to this file). --recheck and each correction
+    period must be a held period of the file (ValueError)."""
     periods = sorted(str(p) for p in periods)
     if recheck is not None and (recheck not in periods or recheck not in ranks):
         raise ValueError(f"--recheck {recheck}: not a held year this file "
                          f"states ({', '.join(periods)})")
+    again = {str(p) for p in correction_periods}
+    stray = sorted(p for p in again if p not in periods or p not in ranks)
+    if stray:
+        raise ValueError(f"the pinned correction names {', '.join(stray)}: "
+                         f"not a held year this file states "
+                         f"({', '.join(periods)})")
+    if recheck is not None:
+        again.add(recheck)
     newest_held = max(ranks) if ranks else None
     new, revised, skipped = [], [], {}
     for p in periods:
@@ -1288,7 +1376,7 @@ def plan_periods(periods, rank, ranks, checked, source, sha, *, recheck,
             skipped[p] = (f"older: its tip comes from a file of "
                           f"{rank_text(t)}, this file is {rank_text(rank)}")
             continue
-        if recheck != p and (source, sha) in checked.get(p, ()):
+        if p not in again and (source, sha) in checked.get(p, ()):
             skipped[p] = "checked: this file is already in the ledger"
             continue
         revised.append(p)
@@ -1398,16 +1486,37 @@ def period_problems(new, tip, prev, *, kind) -> list:
     return out
 
 
+def _cc5a_rule_target(k, period, new) -> bool:
+    """True when record `new` of key k is where a zero rule reaching cc5a
+    makes reasonable_preference NULL in this reporting year: the rule's own
+    code with the rule's flag, or its successor (ALLERDALE_ZERO) with
+    part_missing."""
+    flag = dict(x.split("=", 1) for x in (new.get("value_flag") or "")
+                .split("; ") if x).get(REASONABLE)
+    for rule in ZERO_RULES:
+        if REASONABLE not in rule_columns(rule) or \
+                not _in_years(rule, period):
+            continue
+        if rule.get("successor"):
+            if k == rule["successor"] and flag == "part_missing":
+                return True
+        elif k == rule["code"] and flag == rule["flag"]:
+            return True
+    return False
+
+
 def classify_changes(new, tip, period) -> dict:
     """{group: [lad24cd]} of the value changes of a revised year against the
     held edition: cc5a_filled (reasonable_preference NULL -> anything else),
-    allerdale (households or cc2a of ALLERDALE_ZERO's successor in its
-    years), predecessor_sum (households or cc2a of a record built from
-    several predecessors), other (everything else, a key on one side
-    included). A key may be in two groups (cc5a_filled and one other)."""
+    cc5a_zero_rule (reasonable_preference a value -> NULL where a zero rule
+    reaching cc5a fires: _cc5a_rule_target), allerdale (households or cc2a
+    of ALLERDALE_ZERO's successor in its years), predecessor_sum
+    (households or cc2a of a record built from several predecessors), other
+    (everything else, a key on one side included). A key may be in two
+    groups (a cc5a group and one other)."""
     nk, tk = _by_key(new), _by_key(tip)
-    g = {"cc5a_filled": [], "predecessor_sum": [], "allerdale": [],
-         "other": []}
+    g = {"cc5a_filled": [], "cc5a_zero_rule": [], "predecessor_sum": [],
+         "allerdale": [], "other": []}
     rule = ALLERDALE_ZERO
     y = int(period)
     for k in sorted(set(nk) | set(tk)):
@@ -1420,7 +1529,12 @@ def classify_changes(new, tip, period) -> dict:
             return t[c] != n[c] or _num(t[c]) != _num(n[c]) or \
                 (t[c] is None) != (n[c] is None)
         if differs(REASONABLE):
-            g["cc5a_filled" if t[REASONABLE] is None else "other"].append(k)
+            if t[REASONABLE] is None:
+                g["cc5a_filled"].append(k)
+            elif n[REASONABLE] is None and _cc5a_rule_target(k, period, n):
+                g["cc5a_zero_rule"].append(k)
+            else:
+                g["other"].append(k)
         if differs(HOUSEHOLDS) or differs(JOINTLY):
             if k == rule["successor"] and \
                     rule["first_year"] <= y <= rule["last_year"]:
@@ -1445,13 +1559,47 @@ def correction_problems(name, period, groups) -> list:
     if groups["other"]:
         out.append(f"{len(groups['other'])} authorit(ies) change outside the "
                    f"named groups: {', '.join(groups['other'][:6])}")
-    for grp in ("cc5a_filled", "predecessor_sum", "allerdale"):
+    for grp in CORRECTION_GROUPS:
         # an expected count: a group the correction does not list expects none
         w = want.get(grp, 0)  # not a source value
-        got = len(groups[grp])
+        got = len(groups.get(grp, ()))
         if got != w:
             out.append(f"{grp}: {got} authorit(ies), {name} expects exactly "
                        f"{w}")
+    return out
+
+
+CORRECTION_GROUPS = ("cc5a_filled", "cc5a_zero_rule", "predecessor_sum",
+                     "allerdale")
+
+
+def correction_file_problems(name, sha) -> list:
+    """Problems (empty = fine) of using ACKNOWLEDGED_CORRECTIONS[name] on
+    the file of content sha256 `sha`: a correction with file_sha256 is
+    pinned to that one file and is refused on any other."""
+    a = globals()["ACKNOWLEDGED_CORRECTIONS"][name]
+    pin = a.get("file_sha256")
+    if pin and pin != sha:
+        return [f"--acknowledge-correction {name} is pinned to the file of "
+                f"sha256 {pin[:16]}; this file is {sha[:16]}"]
+    return []
+
+
+def uncounted_changes(new, tip, counted) -> list:
+    """The keys (sorted) whose content (CONTENT, flags and statuses
+    included) differs from the held edition although they are not in
+    `counted`: a pinned correction re-reads the same file, so nothing but
+    the cells it counts may change."""
+    nk, tk = _by_key(new), _by_key(tip)
+    out = []
+    for k in sorted(set(nk) | set(tk)):
+        if k in counted:
+            continue
+        if k not in nk or k not in tk or any(
+                nk[k].get(c) != tk[k].get(c)
+                or _num(nk[k].get(c)) != _num(tk[k].get(c))
+                for c in CONTENT):
+            out.append(k)
     return out
 
 
@@ -2183,11 +2331,13 @@ def _build(cur, od, ods) -> tuple:
     print(f"codes resolved (geography.resolve, la_code_lookup): {len(multi)} "
           "publisher code(s) to a successor or canonical code")
     for rule in ZERO_RULES:
+        cols = rule_columns(rule)
         hits = [a for a in applied if a["rule"] == rule["name"]]
         print(f"zero rule {rule['name']} ({rule['code']} "
               f"{rule['first_year']}-{rule['last_year'] or 'onward'}, "
-              f"{rule['column']} 0 -> NULL {rule['flag']}): "
-              + (", ".join(f"{a['code']} {a['period']}" for a in hits)
+              f"{' and '.join(cols)} 0 -> NULL {rule['flag']}): "
+              + (", ".join(f"{a['code']} {a['period']} {a['column']}"
+                           for a in hits)
                  or "did not fire") + f"; evidence: {rule['evidence']}")
     return out, applied
 
@@ -2256,7 +2406,20 @@ def cmd_load(args) -> int:
                   + ("; byte-identical to the held June 2026 file"
                      if LEGACY_JUNE and sha == LEGACY_JUNE["sha256"] else ""))
             od = src["od"]
-            if has_ed and args.recheck is None:
+            corr = args.acknowledge_correction
+            pinned = ()
+            if corr:
+                bad = correction_file_problems(corr, sha)
+                if bad:
+                    halt("; ".join(bad) + "; a pinned correction is never "
+                         "used on another file; nothing stored")
+                if ACKNOWLEDGED_CORRECTIONS[corr].get("file_sha256"):
+                    pinned = sorted(ACKNOWLEDGED_CORRECTIONS[corr]["periods"])
+                    print(f"--acknowledge-correction {corr} is pinned to this "
+                          f"file (sha256 {sha[:16]}): its years "
+                          f"{', '.join(pinned)} are compared again although "
+                          "the file is in the ledger")
+            if has_ed and args.recheck is None and not pinned:
                 done = ledger_complete(checked, src["where"], sha, ranks,
                                        allow_older=args.allow_older_file,
                                        stranded=stranded)
@@ -2285,7 +2448,8 @@ def cmd_load(args) -> int:
             try:
                 new, revised, skipped = plan_periods(
                     periods, ods["rank"], ranks, chk, lsrc, sha,
-                    recheck=args.recheck, allow_older=args.allow_older_file)
+                    recheck=args.recheck, allow_older=args.allow_older_file,
+                    correction_periods=pinned)
             except ValueError as e:
                 halt(str(e))
             rc = _run_periods(args, conn, cur, prof, has_ed, src, ods,
@@ -2380,6 +2544,15 @@ def _run_periods(args, conn, cur, prof, has_ed, src, ods, ods_sha, by_period,
                   f"{'edition' if has_ed else 'live rows'}: {_counts(groups)}")
             if corr and p in ACKNOWLEDGED_CORRECTIONS[corr]["periods"]:
                 why = correction_problems(corr, p, groups)
+                if ACKNOWLEDGED_CORRECTIONS[corr].get("file_sha256"):
+                    counted = {k for grp in CORRECTION_GROUPS
+                               for k in groups[grp]}
+                    loose = uncounted_changes(recs, tip, counted)
+                    if loose:
+                        why.append(f"{len(loose)} authorit(ies) change "
+                                   "outside the counted cells (a pinned "
+                                   "correction re-reads the same file): "
+                                   + ", ".join(loose[:6]))
                 if why:
                     bad.append(f"--acknowledge-correction {corr} does not "
                                "cover the changes: " + "; ".join(why))
@@ -2404,7 +2577,15 @@ def _run_periods(args, conn, cur, prof, has_ed, src, ods, ods_sha, by_period,
         elif soft:
             bad += [x + f"; read the preview, then --acknowledge {p}"
                     for x in soft]
-        if kind == "revised" and ranks.get(p) == rank and _differs(recs, tip):
+        same_file_rule = (p in corrected and ACKNOWLEDGED_CORRECTIONS[corr]
+                          .get("file_sha256") == sha)
+        if kind == "revised" and ranks.get(p) == rank and \
+                _differs(recs, tip) and same_file_rule:
+            print(f"  {p}: the held tip's file again (same rank); the "
+                  f"difference is exactly what the pinned correction {corr} "
+                  "names (a decided rule change, not a publisher reissue)")
+        elif kind == "revised" and ranks.get(p) == rank and \
+                _differs(recs, tip):
             if p in reissue:
                 reissued[p] = (f"--accept-reissue {p}: the files are "
                                f"{rank_text(rank)}, the same as the file of "
@@ -2429,6 +2610,18 @@ def _run_periods(args, conn, cur, prof, has_ed, src, ods, ods_sha, by_period,
             edition_source(ods, src, ods_sha, "; ".join(n for n in notes
                                                         if n)),
             _label(ods, src, sha, how, notes=notes), ((lsrc, sha),))
+    if corr and ACKNOWLEDGED_CORRECTIONS[corr].get("file_sha256"):
+        # a pinned correction is stored whole or not at all
+        mine = sorted(set(ACKNOWLEDGED_CORRECTIONS[corr]["periods"])
+                      & set(periods))
+        failed = [p for p in mine if p in problems]
+        if failed:
+            for p in mine:
+                if p not in problems:
+                    problems[p] = [f"the pinned correction {corr} is stored "
+                                   f"whole or not at all, and "
+                                   f"{', '.join(failed)} is rejected"]
+                    infos.pop(p, None)
     for p, msgs in sorted(problems.items()):
         for msg in msgs:
             print(f"  {p}: REJECTED, not stored: STOP CONDITION: {msg}")
@@ -2472,8 +2665,8 @@ def _run_periods(args, conn, cur, prof, has_ed, src, ods, ods_sha, by_period,
                        f"{not_tried or 'none'}; a year that failed or was "
                        "rejected stored nothing and is not in the counts "
                        "below; ")
-        rules = ", ".join(f"{a['rule']} {a['code']} {a['period']}"
-                          for a in applied)
+        rules = ", ".join(f"{a['rule']} {a['code']} {a['period']} "
+                          f"{a['column']}" for a in applied)
         notes = (partial + f"open data {src['where']} sha256 {sha[:16]} with "
                  f"LAHS {ods['year']} ODS sha256 {ods_sha[:16]}, "
                  f"{rank_text(rank)} ({src['how']}): "

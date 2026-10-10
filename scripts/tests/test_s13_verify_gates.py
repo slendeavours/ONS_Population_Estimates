@@ -344,6 +344,11 @@ class VerifyGates(unittest.TestCase):
         with mock.patch.object(m, "ZERO_RULES",
                                (m.TELFORD_NO_REGISTER, wrong)):
             self.assertTrue(v.zero_rule_state())
+        # a rule not extended to cc5a is caught
+        narrow = dict(m.TELFORD_NO_REGISTER, extra_columns={})
+        with mock.patch.object(m, "ZERO_RULES",
+                               (narrow, m.ALLERDALE_ZERO)):
+            self.assertTrue(any("cc5a" in b for b in v.zero_rule_state()))
 
     def test_the_note_lines_are_read_by_regex_and_are_scan_safe(self):
         note = Path(self.tmpdir.name) / "n.md"
@@ -560,10 +565,31 @@ class VerifyGates(unittest.TestCase):
                                                      "predecessor_sum": 1}})}):
             bad = v.correction_problems_static()
         self.assertTrue(any("2025" in b for b in bad), bad)
+        # the cc5a correction: pinned to the June file, seven years, one
+        # cell each; any other shape is caught
+        for change in ({"file_sha256": "0" * 64},
+                       {"file_sha256": None},
+                       {"periods": {"2025": {"cc5a_zero_rule": 1}}},
+                       {"periods": dict(m.ACKNOWLEDGED_CORRECTIONS[
+                           v.CC5A_CORRECTION]["periods"],
+                           **{"2024": {"cc5a_zero_rule": 2}})}):
+            with mock.patch.dict(m.ACKNOWLEDGED_CORRECTIONS, {
+                    v.CC5A_CORRECTION: dict(m.ACKNOWLEDGED_CORRECTIONS[
+                        v.CC5A_CORRECTION], **change)}):
+                self.assertTrue(v.correction_problems_static(), change)
         self.seed()
         ok, detail = v.real_correction(self.cur, ZZ)
         self.assertFalse(ok)
         self.assertIn("not yet loaded", detail)
+
+    def test_the_cc5a_zero_cells_gate_needs_the_corrected_state(self):
+        self.seed()
+        ok, detail = v.real_zero_cells(self.cur, ZZ)
+        self.assertFalse(ok)
+        self.assertIn("expected NULL", detail)
+        gone = dataclasses.replace(ZZ, editions_table="zz_s13_not_there")
+        with self.assertRaises(ValueError):
+            v.real_zero_cells(self.cur, gone)
 
     def test_the_flag_reader_parses_and_rejects(self):
         self.assertEqual(v.parse_flag(None), [])
