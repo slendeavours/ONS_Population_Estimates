@@ -49,10 +49,10 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | 8b | DWP Stat-Xplore HB (accommodation type) | HB claimants by accommodation type (SA, TA, Other, Unknown) per LA | no | yes |
 | 9a | NHS DRD monthly | Bed days lost to delayed discharge, % delayed 1+ days (UTLA→LAD apportioned) | yes | no |
 | 9b | MHSDS MHS26 | CRFD delayed discharge days — combined MH+LD/autism (direct LA level) | yes | no |
-| 10 | DLUHC Rough Sleeping Snapshot | Rough sleeping counts | yes | yes |
+| 10 | DLUHC Rough Sleeping Snapshot | People sleeping rough on the autumn single-night snapshot per LA (snapshot year and the year before) | yes | yes |
 | 11 | CQC Care directory with filters | Registered care locations with supported living, personal care and care home flags (supply side) | yes | yes |
 | 12 | MHCLG EFS / published S.114 notices | EFS support flag, S.114 notice flag | yes | no |
-| 13 | DLUHC LAHS | Social housing waiting list (register) | yes | yes |
+| 13 | DLUHC LAHS | Households on the housing register (waiting list) per LA, summed from predecessors for reorganised authorities; Households on the register with reasonable preference; Whether register criteria changed since last year (cc2a, Localism Act 2011) | yes | yes |
 | 14 | VOA/DWP LHA rates | LHA weekly rates (SAR, 1–4 bed) by BRMA, mapped to LAs | yes | yes |
 | 15 | Land Registry UK HPI | Average house prices per LA (all property types), annual % change | no | yes |
 | 17 | SafeLives MARAC data | MARAC cases, rate per 10k | yes | yes |
@@ -108,6 +108,8 @@ CHANGELOG.md                                Dated record of pipeline changes
   s19_pip_w1_integration.md                 S19 PIP W1 integration summary (run 11)
   s6_asylum_source.md                       Source 6 (Home Office asylum support) register entry: discovery, definitions from the publisher's notes, tables, editions
   s6_source_anomalies.md                    S6 source anomalies as last written by the old verify module (historical; no longer regenerated)
+  s10_rough_sleeping_source.md              Source 10 (MHCLG rough sleeping snapshot) register entry: discovery, definitions from the publisher's notes, markers, editions
+  s13_lahs_source.md                        Source 13 (MHCLG LAHS housing register) register entry: discovery, definitions from the publisher's notes, zero rules, editions
   geography_dimension.md                    la_geography / la_succession dimension tables
   S9_BUILD_SUMMARY.md                       S9 sources build summary
   S6_BUILD_SUMMARY.md                       S6 original build summary of 25 July 2026 (superseded)
@@ -132,6 +134,10 @@ CHANGELOG.md                                Dated record of pipeline changes
   export_map_data.py                        Builds the three published data files from the pipeline database
   s6_asylum_editions.py                     Source 6 (Home Office asylum support: Asy_D11 and Reg_02) editions loader, four tables - standalone, not in W1 (old s6_asylum_build.py / s6_asylum_verify.py are in scripts/historical/)
   s6_asylum_editions_verify.py              Source 6 editions gates (22), writes nothing
+  s10_rough_sleeping_editions.py            Source 10 (MHCLG rough sleeping snapshot) editions loader - a W1 and map input
+  s10_rough_sleeping_editions_verify.py     Source 10 editions gates (21), writes nothing
+  s13_lahs_editions.py                      Source 13 (MHCLG LAHS housing register) editions loader - a W1 and map input
+  s13_lahs_editions_verify.py               Source 13 editions gates (24), writes nothing
   s14_lha_rates_build.py                    Source 14 (VOA/DWP LHA rates) ETL
   s15_hpi_editions.py                       Source 15 (Land Registry UK HPI) editions loader (old s15_hpi_build.py is in scripts/historical/)
   /verify/                                  Source reconciliation against publication (2026-08 assurance)

@@ -16,26 +16,26 @@ The top of this list is the documentation debt.
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
 | `hss_lens` | 20 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 20 | an explicit dual-lens note in the source documentation |
-| `verification_checks` | 17 | the source's verification suite and its documented check count |
-| `source_doc_path` | 16 | a source documentation file — the single largest gap for undocumented sources |
+| `verification_checks` | 15 | the source's verification suite and its documented check count |
+| `n8n_workflow_name` | 14 | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
-| `join_path` | 13 | the build script's geography resolution step |
-| `revises_back_series` | 13 | — |
-| `n8n_workflow_name` | 12 | the n8n workflow that runs the source, where one does |
-| `build_script_path` | 11 | the build script, if it is in the published tree |
+| `source_doc_path` | 14 | a source documentation file — the single largest gap for undocumented sources |
 | `detected_period_type` | 11 | — |
-| `revision_note` | 11 | — |
+| `join_path` | 11 | the build script's geography resolution step |
+| `revises_back_series` | 11 | — |
 | `api_endpoint` | 9 | the build script or node documentation, where acquisition is an API |
-| `publication_window` | 9 | the publisher's stated release window |
-| `series_name` | 9 | the publisher's dataset or table title, as named in a source documentation file |
-| `known_gotchas` | 8 | a source documentation file — acquisition traps are only known once written down |
-| `caveats` | 6 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
+| `build_script_path` | 9 | the build script, if it is in the published tree |
+| `revision_note` | 9 | — |
+| `publication_window` | 8 | the publisher's stated release window |
+| `series_name` | 7 | the publisher's dataset or table title, as named in a source documentation file |
+| `known_gotchas` | 6 | a source documentation file — acquisition traps are only known once written down |
+| `caveats` | 5 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `landing_page_url` | 4 | the publisher's landing page, recorded in a source or node documentation file |
 | `cadence_months` | 3 | the publisher's stated cadence, where it is regular enough to express in months |
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 305 null fields across 26 published sources.
+Total: 289 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -288,23 +288,16 @@ Total: 305 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `series_name` | the publisher's dataset or table title, as named in a source documentation file |
 | `auth_env_var` | the build script, where the source needs a credential |
-| `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
-| `build_script_path` | the build script, if it is in the published tree |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
 
-**Note.** Mechanics established 2026-08-14. Annual releases titled 'Rough sleeping snapshot in England: autumn {year}' sit under the same Homelessness statistics collection as S1 and resolve through the GOV.UK content API. The autumn snapshot is published the following February.
+**Note.** Mechanics established 2026-08-14. Annual releases titled 'Rough sleeping snapshot in England: autumn {year}' sit under the same Homelessness statistics collection as S1 and resolve through the GOV.UK content API. The autumn snapshot is published the following February. Held (2026-10-10): la_rough_sleeping, 296 authorities and one snapshot year (2025) with the previous year's count beside it, the latest-edition layer of la_rough_sleeping_editions (edition 1 as loaded) with a file-check ledger. Only Table_1_Total is loaded. W1 and the map read the newest snapshot_year.
 
 ### S11
 
@@ -353,25 +346,16 @@ Total: 305 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `series_name` | the publisher's dataset or table title, as named in a source documentation file |
 | `auth_env_var` | the build script, where the source needs a credential |
-| `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
-| `publication_window` | the publisher's stated release window |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
-| `build_script_path` | the build script, if it is in the published tree |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
-| `caveats` | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
 
-**Note.** Mechanics established 2026-08-14. LAHS returns are published as statistical data sets, 'Local authority housing statistics data returns for {years}', under the Local authority housing data collection, which resolves through the GOV.UK content API.
+**Note.** Mechanics established 2026-08-14. LAHS returns are published as statistical data sets, 'Local authority housing statistics data returns for {years}', under the Local authority housing data collection, which resolves through the GOV.UK content API. Held (2026-10-10): la_housing_register, 296 authorities by 11 reporting years (2015 to 2025, that is 2014-15 to 2024-25), 3,256 rows, the latest-edition layer of la_housing_register_editions (two editions per year) with a file-check ledger; 3,241 live rows carry edition 2. W1 and the map read households_on_register at the newest reporting_year (2025, unchanged by edition 2).
 
 ### S14
 

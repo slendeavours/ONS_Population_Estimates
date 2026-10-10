@@ -56,6 +56,14 @@ None of these was fixed by it.
   2026-10-07 no code or gate depends on them (the refresh compares per-period hashes
   inside its own transaction). Scott may drop them when comfortable.
 
+### 4. For Scott: S13 `reasonable_preference` zeros (opened 2026-10-10)
+
+The two zero rules in `scripts/s13_lahs_editions.py` cover households on the register (`cc1a`) only. `cc5a`
+(`reasonable_preference`) is also 0 for Allerdale 2014-15 to 2017-18, which sums as 0 into Cumberland's figure for 2015 to 2018, and
+for Telford and Wrekin in 2014-15 and 2020-21 to 2023-24; 24 cells of edition 2 are 0 in all. They are stored as published. If the
+same reading applies they would be NULL, which would be a second named correction with its own edition. Not done; for Scott.
+See [2026-10-10-s13-editions-first-load.md](2026-10-10-s13-editions-first-load.md).
+
 ## Closed
 
 | Record | What it settled |
