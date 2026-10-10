@@ -257,6 +257,73 @@ class Discovery(unittest.TestCase):
             m.release_for_years(collection(TITLE.format(2023, 2024)), 2024,
                                 2025)
 
+    def test_every_newer_title_variant_halts_naming_it(self):
+        held = TITLE.format(2024, 2025)
+        variants = [
+            "Registered providers social housing stock and rents in England "
+            "2025 to 2026",
+            "Registered provider social housing stock and rents in England "
+            "2025-26",
+            "Registered provider social housing stock and rents in England "
+            "2025/26",
+            "Registered provider social housing stock and rents in England "
+            "2025–26",
+            "Registered provider social housing stock and rents in England "
+            "2025-2026",
+            "Social housing stock and rents in England 2025 to 2026",
+            "Registered providers: social housing stock 2026",
+            "Registered provider social housing stock and rents in England",
+        ]
+        for v in variants:
+            with self.subTest(title=v):
+                with self.assertRaises(ValueError) as e:
+                    m.latest_release(collection(held, TITLE.format(2023, 2024),
+                                                v))
+                self.assertIn(v, str(e.exception))
+                self.assertIn("looks like the series", str(e.exception))
+
+    def test_unrelated_and_older_titles_do_not_halt(self):
+        c = collection(TITLE.format(2024, 2025), "Something else",
+                       "Registered providers social housing 2019/20 archive",
+                       "Guidance 2022")
+        self.assertEqual(m.latest_release(c)[:2], (2024, 2025))
+
+    def test_release_for_years_does_not_fall_back_to_a_variant(self):
+        v = ("Registered providers social housing stock and rents in England "
+             "2025 to 2026")
+        c = collection(TITLE.format(2024, 2025), v)
+        with self.assertRaises(ValueError) as e:
+            m.release_for_years(c, 2025, 2026)
+        self.assertIn(v, str(e.exception))
+        self.assertIn("not used", str(e.exception))
+        self.assertEqual(m.release_for_years(c, 2024, 2025)[:2], (2024, 2025))
+
+    def test_nothing_newer_says_which_release_it_saw(self):
+        c = collection(TITLE.format(2023, 2024), TITLE.format(2024, 2025))
+        out = m.discovery_note(c, ["2025-03-31"], today=date(2026, 10, 9))
+        self.assertEqual(len(out), 1, out)
+        self.assertIn("2024 to 2025", out[0])
+        self.assertIn("2025-03-31", out[0])
+        self.assertIn("no newer release is listed", out[0])
+        self.assertEqual(m.discovery_note(c, ["2024-03-31"]), [])
+        self.assertEqual(m.discovery_note(collection("x"), ["2025-03-31"]), [])
+
+    def test_past_the_announced_date_with_nothing_newer_warns(self):
+        c = collection(TITLE.format(2024, 2025))
+        for today in (date(2026, 10, 27), date(2026, 11, 3)):
+            out = m.discovery_note(c, ["2025-03-31"], today=today)
+            self.assertEqual(len(out), 2, out)
+            self.assertTrue(out[1].startswith("WARNING"), out)
+            self.assertIn("27 October 2026", out[1])
+            self.assertIn("2025 to 2026", out[1])
+        # the day before: the note, no warning
+        out = m.discovery_note(c, ["2025-03-31"], today=date(2026, 10, 26))
+        self.assertEqual(len(out), 1)
+        # the new release is listed: nothing to warn about
+        c2 = collection(TITLE.format(2024, 2025), TITLE.format(2025, 2026))
+        self.assertEqual(m.discovery_note(c2, ["2025-03-31"],
+                                          today=date(2026, 11, 3)), [])
+
     def test_the_look_up_tool_attachment(self):
         page = release_page(2024, 2025, [
             ("Registered provider social housing in England (PDF)", "a.pdf"),

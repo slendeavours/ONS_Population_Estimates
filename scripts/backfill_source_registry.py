@@ -1462,8 +1462,13 @@ SOURCES = [
             "(its 296 values sum to 4,537,377, equal to neither).",
             "Low cost home ownership: the tool's Area Summary says LCHO unit "
             "counts are for LARPs and Large PRPs only. All 2,738 Short Form "
-            "(Small PRP) rows hold 0 in that column, which is not evidence "
-            "that those providers own none.",
+            "(Small PRP) rows hold 0 in that column: the publisher's zero "
+            "means not counted, not evidence that those providers own none. "
+            "The zeros are stored as published (the loader no longer turns "
+            "blanks into 0, but these cells are published zeros), and "
+            "total_social_stock for those rows leaves out the provider's "
+            "LCHO. Whether they should be NULL is an OPEN rule 1 question; "
+            "decision pending Scott; reversible by a new edition.",
             "Stock is recorded where it is owned (the glossary: the owner "
             "holds the freehold or a leasehold interest and has the direct "
             "legal relationship with the occupants), not where it is "

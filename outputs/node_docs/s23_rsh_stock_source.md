@@ -46,7 +46,7 @@ Never from the file name, the link or the page. The loader reads, from the workb
 - `Version History`: the last row must equal that publication month and version.
 - The release page's years (when the page is read) must equal `y1` and `y2`. The file decides `stock_date` (31 March `y2`).
 
-The held file is `RP_COMBINED_TOOL_2025_FINAL_V1.1.xlsx` (sha256 starting `6c237c79`): title year 2025, source 1 April 2024 to 31 March 2025, publication November 2025, version 1.1. Its Version History reads version 1, October 2025, "Original release."; version 1.1, November 2025, "Corrected an issue which affected England stock figures only." Version 1.0 is not on the release page and not in the Wayback Machine (the earliest capture of the page, 23 November 2025, already lists 1.1), so what changed is **not recoverable**. The release page records the first publication date, 28 October 2025, which is what the live `publication_date` holds.
+The held file is `RP_COMBINED_TOOL_2025_FINAL_V1.1.xlsx` (sha256 starting `6c237c79`): title year 2025, source 1 April 2024 to 31 March 2025, publication November 2025, version 1.1. Its Version History reads version 1, October 2025, "Original release."; version 1.1, November 2025, "Corrected an issue which affected England stock figures only." Version 1.0 is not on the release page and not in the Wayback Machine (the earliest capture of the page, 23 November 2025, already lists 1.1), so what changed is **not recoverable**. The release page records the first publication date, 28 October 2025, which is what the live `publication_date` holds for the held 2025 rows. **From the next load that changes**: a new load writes `publication_date` as the first day of the file's own publication month (the loader reads the month from the workbook, not the day), so the 27 October 2026 release will carry 2026-10-01, a day on which nothing was published. The two meanings are not the same; read `publication_date` of a 2026 row as "the file's publication month", and use the release page for the day.
 
 A file's rank is its own (publication month, version). A file older than the one held for its stock date is skipped and listed (a run of only older files halts; `--allow-older-file` overrides and says so in the run log); equal rank with different content stops.
 
@@ -67,7 +67,7 @@ The 2024 tool has a **different layout** (stock headers prefixed `CLCRR025_LA_GN
 | `Large` | 7,205 | Long Form | Yes: `PRP` |
 | `Small` | 2,738 | Short Form | Yes: `PRP` |
 | `LARP` | 228 | LARP | Yes: `LARP` |
-| `LA` | 296 | — | No: the publisher's per-authority subtotals (`RP_Code` holds the authority name, `LA_Code` its code, `LA_Nm` its region) |
+| `LA` | 296 | — | No: the publisher's per-authority subtotals (`RP_Name` holds the authority name, `RP_Code` and `LA_Code` both hold its code, `LA_Nm` its region; `SDR_Size` is `LA` and `Survey_Status` is `NA`) |
 | `Region` | 9 | — | No: regional aggregates (`RP_Code` `England`; the only rows with formulas) |
 
 A provider row is `RP_Type` `Large`, `Small` or `LARP` **and** an E06 to E09 `LA_Code`; a provider-typed row without one halts, any other `RP_Type` halts, and a row with no `RP_Code` must be entirely empty (1,797 trailing rows of the 2025 sheet are). A load that does not filter counts roughly three times over: the unfiltered sheet sums to 13,599,165 units against 4,533,055. Large and Small are the glossary's terms: a Large PRP owns 1,000 or more units and completes the long SDR form; a Small PRP owns fewer than 1,000 and completes the short form.
@@ -107,7 +107,7 @@ Published zeros are zeros: 12 rows have a total of 0, all LARPs, which the tool'
 
 Two things to know about zeros:
 
-- **Low cost home ownership** — the tool's Area Summary says LCHO unit counts are for LARPs and Large PRPs only. All 2,738 Short Form (Small) rows hold 0, which is not evidence that those providers own none.
+- **Low cost home ownership: an OPEN rule 1 question (decision pending Scott).** The tool's Area Summary says LCHO unit counts are for LARPs and Large PRPs only. All 2,738 Short Form (Small) rows hold 0. On the publisher's own note that 0 means "not counted", not "owns none": Additional Table 1.1 puts PRP LCHO at 276,352, against 267,072 for the loaded Large PRPs (274,171 less LARP 7,099), which leaves about 9,280 units held by Small PRPs and recorded as 0 here (derived, not published). `total_social_stock` for those rows also leaves out the provider's LCHO. The zeros are stored exactly as published and nothing was changed; whether they should be NULL with a reason, or flagged, is for Scott and would be a new edition (reversible). Until then, do not sum LCHO or read a Small PRP's 0 as a count.
 - `survey_status` is stored as published, in two spellings: `Signed_Off` (9,943 PRP rows) and `Signed-Off` (228 LARP rows).
 
 ## Unweighted versus weighted
@@ -142,13 +142,13 @@ Revision evidence: the publisher has no scheduled revisions; it says it will rep
 
 ### Stop conditions (enforced in `load`)
 
-A stock date breaking one is REJECTED: nothing stored, no ledger row, exit 1, and the run log records the run as partial with the period named. The thresholds are constants in the loader.
+Two kinds of stop. A **halt** (identity, header, value, reconciliation or geography failure, or a release title that does not fit) stops the whole run before any stock date is planned: nothing is stored, no ledger row, no run-log row, exit 1, and the message names what was seen. A stock date breaking a **threshold** is REJECTED: nothing stored for it, no ledger row, exit 1, and on `--commit` the run log records the run as partial with the period named. The thresholds are constants in the loader.
 
 | Case | Rejected when |
 |---|---|
-| any | identity, header, value, reconciliation or geography failure |
+| any (a halt: no run-log row) | identity, header, value, reconciliation or geography failure |
 | new stock date | fewer than 296 authorities; national total social stock moves more than 5% from the previous period, or supported housing and older people more than 10%; any authority's total moves more than 25% |
-| revised stock date | the national total of any stock column moves more than 1%; more than 30 authorities' totals change; any authority's total moves more than 10%; more than 5% of provider rows are added or removed (a file with fewer providers or authorities than the tip is a partial file and never replaces it) |
+| revised stock date | the national total of any stock column moves more than 1%; more than 30 authorities' totals change; any authority's total moves more than 10%; more than 5% of provider rows are added or removed; an authority of the tip missing from the file (a missing authority always stops). A reissued file that drops providers by 5% or less passes these checks and is stored as the next edition; `refresh-latest` then needs `--accept-key-changes PERIOD` before it reaches the live table, and the preview lists the keys |
 
 For scale, 2024 to 2025 moved the national total by +0.96%, supported housing by -1.0% and the largest authority by +10.0%.
 

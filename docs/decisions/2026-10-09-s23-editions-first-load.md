@@ -13,8 +13,8 @@ No held value changed. The live table `rsh_rp_stock_by_la` is exactly as it was 
 Confirmed first: 10,171 rows, one stock date (2025-03-31), 296 authorities, one `loaded_at`
 (2026-08-14 21:24:42.442022 UTC), 0 NULLs in every column, survey hash `4967e5b59580d98f0edc3c6f8d908ac9`.
 
-Zeros (published): `total_social_stock` 12 (all LARPs that own no stock), `general_needs_self_contained` 4,499,
-`general_needs_bedspaces` 9,878, `supported_housing_and_older_people` 4,603, `low_cost_home_ownership` 5,563.
+Zeros as published: `total_social_stock` 12 (all LARPs that own no stock), `general_needs_self_contained` 4,499,
+`general_needs_bedspaces` 9,878, `supported_housing_and_older_people` 4,603, `low_cost_home_ownership` 5,563. Of the 5,563 LCHO zeros, 2,738 are every Small PRP row, and those are an OPEN rule 1 question (see "Open question for Scott" below).
 
 Each sha256 is written as two 32-hex halves (`first32` then `last32`; join them) so the credential scan, which flags a 64-hex run, stays untouched. The first line is the loader's `rows_content_sha` (key plus the 11 compared columns, provenance excluded; the line the
 verify script's gate 16 reads). The second hashes every stored column, `loaded_at` included: every column in table
@@ -49,7 +49,17 @@ The old `num(v)` returned 0 for a blank cell. A blank stock cell would have been
 rows. There is no publisher marker for these columns (the tool notes, glossary, technical notes and data quality note
 say none), so nothing is stored as NULL; the five stock columns stay `NOT NULL`, and the new loader halts on a blank,
 a string, a negative or a non-integer stock cell. The 12 zero-total rows are LARPs the tool's own note says own no
-stock: published zeros. Code fix, no data change.
+stock: published zeros. The code defect (a blank turned into 0) is fixed with no data change. The loader no longer coerces blanks to 0, but that does not settle the Small PRP LCHO zeros: see "Open question for Scott" below.
+
+## Open question for Scott: Small PRP low cost home ownership zeros (rule 1)
+
+Status: **OPEN. Decision pending Scott. No data change has been made.**
+
+- The tool's Area Summary says: "Unit counts for LCHO are for LARPs and Large PRPs only." All 2,738 Small PRP (Short Form) rows hold 0 in `low_cost_home_ownership` (sum 0).
+- On the publisher's own note those zeros mean "not counted", not "owns none". Small PRPs do hold LCHO: Additional Table 1.1 (PRP data weighted, all PRPs) puts PRP LCHO at 276,352; the loaded Large PRP LCHO is 267,072 (274,171 less LARP 7,099); that leaves about 9,280 units held by Small PRPs and recorded as 0 here (derived by review, not published). Additional Table 1.20 (weighted, by authority) exceeds the tool by 4,322 nationally, which fits the by-authority tables also leaving out Small PRP LCHO, though the notes do not say so.
+- `total_social_stock` on those rows is the sum of the four parts as published, so it also leaves out the provider's LCHO.
+- Rule 1 says a zero is a measured count. These are published zeros that the publisher's note says are not counts. The table has no `null_reasons` or flag column to show it. The loader's fix (blank to 0) is separate from this and is done.
+- Today's state is option (a): zeros kept as published, with the caveat in the source note and the registry. The options for Scott: (a) keep, as a known qualification; (b) store NULL with a reason for Small PRP LCHO as a new edition, with a decision on what `total_social_stock` means for those rows; (c) add a flag column. Any change is a new edition and reversible (`restore-edition`). Until he decides, do not sum LCHO or read a Small PRP's 0 as a count.
 
 ## The proof run
 
@@ -121,16 +131,31 @@ From `ONS_Population_Estimates`:
 4. What a halt means. The loader halts, naming what it saw, rather than guess:
    - A header change (the 2024 file changed them; the 2026 file may): the `STOCK_BY_LA` header must equal the 2025
      set. Fix with a deliberate alias map and the evidence, then re-run.
-   - A collection or release title that no longer fits, or no or several look-up tools.
+   - A collection or release title that no longer fits, or no or several look-up tools. Discovery halts, exit 1, naming the titles it saw, when the collection lists a document that looks like the series (any wording: "Registered providers social housing ...", "2025-26", "2025/26", a dropped "Registered") with a later year or no year, rather than choose 2024 to 2025. `--release Y1-Y2` also halts if no document is titled for those years exactly, and names any near-miss titles it did not use.
+   - "Nothing newer": when the newest release the collection lists is already held, the preview says which release it saw and that no newer one is listed. On or after 27 October 2026 (the announced date, held as data in the loader, `ANNOUNCED_RELEASES`) with nothing newer listed, it adds a WARNING that the release may be unlisted or missed. That is not a failure by itself: check the GOV.UK collection by hand and use `--file PATH` if the tool is there.
    - Barnsley and Sheffield as E08000038 and E08000039 (the file describes 31 March 2026, after the 1 April 2025
      change): the load stops under rule 4.5; the fix is `geography.DATASET_FORM['23']` to `mixed` with the evidence
      (2025 old, 2026 new, one form per period), then re-run.
+   - Identity, header, value, reconciliation and geography failures are halts: exit 1, nothing stored, no ledger row, and no run-log row (they stop before any stock date is planned). Only a threshold REJECTED, or a failure inside the load, writes a partial run-log row on `--commit`.
    - A stop-threshold REJECTED (nothing stored, no ledger row, exit 1): fewer than 296 authorities; national total
      moving over 5% (supported housing over 10%, any authority over 25%) for a new period; for a revision, a national
-     total over 1%, over 30 authorities, an authority over 10% or over 5% of provider rows added or removed.
+     total over 1%, over 30 authorities, an authority over 10% or over 5% of provider rows added or removed. A reissued file that drops 5% or fewer providers passes this check (a missing authority always stops); it is stored as the next edition and `refresh-latest` then needs `--accept-key-changes PERIOD`. Tightening this to refuse any dropped provider was considered and not done: a genuine merger would be refused.
 5. S23 is not a W1 input. If it is ever wired into W1, run `refresh-latest --commit` in the same session before W1,
    because it copies the edition's `loaded_at` and a later W1 run would otherwise hide the revision from
    `refresh_map.py --check`.
+
+## Follow-ups
+
+- Fold S23's `refresh-latest` into the shared engine. S23 has its own copy of the command (`cmd_refresh_latest`, a copy of `pe.run_refresh_latest` with one check swapped) because `load_checks.check_latest_equals_live` compares by column name and fails on the five `file_*` provenance columns. Today the two behave the same; an engine fix to refresh will not reach S23 unless copied across. The fix is a column mapping in the shared check.
+- The Small PRP LCHO decision above.
+- `publication_date` changes meaning from the next load (the file's publication month, not the release page's first-published day): see the source note.
+
+## Downstream
+
+The table is read outside the repo's W1 and map paths:
+
+- `analysis/yada/yada_run2_build.py` and `analysis/priority_market/priority_market_reassessment.py` read `rsh_rp_stock_by_la`. No value changed in this work, so nothing they produced moves today; a later `refresh-latest` would change what they read (and `loaded_at`).
+- The sent YADA run 2 text said the per-capita table "is topped by coalfield and market-town districts with sheltered stock for older people". The publisher's notes do not support that reading: the column is "supported housing and older people", which the glossary does not define as sheltered stock. Any correction is a new version, not an overwrite of what was sent. That is Scott's call. These analysis files were not edited.
 
 ## How to reverse
 

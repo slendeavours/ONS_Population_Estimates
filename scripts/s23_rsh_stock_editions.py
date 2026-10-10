@@ -313,7 +313,12 @@ def _version_text(v) -> "str | None":
 
 DOC_TITLE_RE = re.compile(r"Registered provider social housing stock and rents "
                           r"in England ([0-9]{4}) to ([0-9]{4})")
-SERIES_RE = re.compile(r"Registered provider social housing", re.I)
+# A title that looks like the series, however it is worded ('Registered
+# providers social housing ...', 'Social housing stock and rents ...').
+SERIES_RE = re.compile(r"social housing|stock and rents|stock.*rents?", re.I)
+# The releases the publisher has announced but the collection may not yet list:
+# {(y1, y2): date}. Data, not a claim: 'announced for 27 October 2026, 09:30'.
+ANNOUNCED_RELEASES = {(2025, 2026): date(2026, 10, 27)}
 TOOL_TITLE = "Registered providers look-up tool"
 
 
@@ -342,20 +347,35 @@ def release_candidates(collection_json) -> dict:
 
 def _years_in(title) -> list:
     """The years a title names: four-digit years, and the closing year of a
-    'yyyy/yy' span."""
+    'yyyy/yy', 'yyyy-yy', 'yyyy/yyyy' or 'yyyy-yyyy' span (hyphen, en dash
+    or slash)."""
     ys = [int(y) for y in re.findall(r"(?<![0-9])([0-9]{4})(?![0-9])", title)]
-    for a, b in re.findall(r"([0-9]{4})/([0-9]{2})(?![0-9])", title):
-        ys.append(int(a) // 100 * 100 + int(b))
+    for a, b in re.findall(r"(?<![0-9])([0-9]{4})\s*[/‐-―-]\s*"
+                           r"([0-9]{4}|[0-9]{2})(?![0-9])", title):
+        ys.append(int(b) if len(b) == 4 else int(a) // 100 * 100 + int(b))
     return ys
+
+
+def _strays(titles, newest_year) -> list:
+    """Titles that do not fit the strict pattern but look like the series and
+    are newer than newest_year or give no year to compare."""
+    out = []
+    for t in titles:
+        if DOC_TITLE_RE.fullmatch(t) or not SERIES_RE.search(t):
+            continue
+        ys = _years_in(t)
+        if not ys or any(y > newest_year for y in ys):
+            out.append(t)
+    return out
 
 
 def latest_release(collection_json) -> tuple:
     """(y1, y2, base_path) of the newest release by its closing year.
     ValueError (listing the titles seen) when no document has the expected
     title (a renamed series), when two documents claim the newest years, when
-    a matching title does not span one year, or when a document of the series
-    names a later year in a title that does not fit (not passed over for an
-    older release)."""
+    a matching title does not span one year, or when a document that looks
+    like the series (any wording) names a later year, or no year, in a title
+    that does not fit (never passed over for an older release)."""
     cands = release_candidates(collection_json)
     titles = _titles(collection_json)
     if not cands:
@@ -367,19 +387,55 @@ def latest_release(collection_json) -> tuple:
         raise ValueError(f"release titles that do not span one year: "
                          f"{[cands[k][0][0] for k in odd]}")
     newest = max(cands, key=lambda k: k[1])
-    stray = [t for t in titles if not DOC_TITLE_RE.fullmatch(t)
-             and SERIES_RE.match(t)
-             and any(y > newest[1] for y in _years_in(t))]
+    stray = _strays(titles, newest[1])
     if stray:
         raise ValueError(f"the newest matching release is {newest[0]} to "
-                         f"{newest[1]}, but the collection lists a document of "
-                         f"the series with a later year whose title does not "
-                         f"fit: {stray}; not choosing an older release over it")
+                         f"{newest[1]}, but the collection lists a document "
+                         f"that looks like the series, with a later year or "
+                         f"none, whose title does not fit: {stray}; not "
+                         f"choosing an older release over it; titles seen: "
+                         f"{titles[:20]}")
     if len(cands[newest]) != 1:
         raise ValueError(f"{len(cands[newest])} documents for {newest[0]} to "
                          f"{newest[1]}: {[t for t, _ in cands[newest]]}; "
                          "refusing to choose one")
     return newest[0], newest[1], cands[newest][0][1]
+
+
+def newest_listed(collection_json) -> "tuple | None":
+    """(y1, y2) of the newest strictly titled release, or None."""
+    cands = release_candidates(collection_json)
+    return max(cands, key=lambda k: k[1]) if cands else None
+
+
+def _today() -> date:
+    return date.today()
+
+
+def discovery_note(collection_json, held_periods, today=None) -> list:
+    """Lines to print when discovery found nothing newer than what is held:
+    which release the collection lists as newest, that none newer is listed,
+    and, when an announced release date has passed, a WARNING. Empty when the
+    newest listed release is not held (there is something to load)."""
+    nl = newest_listed(collection_json)
+    if nl is None:
+        return []
+    stock = f"{nl[1]}-03-31"
+    if stock not in set(held_periods):
+        return []
+    out = [f"the newest release the collection lists is {nl[0]} to {nl[1]} "
+           f"(stock date {stock}), which is already held; no newer release "
+           "is listed in the collection"]
+    today = today or _today()
+    for (y1, y2), when in sorted(ANNOUNCED_RELEASES.items()):
+        if y2 > nl[1] and today >= when:
+            out.append(f"WARNING: the {y1} to {y2} release was announced for "
+                       f"{when:%d %B %Y} and today is {today:%d %B %Y}, but "
+                       "the collection does not list it. It may not be "
+                       "published yet, or discovery may be missing it (check "
+                       "the GOV.UK collection page by hand; --file PATH "
+                       "loads a downloaded tool)")
+    return out
 
 
 def release_for_years(collection_json, y1, y2) -> tuple:
@@ -388,9 +444,15 @@ def release_for_years(collection_json, y1, y2) -> tuple:
     titled for them."""
     cands = release_candidates(collection_json).get((int(y1), int(y2)), [])
     if len(cands) != 1:
+        near = [t for t in _titles(collection_json)
+                if not DOC_TITLE_RE.fullmatch(t) and SERIES_RE.search(t)
+                and int(y2) in _years_in(t)]
         raise ValueError(f"{len(cands)} documents titled for {y1} to {y2} in "
-                         f"the collection: {[t for t, _ in cands]}; titles "
-                         f"seen: {_titles(collection_json)[:20]}")
+                         f"the collection: {[t for t, _ in cands]}"
+                         + (f"; titles that name {y2} but do not fit the "
+                            f"expected pattern (not used): {near}"
+                            if near else "")
+                         + f"; titles seen: {_titles(collection_json)[:20]}")
     return int(y1), int(y2), cands[0][1]
 
 
@@ -1013,7 +1075,8 @@ def period_problems(new, tip, prev, *, kind) -> list:
     REV_NATIONAL_PCT; more than REV_MAX_AREAS authorities whose totals (any
     stock column) change; any authority's total moving by more than
     REV_AREA_PCT; more than REV_KEYS_PCT of the tip's provider rows added,
-    or removed."""
+    or removed (a reissued file that drops providers by REV_KEYS_PCT or
+    less passes this check; refresh-latest then needs --accept-key-changes)."""
     g = globals()
     out = []
     an = _area_sums(new)
@@ -1073,8 +1136,8 @@ def period_problems(new, tip, prev, *, kind) -> list:
             out.append(f"{len(keys)} of {len(tk)} provider rows {what} "
                        f"({len(keys) * 100 / len(tk):.1f}%, limit "
                        f"{g['REV_KEYS_PCT']}%)"
-                       + ("; a file with fewer providers than the held "
-                          "edition is a partial file and never replaces it"
+                       + ("; a file that drops more than that is treated "
+                          "as a partial file and does not replace the tip"
                           if what == "removed" else "")
                        + ": " + ", ".join("/".join(k)
                                           for k in sorted(keys)[:6]))
@@ -1699,7 +1762,7 @@ def _source(args) -> dict:
     downloaded to RAW_DIR (also in a preview)."""
     out = {"path": None, "where": None, "how": None, "page_years": None,
            "page_url": None, "source_url": None, "file_name": None,
-           "tool": None}
+           "tool": None, "discovered": None}
     if args.file:
         path = Path(args.file)
         if not path.is_file():
@@ -1739,6 +1802,7 @@ def _source(args) -> dict:
         else:
             y1, y2, base = latest_release(coll)
             how = "newest release (content API)"
+            out["discovered"] = coll
     except ValueError as e:
         halt(f"{GOV_UK}{COLLECTION_PATH}: {e}")
     page = _page(base, (y1, y2))
@@ -1865,6 +1929,9 @@ def cmd_load(args) -> int:
             held = sorted(ranks)
             print("held stock dates: " + (", ".join(held) or "none"))
             src = _source(args)
+            if src["discovered"] is not None:
+                for line in discovery_note(src["discovered"], held):
+                    print(line)
             path = src["path"]
             sha = content_sha256(path)
             print(f"{path.name}: sha256 {sha[:16]}"
