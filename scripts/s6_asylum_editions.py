@@ -235,8 +235,9 @@ SERIES_BREAKS = (
      "quarters, 2023-12-31 to 2024-12-31 inclusive. All subsistence-only "
      "people in those periods are held in la_asylum_support_unallocated.",
      "Local authority counts and England totals are depressed across those "
-     "five periods. 32 English LAs that appeared only via subsistence-only "
-     "claimants at 2023-09-30 disappear entirely from 2023-12-31."),
+     "five periods. 32 English LAs appeared at 2023-09-30 only through "
+     "subsistence-only rows; 26 of them are absent at 2023-12-31 and 13 are "
+     "absent in all five periods."),
 )
 
 # ---------------------------------------------------------------------------
@@ -1774,7 +1775,13 @@ def period_problems(new, tip, prev, *, table, kind,
         hard.append(f"{PARTIAL}: {len(an)} authorities, the held edition has "
                     f"{len(at)} (more than {g['PARTIAL_AREAS']} fewer; a "
                     "partial file never replaces a fuller edition)")
-    if len(tip) and (len(tip) - len(new)) * 100 > g["REV_ROWS_PCT"] * len(tip):
+    # The row-count partial rule is for the big table only. The unallocated
+    # table has 1 to 4 rows a period and non_england about 65: a publisher
+    # reassigning an 'Unknown' row to an authority is a key change, released
+    # by --acknowledge through the "rows removed" check below, not a partial
+    # file. A genuinely partial non_england file still fails PARTIAL_AREAS.
+    if table == "support" and len(tip) and \
+            (len(tip) - len(new)) * 100 > g["REV_ROWS_PCT"] * len(tip):
         hard.append(f"{PARTIAL}: {len(new)} rows, the held edition has "
                     f"{len(tip)} (more than {g['REV_ROWS_PCT']}% fewer; a "
                     "partial file never replaces a fuller edition)")
@@ -2881,6 +2888,13 @@ def _run_reg02(ctx) -> int:
     new, compared, skipped = plan_periods(
         [p], cov["rank"], ranks, chk, lsrc, sha, recheck=args.recheck,
         allow_older=args.allow_older_file, needs={p: ["groups"]})
+    if p in new and held and p < max(held) and not args.allow_older_file:
+        # a Reg_02 snapshot is one period; an earlier one than anything
+        # held is a back-fill, not a new quarter of the series
+        halt(f"back-fill: this Reg_02 file is for {p}, earlier than the "
+             f"newest held period {max(held)} and not held itself; storing "
+             "it would add an earlier snapshot to the editions. If this is "
+             "deliberate, re-run with --allow-older-file")
     return _run_periods(ctx, "reg02", src, file, cov, sha, lsrc,
                         {p: {"groups": recs}}, new, compared, skipped, tips,
                         ranks, held, started,
@@ -2943,6 +2957,9 @@ def _run_periods(ctx, part, src, file, cov, sha, lsrc, by_period, new,
             recs = by_period[p][tag]
             have = p in tips[tag]
             if not recs:
+                # an edition with no rows for a table cannot be stored (only
+                # tags with records are written), so this stays a stop
+                # condition no flag releases
                 if have:
                     bad.append(f"{PARTIAL}: {profile(tag).spec.live_table}: the "
                                "file has no rows for this period, the held "

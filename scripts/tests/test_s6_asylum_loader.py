@@ -36,7 +36,8 @@ import editions_core as core  # noqa: E402
 import period_editions as pe  # noqa: E402
 import s6_asylum_editions as m  # noqa: E402
 from _db import get_conn  # noqa: E402
-from test_s6_asylum_pure import (Q3, Q4, d11_rows, reg02_body,  # noqa: E402
+from test_s6_asylum_pure import (NA_SUB, Q3, Q4, d11_rows,  # noqa: E402
+                                 reg02_body,
                                  regional_page, tables_page, write_d09,
                                  write_d11, write_reg02)
 
@@ -493,6 +494,32 @@ class Load(Fixture):
             self.assertIn("PARTIAL RUN (exit 1): rejected 2025-09-30", notes)
             self.assertIn("zz_s6_unallocated", notes)
 
+    def test_a_small_unallocated_restatement_is_a_key_change_not_partial(self):
+        # the publisher reassigns one of three unallocated rows: a key change
+        # the period's --acknowledge releases, not a PARTIAL FILE
+        extra = [["30 Sep 2025", "Section 4", NA_SUB, NA_SUB, NA_SUB,
+                  "Subsistence Only", 1],
+                 ["30 Sep 2025", "Section 98", NA_SUB, NA_SUB, NA_SUB,
+                  "Subsistence Only", 1]]
+        with rolled_back(self.conn) as cur:
+            self.seed(cur, add=extra)
+            self.assertEqual(editions(cur, "unallocated", "2025-09-30"),
+                             [(1, None, 3)])
+            self.d11(Q4, add=extra[:1])
+            rc, text, _ = self.run_main(cur, ["load", "--only", "d11",
+                                              "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("2025-09-30: REJECTED", text)
+            self.assertIn("zz_s6_unallocated: 1 of 3 rows removed", text)
+            self.assertNotIn(m.PARTIAL, text)
+            self.assertEqual(editions(cur, "unallocated", "2025-09-30"),
+                             [(1, None, 3)])
+            text, _ = self.ok(cur, ["load", "--only", "d11", "--commit",
+                                    "--acknowledge", "2025-09-30"])
+            self.assertIn("unallocated revised, 1 rows changed", text)
+            self.assertEqual(editions(cur, "unallocated", "2025-09-30"),
+                             [(1, None, 3), (2, 1, 2)])
+
     def test_a_new_period_breaking_a_stop_condition_is_rejected(self):
         with rolled_back(self.conn) as cur:
             self.seed(cur)
@@ -830,6 +857,24 @@ class Reg02(Fixture):
             rc, text, _ = self.run_main(cur, ["load", "--only", "reg02"])
             self.assertEqual(rc, "halt", text)
             self.assertIn("E06000001: Reg_02 supported_asylum 999", text)
+
+    def test_a_backfill_of_an_earlier_snapshot_needs_allow_older_file(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur, Q4)
+            self.reg("2026-06-30")
+            self.ok(cur, ["load", "--only", "reg02", "--commit"])
+            self.reg("2026-03-31")
+            argv = ["load", "--only", "reg02", "--commit", "--release",
+                    "March 2026"]
+            rc, text, logged = self.run_main(cur, argv)
+            self.assertEqual(rc, "halt", text)
+            self.assertIn("back-fill", text)
+            self.assertIn("--allow-older-file", text)
+            self.assertEqual(editions(cur, "groups", "2026-03-31"), [])
+            logged.assert_not_called()
+            self.ok(cur, argv + ["--allow-older-file"])
+            self.assertEqual(editions(cur, "groups", "2026-03-31"),
+                             [(1, None, 48)])
 
     def test_equal_rank_with_different_content_needs_accept_reissue(self):
         with rolled_back(self.conn) as cur:

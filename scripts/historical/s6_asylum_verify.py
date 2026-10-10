@@ -15,7 +15,7 @@ _RETIRED = (
     'id 98 on 4 September 2026). This is the verify module: it was imported by the build and run '
     'inside its transaction (the build rolled back on a failed check), and its idempotency check '
     're-ran the real upsert inside the same transaction as the load. It rewrote docs/s6_source_anomalies.md on every run, even one that '
-    'was then rolled back. Its checks 3, 5, 8a and 8b tested a hand-sourced anchor period '
+    'was then rolled back. Its checks 3 and 5 tested a hand-sourced anchor period '
     '(2026-03-31), not the period loaded. The loader that replaced the build is '
     'scripts/s6_asylum_editions.py; use scripts/s6_asylum_editions_verify.py (22 gates) instead.'
 )

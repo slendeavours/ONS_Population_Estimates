@@ -178,8 +178,10 @@ other, subsistence_only) and `all_pathways` (total).
   `Percentage of population (%)` is stored on the `all_pathways` / `total` row
   as published: a **ratio** (a value such as 0.0050, not 0.50), despite the
   "(%)" in the header, rounded to four decimals by the column type
-  (`numeric(8,4)`). It is the all-pathways total divided by `Population`
-  (City of London: 7 / 15,631 = 0.000448).
+  (`numeric(8,4)`). In the held figures it behaves as the all-pathways total
+  divided by `Population` (592 of 592 rows; City of London, June 2026: 7 /
+  15,111 = 0.000463). This is the pipeline's own check, not a publisher
+  definition: note 5 only says "per capita percentages".
 
 ## Values and markers
 
@@ -266,7 +268,8 @@ will not read prose.
   authorities appear at 2023-09-30 only through subsistence-only rows; 26 of
   them are absent at 2023-12-31 and 13 are absent in all five periods (checked
   2026-10-10). The held `asylum_series_breaks` text for this break says all 32
-  disappear from 2023-12-31, which overstates it by 6; the row is left as held.
+  disappear from 2023-12-31, which overstated it by 6; the row was corrected on
+  2026-10-10 ([decision](decisions/2026-10-10-s6-series-break-80-correction.md)).
 - **The first period with local authority data for every support type is
   2025-03-31** (notes 14 to 16), and from then the unallocated table has no new
   rows.
@@ -357,7 +360,15 @@ the decision note).
 
 A period that breaks a condition is REJECTED: nothing is stored for it, no
 ledger row is written and the run exits 1. `--acknowledge PERIOD` releases a
-threshold breach; it never releases a partial file.
+threshold breach; it never releases a partial file. In the two small
+Asy_D11 tables (`la_asylum_support_unallocated`, 1 to 4 rows a quarter, and
+`asylum_support_non_england`) fewer rows than the held edition is a key change,
+not a partial file: for example the publisher reassigning an `Unknown` row to an
+authority. It is REJECTED until the period is named with `--acknowledge`, after
+reading what moved. A table with no rows at all where the held edition has some
+is still a partial file. A Reg_02 file for a quarter earlier than the newest
+held one and not held itself (a back-fill, such as `--only reg02 --release
+"March 2025"`) halts unless `--allow-older-file` is given.
 
 | Condition | Limit |
 |---|---|
@@ -369,7 +380,7 @@ threshold breach; it never releases a partial file.
 | Revision, any authority's total | 500 people |
 | Revision, rows added or removed | 10% of the held rows |
 | PARTIAL FILE: authorities fewer than the held edition | 10 (never released) |
-| PARTIAL FILE: rows fewer than the held edition | 10% (never released) |
+| PARTIAL FILE: rows fewer than the held edition (`la_asylum_support` only; the small tables use "rows removed" above, released by `--acknowledge`) | 10% (never released) |
 | Same-code duplicate keys in one file | more than 5 halts |
 | Reg_02 English authorities | exactly 296 |
 | Reg_02 reissue, any pathway's England total | 5% |

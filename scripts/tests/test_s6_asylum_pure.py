@@ -1131,7 +1131,32 @@ class StopConditions(unittest.TestCase):
                "na_reason": "N/A", "people": 7}]
         out = m.period_problems([], un, None, table="unallocated",
                                 kind="revised", acknowledged=True)
-        self.assertTrue(any(x.startswith(m.PARTIAL) for x in out), out)
+        # a table with no rows at all is refused by the caller (run_periods:
+        # a PARTIAL FILE no flag releases; see the loader test)
+        self.assertEqual(out, [])
+
+    def test_a_small_table_losing_rows_is_a_key_change_not_partial(self):
+        un = [{"support_type": "Section 95", "accommodation_type": f"x{i}",
+               "na_reason": "N/A", "people": 7} for i in range(4)]
+        for table, tip in (("unallocated", un),):
+            out = m.period_problems(un[:3], tip, None, table=table,
+                                    kind="revised")
+            self.assertTrue(any("1 of 4 rows removed" in x for x in out), out)
+            self.assertFalse(any(x.startswith(m.PARTIAL) for x in out), out)
+            self.assertEqual(m.period_problems(
+                un[:3], tip, None, table=table, kind="revised",
+                acknowledged=True), [])
+        ne = [{"lad_code": f"S12{i:06d}", "support_type": "Section 95",
+               "accommodation_type": "Dispersal Accommodation",
+               "people": 100, "country": "Scotland",
+               "published_la_name": "x"} for i in range(50)]
+        out = m.period_problems(ne[:40], ne, None, table="non_england",
+                                kind="revised", acknowledged=True)
+        self.assertEqual(out, [])
+        out = m.period_problems(ne[:39], ne, None, table="non_england",
+                                kind="revised", acknowledged=True)
+        self.assertTrue(any(x.startswith(m.PARTIAL) and "39 authorities" in x
+                            for x in out), out)
 
     def test_reg02_thresholds_both_sides(self):
         with mock.patch.object(m, "REG02_LAS", 40):
