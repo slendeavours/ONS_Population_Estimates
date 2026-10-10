@@ -281,8 +281,8 @@ Detection uses the per-period `source` column the target table already
 records, where it has one. That column says which file each loaded period
 actually came from, so a republished file is visible from the link list alone
 — the `-Revised` suffix on the DRD filenames is the whole signal, and nothing
-is downloaded. Eleven sources are currently flagged as revising
-(`revises_back_series` true): S1, S1b, S2, S4, S6, S8b, S9a, S15, S18, S22 and S23.
+is downloaded. Thirteen sources are currently flagged as revising
+(`revises_back_series` true): S1, S1b, S2, S4, S6, S8b, S9a, S9b, S13, S15, S18, S22 and S23.
 
 S18 is no longer immune by accident: every edition republishes the full back
 series, but since 2026-10-01 the loader does not overwrite held rows. A revision
@@ -342,6 +342,25 @@ the GOV.UK content API and reads each file's identity from its own cover;
 page's change notes. The old build upserted every period on every run (15 runs);
 it is retired to `scripts/historical/`. Not a W1 or map input. Record:
 `docs/decisions/2026-10-10-s6-editions-first-load.md`.
+
+S10 (the rough sleeping snapshot) and S13 (the LAHS housing register) are on
+the same engine since 2026-10-10, each with an editions table and a file-check
+ledger; the live tables `la_rough_sleeping` and `la_housing_register` are their
+latest-edition layers. S13 is flagged as revising: the open data file restates
+every year since 1978-79 in place and the February and June 2026 files differ in
+2024-25. S10 is not flagged (`revises_back_series` false): the autumn 2024 and
+autumn 2025 files agree on every local authority cell for 2010 to 2024, from one
+comparison, and the loader compares every held year of a new file. Both
+loaders find the files through the GOV.UK content API and read each file's
+identity from the file (S10 the Cover and table title; S13 the newest year's ODS
+Cover, with the CSV equal to it cell for cell). The registry rows for both now
+carry the loader, the source note, the gotchas, the caveats and the verification
+record, and neither names an n8n workflow (the seven n8n loader workflows for the
+no-loader sources were retired on 2026-10-10). `check_sources.py` reads the
+collections (its GOV.UK content API detectors for 10 and 13; neither sees an
+in-place revision of a file). W1 and map inputs. Records:
+`docs/decisions/2026-10-10-s10-editions-first-load.md` and
+`docs/decisions/2026-10-10-s13-editions-first-load.md`.
 
 S11 (the CQC register) is on the same engine since 2026-10-09 but is
 snapshots, not revisions: each monthly file is a dated copy of the register

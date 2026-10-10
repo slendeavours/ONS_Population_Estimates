@@ -233,7 +233,8 @@ OPTED_IN = {"s23_rsh_stock_editions.SPEC",
             "s6_asylum_editions.SPEC_SUPPORT",
             "s6_asylum_editions.SPEC_UNALLOCATED",
             "s6_asylum_editions.SPEC_NON_ENGLAND",
-            "s6_asylum_editions.SPEC_GROUPS"}
+            "s6_asylum_editions.SPEC_GROUPS",
+            "s13_lahs_editions.SPEC"}
 
 
 def real_specs(opted_in=True) -> dict:
@@ -266,6 +267,21 @@ class WholePeriodOptIn(unittest.TestCase):
         live_cols, _ = core._insert_cols(spec)
         self.assertFalse(set(spec.editions_only_cols) & set(live_cols))
         self.assertTrue(set(prov) <= set(live_cols))
+
+    def test_s13_opts_in_to_an_editions_only_source(self):
+        """S13: live source from the editions-only live_source column (the
+        release label plus any rule note, per row); not whole-period; its
+        other editions-only columns (value_flag ...) are not mapped."""
+        spec = real_specs()["s13_lahs_editions.SPEC"]
+        self.assertEqual(spec.whole_period_cols, ())
+        self.assertEqual(spec.editions_only_cols, ("live_source",))
+        self.assertFalse(spec.refresh_key_changes)
+        self.assertEqual(spec.compare_cols, ("households_on_register",
+                                             "jointly_managed_register",
+                                             "reasonable_preference"))
+        live_cols, _ = core._insert_cols(spec)
+        self.assertNotIn("live_source", live_cols)
+        self.assertIn("source", live_cols)
 
     def test_s6_opts_in_with_the_release_label(self):
         """S6: live source_edition from the editions metadata column

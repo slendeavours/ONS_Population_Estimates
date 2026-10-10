@@ -83,12 +83,17 @@ Source: DLUHC H-CLIC statutory homelessness return (quarterly)
 
 ## Rough Sleeping
 
-Source: DLUHC annual rough sleeping snapshot count
+Source: MHCLG annual rough sleeping snapshot in England (autumn). Full source note: [s10_rough_sleeping_source.md](s10_rough_sleeping_source.md)
+
+Table `la_rough_sleeping`, key `(lad24cd, snapshot_year)`; the latest-edition layer of `la_rough_sleeping_editions`.
 
 | Column | Type | Range | Description |
 |---|---|---|---|
-| `rough_sleeping_current` | integer | 0 – 400+ | People sleeping rough on the snapshot night (annual count) |
-| `rough_sleeping_prev_year` | integer | 0 – 400+ | Prior year rough sleeping count |
+| `snapshot_year` | integer | 2025 held | The autumn of the snapshot (autumn 2025 is 2025) |
+| `rough_sleeping` | integer | 0 – 360 held | People seen, or thought to be, sleeping rough on the authority's snapshot night in that autumn (Table_1_Total, the year's column). A published 0 is a count |
+| `rough_sleeping_prev_year` | integer | 0 – 388 held | The same authority's count for the autumn before, as the same file states it |
+
+Each authority chooses its night between 1 October and 30 November. The file defines `[x]`, `[z]` and `[n]` but none appears in a local authority cell, so there are no NULLs.
 
 ---
 
@@ -179,11 +184,16 @@ Source: DWP Stat-Xplore, Personal Independence Payment cases with entitlement, b
 
 ## Social Housing Register
 
-Source: DLUHC CORE / LA housing register returns
+Source: MHCLG Local Authority Housing Statistics (LAHS), the annual local authority return. Full source note: [s13_lahs_source.md](s13_lahs_source.md)
+
+Table `la_housing_register`, key `(lad24cd, reporting_year)`; the latest-edition layer of `la_housing_register_editions`. `reporting_year` is the year the LAHS year ends: 2024-25 is 2025.
 
 | Column | Type | Range | Description |
 |---|---|---|---|
-| `housing_register` | integer | 0 – 30,000+ | Households on the social housing waiting list |
+| `households_on_register` | integer | 54 – 41,223 held | LAHS `cc1a`: households on the housing register (or waiting list). NULL for `[x]`, `[z]` and `[s]` and under two named rules (Telford and Wrekin from 2022, no register; Allerdale 2015 to 2018, read as not counted); a reorganised authority's figure is the sum of its predecessors', NULL unless every predecessor has one. Not the number waiting for social housing (publisher's note 9) |
+| `jointly_managed_register` | boolean | true / false / NULL | LAHS `cc2a`: "Have you changed your housing register (or waiting list) criteria since last year in light of the changes in the Localism Act 2011?" (Yes true, No false; `[x]` and `[z]` NULL; all NULL for 2025). **Not a flag that a register is jointly managed with other authorities**: the column keeps the name it was first loaded under |
+| `reasonable_preference` | integer | 0 – 28,864 held | LAHS `cc5a`: households on the housing register (or waiting list) with reasonable preference. NULL for `[x]` (15 cells); zeros are as published |
+| `source` | text | | The release label; Telford and Wrekin's rows carry the rule note |
 
 ---
 

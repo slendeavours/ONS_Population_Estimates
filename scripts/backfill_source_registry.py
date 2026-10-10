@@ -715,14 +715,107 @@ SOURCES = [
         source_code="10",
         source_name="DLUHC Rough Sleeping Snapshot",
         publisher="DLUHC",
+        series_name="Rough sleeping snapshot in England (annual, autumn)",
         acquisition_method="manual",
         cadence="annual", cadence_months=12,
-        publication_window="autumn",
+        publication_window=("Published each February for the previous "
+                            "autumn's snapshot (autumn 2024: 27 February "
+                            "2025; autumn 2025: 26 February 2026)"),
         target_table="la_rough_sleeping", geography_level="LAD24",
-        n8n_workflow_name="Workflow 1",
-        caveats=["The rough sleeping count is a single-night snapshot. Actual "
-                 "levels may be significantly higher."],
-        completeness_note=("No source documentation file exists. " + CAUTIOUS),
+        join_path=("Codes resolve through scripts/geography.py "
+                   "(geography.resolve; source 10 is declared 'new'). "
+                   "Barnsley and Sheffield arrive as E08000038 and E08000039 "
+                   "and are stored as E08000016 and E08000019, the codes "
+                   "la_boundaries (LAD May 2024) holds, through the "
+                   "la_code_lookup recode rows. A code outside la_boundaries "
+                   "and the recode rows stops the load."),
+        build_script_path="scripts/s10_rough_sleeping_editions.py",
+        source_doc_path="docs/s10_rough_sleeping_source.md",
+        known_gotchas=(
+            "The loader finds the newest release titled 'Rough sleeping "
+            "snapshot in England: autumn <year>' in the Homelessness "
+            "statistics collection through the GOV.UK content API and its "
+            "one '... - tables' .ods attachment (an accessible duplicate is "
+            "listed and ignored); none or several matches halt, listing what "
+            "was seen. Identity is read from the file: the Cover title, its "
+            "publication date and its 'Autumn 2010 to autumn <year>' line, "
+            "and the Table_1_Total title and header row. Three traps. (1) "
+            "The autumn 2025 file carries Barnsley and Sheffield as "
+            "E08000038 and E08000039 for every year 2010 to 2025, so the "
+            "older years are on the new codes too; the autumn 2024 file "
+            "carried E08000016 and E08000019. (2) The autumn 2024 file has "
+            "no Cover sheet and its Table_1_Total header is shifted: the "
+            "column headed 'Local authority' holds the codes and 'Local "
+            "authority ONS code' holds the names. The loader halts on it at "
+            "the header check. (3) The table was loaded on 2026-03-26 from a "
+            "CSV converted in a chat session whose 2025 and 2024 columns "
+            "held the autumn 2021 and 2020 snapshots (England 2,443 and "
+            "2,688 against the published 4,793 and 4,667), a year shift "
+            "corrected on 2026-08-19. The file defines [x], [z] and [n] but "
+            "none appears in any local authority cell of any year, so a "
+            "marker, blank or non-integer in one halts; the 15 zeros in 2025 "
+            "and 12 in 2024 are published zeros."),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s10_rough_sleeping_editions_verify.py",
+            "checks": 21,
+            "first_load": "2026-10-10",
+            "migration_proof": ("migrate-legacy: the loader's parser on the "
+                                "held autumn 2025 file reproduced every held "
+                                "value (296 authorities, 592 values), 0 "
+                                "differences; the authorities sum to the "
+                                "England row and to every region row for "
+                                "2024 (4,667) and 2025 (4,793)"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an identity, header, marker, blank, non-integer, "
+                     "reconciliation or geography failure or an older file, "
+                     "and rejects a year that breaks a change-size "
+                     "threshold"),
+            "retired": ("the n8n workflow 'Rough Sleeping Snapshot (S10)' "
+                        "is retired (its Code node throws, 2026-10-10); it "
+                        "turned a blank or marker into 0 and had no verify "
+                        "script")},
+        revises_back_series=False,
+        revision_note=(
+            "Each annual file restates every year since 2010. The autumn "
+            "2024 and autumn 2025 files agree on every local authority cell "
+            "for 2010 to 2024 (296 authorities by 15 years, 4,440 cells, 0 "
+            "differences after the Barnsley and Sheffield code change), and "
+            "the autumn 2025 release's change history says only 'First "
+            "published'. No back-series revision has been seen, from one "
+            "comparison of two releases, so revises_back_series is false on "
+            "that evidence. The loader compares every held year in a new "
+            "file with the held edition and stops on any change unless the "
+            "year is named with --acknowledge; each file's statement about "
+            "each year is stored as an edition (la_rough_sleeping_editions) "
+            "and the live table moves to a revision only through "
+            "refresh-latest --commit. Record: docs/decisions/2026-10-10-"
+            "s10-editions-first-load.md."),
+        caveats=[
+            "The count is of people seen, or thought to be, sleeping rough "
+            "on a single night chosen by each local authority between 1 "
+            "October and 30 November (Table_1_Total notes 1 and 2). The "
+            "snapshot does not include everyone in an area with a history of "
+            "sleeping rough, or everyone sleeping rough across the October "
+            "to November period; the release describes the figures as "
+            "estimates subject to some uncertainty. People in hostels or "
+            "shelters, in recreational or organised protest, squatter or "
+            "traveller campsites are not counted (note 1).",
+            "Each authority uses one of three approaches, chosen with its "
+            "local partners (a count-based estimate, an evidence-based "
+            "estimate meeting, or an evidence-based estimate meeting with a "
+            "spotlight count), and the snapshot is independently verified by "
+            "Homeless Link (note 3). The approach is in Table_3_Approach, "
+            "which is not loaded.",
+            "A zero is a published zero. The file defines [x] (Not "
+            "Available), [z] (Not Applicable) and [n] (No data available as "
+            "the authority was created through reorganisation); none appears "
+            "in any local authority cell of any year 2010 to 2025. 15 "
+            "authorities show 0 in 2025 and 12 in 2024.",
+            "Only Table_1_Total is loaded (the count for the snapshot year "
+            "and for the year before). The gender, nationality, age, "
+            "approach, consultation and rate tables of the release are "
+            "not."],
         refresh_tier="C", status="active",
         publish_github=True, publish_map=True,
     ),
@@ -842,11 +935,149 @@ SOURCES = [
         source_code="13",
         source_name="DLUHC LAHS",
         publisher="DLUHC",
+        series_name=("Local Authority Housing Statistics (LAHS) open data "
+                     "and regional and local authority data tables"),
         acquisition_method="manual",
         cadence="annual", cadence_months=12,
+        publication_window=("New year November to February (the 2024-25 "
+                            "Cover gives 'Next Update: November 2026 to "
+                            "February 2027'); 2024-25 revised 25 June 2026"),
         target_table="la_housing_register", geography_level="LAD24",
-        n8n_workflow_name="Workflow 1",
-        completeness_note=("No source documentation file exists. " + CAUTIOUS),
+        join_path=("Rows are keyed on the publisher's local_authority_code "
+                   "(declared 'old' in scripts/geography.py: Barnsley and "
+                   "Sheffield as E08000016 and E08000019), resolved by "
+                   "geography.resolve and then la_code_lookup new_unitary or "
+                   "merger rows with one target in la_boundaries; the five "
+                   "Dorset district codes E07000049 to E07000053 resolve "
+                   "through rows added to la_code_lookup on 2026-10-10. The "
+                   "CSV's own LAD24CD must equal the resolved code, except "
+                   "that it gives E08000038 and E08000039 where the resolved "
+                   "code is E08000016 or E08000019. Anything else stops the "
+                   "load (UNEXPLAINED)."),
+        build_script_path="scripts/s13_lahs_editions.py",
+        source_doc_path="docs/s13_lahs_source.md",
+        known_gotchas=(
+            "Two files make one load. The open data CSV ('Local Authority "
+            "Housing Statistics open data 1978-79 to <year>', on the GOV.UK "
+            "page of that name) holds every year since 1978-79 and is "
+            "restated in place; it has no title or date of its own. Its "
+            "identity is the newest year's accessible ODS ('Local Authority "
+            "Housing Statistics regional and local authority data <year> to "
+            "<year>', on the data returns page of the Local authority "
+            "housing data collection), whose Cover gives the year, the "
+            "symbols and 'Latest update'. The loader requires the CSV's "
+            "newest year to equal the ODS cell for cell on cc1a, cc2a and "
+            "cc5a. Traps. (1) Key on local_authority_code, not LAD24CD: the "
+            "June 2026 CSV keeps Barnsley and Sheffield as E08000016 and "
+            "E08000019 in local_authority_code but its LAD24CD column now "
+            "gives E08000038 and E08000039 (the February 2026 file's gave "
+            "E08000016 and E08000019). (2) cc2a is not a jointly-managed "
+            "flag: the data dictionary defines it as 'Have you changed your "
+            "housing register (or waiting list) criteria since last year in "
+            "light of the changes in the Localism Act 2011?' (Yes or No). "
+            "The live column jointly_managed_register kept its n8n-era name "
+            "and holds cc2a. The 2024-25 ODS has no cc2a column and no "
+            "definition, and cc2a is [z] for all 296 authorities in the "
+            "CSV's 2024-25. (3) The CSV has one row per publisher code, so "
+            "a reorganised authority's figure is the sum of its "
+            "predecessors' rows; the n8n load kept one arbitrary "
+            "predecessor row (DISTINCT ON), wrong for 76 keys. (4) "
+            "Counts are text with thousands separators in the CSV "
+            "('2,679'). (5) The markers are [x] (not available), [z] (not "
+            "applicable) and [s] (suppressed due to data quality concerns); "
+            "any other non-number halts. (6) The year ODS's Imputations "
+            "sheet lists imputed cells (note 3). A new authority code is "
+            "UNEXPLAINED until geography or la_code_lookup covers it."),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s13_lahs_editions_verify.py",
+            "checks": 24,
+            "first_load": "2026-10-10",
+            "migration_proof": ("migrate-legacy: the n8n rules on the "
+                                "February 2026 open data file (and the June "
+                                "2026 file for three 2025 rows) reproduced "
+                                "every one of the 3,256 held rows, 0 "
+                                "differences: 3,196 from the first row of "
+                                "their key, 57 from another predecessor's "
+                                "row, 3 from the June file, 3 NULL under "
+                                "the Telford rule. The June 2026 CSV equals "
+                                "the 2024-25 ODS for 296 of 296 "
+                                "authorities on cc1a, cc2a and cc5a"),
+            "gate": ("all gates must pass, including the 2025 "
+                     "households_on_register that W1 reads; the loader "
+                     "halts before any write on an identity, header, value, "
+                     "cross-check or geography failure or an older file, "
+                     "and rejects a year that breaks a change-size "
+                     "threshold or turns a 0 into NULL or the reverse "
+                     "without a named correction"),
+            "retired": ("the n8n workflow 'Social housing waiting lists "
+                        "(S13)' is retired (its Code node throws, "
+                        "2026-10-10); it had no verify script")},
+        revises_back_series=True,
+        revision_note=(
+            "The open data CSV restates every year since 1978-79 in place. "
+            "In the questions held (cc1a, cc2a, cc5a) the February 2026 and "
+            "June 2026 files differ in 2024-25 only: cc1a for 3 authorities (Bromley "
+            "3,201 to 3,430, Hillingdon 3,192 to 2,551, Mansfield 4,507 to "
+            "5,011) and cc5a for 5 (Bromley, Gravesham, Hillingdon, "
+            "Rochdale, Three Rivers); the 2024-25 and 2023-24 year files "
+            "both give 'Latest update 25 June 2026'. The publisher also "
+            "records restatements in its notes (note 32: Epping Forest's "
+            "register count was on a different interpretation of the "
+            "guidance up to 2021-22). Each file's statement about each year "
+            "is stored as an edition in la_housing_register_editions. "
+            "Edition 1 is the table exactly as held on 2026-10-10 for all "
+            "11 years; edition 2 is the June 2026 file read with the "
+            "parser rules (named correction lahs-correction-2026-10): "
+            "predecessor sums for the 11 reorganised authorities (76 keys), "
+            "Allerdale's zeros as NULL under the standing blanks ruling, and "
+            "reasonable_preference (cc5a) filled. 2025 households_on_"
+            "register is unchanged. The live table moves to a revision only "
+            "through refresh-latest --commit. Record: docs/decisions/"
+            "2026-10-10-s13-editions-first-load.md."),
+        caveats=[
+            "jointly_managed_register holds cc2a, which the data dictionary "
+            "defines as 'Have you changed your housing register (or waiting "
+            "list) criteria since last year in light of the changes in the "
+            "Localism Act 2011?'. It is not a flag that the register is "
+            "jointly managed with other authorities. The column keeps its "
+            "name from the n8n-era load. It is [z] for 2025 and NULL there.",
+            "Households on the register are not households waiting for "
+            "social housing (note 9): authorities periodically review their "
+            "registers and the frequency varies, some households are on the "
+            "register of more than one authority, so totals are likely to "
+            "overstate those who still need social housing; the figures "
+            "exclude existing council tenants seeking a transfer and include "
+            "existing tenants of other social housing providers seeking one.",
+            "A reorganised authority's households_on_register is the sum of "
+            "its predecessors' published figures (11 authorities, 2015 to "
+            "2023, 76 keys) and is NULL unless every predecessor has a "
+            "figure. The dictionary says households can be on the register "
+            "of more than one authority, so a sum can double count.",
+            "Some published cc1a and cc5a figures are the publisher's "
+            "imputations (note 3, the year file's Imputations sheet): for "
+            "2024-25, cc1a for Broxtowe (1,121) and Rotherham (7,033) "
+            "against an original [x]. imputed_cc1a records this for the "
+            "newest year only; it is NULL (not checked) for earlier years.",
+            "Telford and Wrekin has no housing register from 31 March 2021 "
+            "(the dictionary's cc1a note). LAHS reports cc1a 0 for 2021-22, "
+            "2022-23 and 2024-25, which the loader stores as NULL with the "
+            "reason not_applicable for 2022, 2023 and 2025 (2024 is [x] in "
+            "the file). Allerdale reported cc1a 0 for 2014-15 to 2017-18 and "
+            "2,028 for 2018-19; the loader stores NULL (not_counted) under "
+            "the standing blanks ruling, and Cumberland 2015 to 2018 is then "
+            "NULL.",
+            "The same two rules apply to cc5a (reasonable_preference) for "
+            "the same keys and years (Scott, 2026-10-10): Allerdale's cc5a "
+            "zeros for 2014-15 to 2017-18 are not counted, so Cumberland's "
+            "reasonable_preference 2015 to 2018 is NULL (part_missing), and "
+            "Telford's cc5a zeros for 2022 to 2024 are NULL "
+            "(not_applicable): 7 cells, edition 3. Telford's 2015 and 2021 "
+            "cc5a zeros are before its rule and stay 0, as do 19 published "
+            "cc5a zeros on other authorities (21 in all).",
+            "The reference date was 1 April up to 2017-18 and 31 March since "
+            "(the dictionary's cc1a note). reporting_year is the year the "
+            "LAHS year ends: 2024-25 is 2025."],
         refresh_tier="C", status="active",
         publish_github=True, publish_map=True,
     ),
@@ -1894,7 +2125,13 @@ TIER_C_FINDINGS = {
               "'Rough sleeping snapshot in England: autumn {year}' sit under "
               "the same Homelessness statistics collection as S1 and resolve "
               "through the GOV.UK content API. The autumn snapshot is "
-              "published the following February.")),
+              "published the following February."),
+        completeness_extra=(
+            " Held (2026-10-10): la_rough_sleeping, 296 authorities and one "
+            "snapshot year (2025) with the previous year's count beside it, "
+            "the latest-edition layer of la_rough_sleeping_editions (edition "
+            "1 as loaded) with a file-check ledger. Only Table_1_Total is "
+            "loaded. W1 and the map read the newest snapshot_year.")),
     "12": dict(
         tier="C", method="manual",
         url=("https://www.gov.uk/government/collections/"
@@ -1919,7 +2156,15 @@ TIER_C_FINDINGS = {
               "as statistical data sets, 'Local authority housing statistics "
               "data returns for {years}', under the Local authority housing "
               "data collection, which resolves through the GOV.UK content "
-              "API.")),
+              "API."),
+        completeness_extra=(
+            " Held (2026-10-10): la_housing_register, 296 authorities by 11 "
+            "reporting years (2015 to 2025, that is 2014-15 to 2024-25), "
+            "3,256 rows, the latest-edition layer of "
+            "la_housing_register_editions (two editions per year) with a "
+            "file-check ledger; 3,241 live rows carry edition 2. W1 and the "
+            "map read households_on_register at the newest reporting_year "
+            "(2025, unchanged by edition 2).")),
     "17": dict(
         tier="C", method="manual",
         url=("https://safelives.org.uk/practice-support/"
@@ -2180,8 +2425,12 @@ def backfill_run_log_source_code(cur, register_codes):
 # Fields set to NULL on purpose. S4's n8n_workflow_name said Workflow 1; the
 # loader is scripts/s4_care_leaver_editions.py, not an n8n workflow (W1 only
 # reads its table). S22 never had an n8n workflow of its own; its row said
-# Workflow 1, which only reads the tables.
+# Workflow 1, which only reads the tables. S10 and S13: their n8n loader workflows were retired on
+# 2026-10-10 (the loaders are scripts/s10_rough_sleeping_editions.py and
+# scripts/s13_lahs_editions.py); Workflow 1 only reads the tables.
 CLEAR_FIELDS = {"4": ("n8n_workflow_name",),
+                "10": ("n8n_workflow_name",),
+                "13": ("n8n_workflow_name",),
                 "22": ("n8n_workflow_name",)}
 
 

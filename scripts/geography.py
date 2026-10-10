@@ -63,7 +63,13 @@ DATASET_FORM = {
            "Rough sleeping snapshot autumn 2025 (data/reference .ods and "
            "rough_sleeping_snapshot_2025*.csv) carries E08000038/39 only; "
            "the 2026-08-14 scan found la_rough_sleeping on the new codes "
-           "only before resolution."),
+           "only before resolution. Read 2026-10-10: the autumn 2025 file "
+           "(data/raw/s10_rough_sleeping, Table_1_Total) carries "
+           "E08000038/39 for every year 2010-2025 (one row per authority, "
+           "the whole series on the new codes) and never E08000016/19. The "
+           "autumn 2024 file carried E08000016/19, so a --file of it halts "
+           "on this declaration (it also halts earlier, on its shifted "
+           "header)."),
     "11": ("none",
            "CQC locations carry no GSS codes for these authorities: the four "
            "Care directory with filters files of July, August, September and "
@@ -83,7 +89,16 @@ DATASET_FORM = {
     "13": ("old",
            "data/reference/LAHS_open_data_1978-79_to_2024-25.csv and "
            "lahs_waiting_list_2015_2025.csv carry E08000016/19 only, "
-           "including 2024-25."),
+           "including 2024-25. Read 2026-10-10: the June 2026 open data CSV "
+           "(data/raw/s13_lahs) keeps E08000016/19 in local_authority_code "
+           "(the column scripts/s13_lahs_editions.py keys on) for every year "
+           "2014-15 to 2024-25, while its own LAD24CD column gives Barnsley "
+           "and Sheffield as E08000038/39 (the February 2026 file's LAD24CD "
+           "gave E08000016/19); the loader accepts that one difference in "
+           "its LAD24CD cross-check. The five Dorset districts abolished "
+           "on 1 April 2019 (E07000049 to E07000053) resolve to E06000059 "
+           "through new_unitary rows added to la_code_lookup on 2026-10-10 "
+           "(docs/decisions/2026-10-10-s13-editions-first-load.md)."),
     "14": ("none",
            "Keyed by BRMA name; lad24cd comes from la_brma_mapping, built "
            "from BRMA polygons."),
