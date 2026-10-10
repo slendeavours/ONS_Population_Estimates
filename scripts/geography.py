@@ -89,7 +89,13 @@ DATASET_FORM = {
     "13": ("old",
            "data/reference/LAHS_open_data_1978-79_to_2024-25.csv and "
            "lahs_waiting_list_2015_2025.csv carry E08000016/19 only, "
-           "including 2024-25."),
+           "including 2024-25. Read 2026-10-10: the June 2026 open data CSV "
+           "(data/raw/s13_lahs) keeps E08000016/19 in local_authority_code "
+           "(the column scripts/s13_lahs_editions.py keys on) for every year "
+           "2014-15 to 2024-25, while its own LAD24CD column gives Barnsley "
+           "and Sheffield as E08000038/39 (the February 2026 file's LAD24CD "
+           "gave E08000016/19); the loader accepts that one difference in "
+           "its LAD24CD cross-check."),
     "14": ("none",
            "Keyed by BRMA name; lad24cd comes from la_brma_mapping, built "
            "from BRMA polygons."),
