@@ -8,7 +8,7 @@ real writes through the plan ("do the work, the spec is audit not approval").
 
 **What the map sees.** The set of authorities with an EFS row (`efs_flag`) goes from 51 to 49: Bournemouth, Christchurch and
 Poole (E06000058) and North Northamptonshire (E06000061) lose the flag, by Scott's decision of 2026-10-10 (below). Nothing
-else leaves it. The set with an S.114 notice (`s114_flag`) is unchanged at 11 authorities (15 notices). W1 and
+else leaves it. The set with an S.114 notice (`s114_flag`) was 11 authorities (15 notices) at first load; after the Task 7 removals (below) it is 10 authorities (13 notices): Hillingdon (E09000017) loses `s114_flag`. W1 and
 `refresh_map.py` were not run (Scott deferred W1 and the map until every source is done), so the published map still shows
 51 until that run. `refresh_map.py --check` will show `la_efs_support` as loaded after the last W1 run, through the
 `loaded_at` of the 52 refreshed rows.
@@ -35,7 +35,7 @@ Each sha256 is written as two 32-hex halves (`first32` then `last32`; join them)
 64-hex run, stays untouched. The `before-state` lines are the verify script's per-year hash of the live columns (key and
 values; `source` and `loaded_at` left out); the `w1-before` line is the distinct `lad24cd` set of `la_efs_support` before the
 load (what W1's `efs_flag` read); the two `w1-read` lines are the sets W1 reads after this load (EFS: the before set less the
-two codes; S.114: unchanged). They were printed by `python scripts/s12_financial_stress_editions_verify.py
+two codes; S.114: at first load unchanged, rewritten after the Task 7 removals to the 10-code set, see 'Unsupported notices removed'). They were printed by `python scripts/s12_financial_stress_editions_verify.py
 --print-note-lines` before `ddl` and before the migration, while the live tables were untouched. Edition 1 (as loaded)
 hashes to the `before-state` lines (gate 17); the live sets hash to the `w1-read` lines (gate 9).
 
@@ -163,11 +163,13 @@ other-years-only 2, withdrawn 6.
 
 ## S.114 notices: loaded as held, not evidenced, nothing removed
 
+*(State at first load, Task 6a. Superseded after the Task 7 removals: 10 authorities, 13 notices; see 'Unsupported notices removed' and 'What was written' below.)*
+
 `migrate-legacy` stored edition 1 "as loaded" of `data/reference/la_s114_notices.csv` (the six-column legacy file; the proof
 reproduced all 15 notices, 15 of 15 without evidence). The file has no `register_as_at` line and no evidence columns until
 Task 7 turns it into the 12-column register. `status` reports "15 notices without evidence" and verify gate 8 counts them
 (PASS with the count; it must be 0 or each listed once Task 7 is done). **Nothing was removed and the loader cannot remove a
-notice** (`S114_REMOVALS` is empty; a missing notice is REJECTED). The evidence search and any removal are Task 7. One data
+notice** (at first load `S114_REMOVALS` was empty; it names the two Task 7 removals now; a missing notice not named there is REJECTED). The evidence search and any removal are Task 7. One data
 finding, held as it is: Northumberland (E06000057) has `notice_date` 2022-05-01 with `financial_year` 2021-22; May 2022 is in
 2022-23. Six of the 15 dates are month-only (`date_confirmed` "approximate - month only confirmed").
 
@@ -274,7 +276,13 @@ statement or a press report quoting the council, is removed, as a named and list
    "treasurer", "overspend" and "financial" (no mention of a notice; one debate on Hillingdon in March 2001 was read and does
    not mention it); (g) searches for BBC and local press (Uxbridge Gazette) coverage (nothing). What does name it: Wikipedia's
    list (5 July 2000) and the IfG explainer ("Hillingdon and Hackney councils were the first and second to do so, in 2000"),
-   both secondary. The notice may well be real; the finding is only that no primary source or council statement could be found
+   both secondary. **Added after the final review (2026-10-11):** a CIPFA Public Finance news article of October 2000 on Hackney
+   ("Hackney's financial crisis deepens as treasurer issues section 114 notice") says Hackney's problems "mirror those of
+   Hillingdon, which issued a 114 notice in July". That is a contemporaneous trade-press statement, independent of Wikipedia and the IfG,
+   but it states the fact and does not quote the council; the page refuses an automated fetch and the sentence was seen only in a
+   search-engine copy. No council document was found either (modgov.hillingdon.gov.uk returns 2020s papers only). So the earlier
+   wording "only secondary sources" was incomplete. The removal is Scott's call and is reversible (restore edition 1 for 2000-01,
+   or re-add the row with evidence). The notice may well be real; the finding is only that no primary source or council statement could be found
    or opened. To bring it back once a source is found: restore edition 1 for 2000-01 (restore-edition), or add the row to the
    register with its evidence and load, then `refresh-latest --accept-key-changes 2000-01`, and take E09000017 out of
    `S114_REMOVALS`.
@@ -295,8 +303,16 @@ not run; the live tables change only through the loader.
 
 ### What was written
 
-`load --only s114` (preview read in full, `--simulate`, `--commit`): edition 2 for all 8 years, 18 rows, register_as_at
+`load --only s114` (preview read in full, `--simulate`, `--commit`): edition 2 for all 8 years, 13 rows (the run-log row says 13 edition rows), register_as_at
 2026-10-10. `refresh-latest --accept-key-changes 2000-01 --accept-key-changes 2021-22 --accept-key-changes 2024-25`
 (preview, `--simulate`, `--commit`): 3 keys inserted, 5 deleted (the three date corrections, Hillingdon, Croydon 2022-01-01),
 before/after guard passed. `status`: 0 notices without evidence. W1, `refresh_map.py`, the export, `push.py` and `git push` were
 not run.
+
+### Observation: West Northamptonshire 2023-24 (final review, 2026-10-11)
+
+West Northamptonshire 2023-24 is stored as 6.6 (`agreed-in-principle`), the figure the 2023-24 page gives, but that cell also
+says the £6.6m was subsequently reprofiled to £6.52m for 2024-25, and the 2024-25 page lists West Northamptonshire at £6.52m.
+The same support may therefore be counted in both years; under the module's rule (the latest figure the year's own page states)
+it could belong as `other-years-only`. This affects the amount only: the EFS flag is unaffected (West Northamptonshire has
+2024-25 rows). Held as loaded; for Scott to decide.

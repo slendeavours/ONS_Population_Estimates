@@ -255,6 +255,16 @@ class Announce(Base):
         self.assertIn(ident["sha256"], out)
         self.assertIn("checked", out.lower())
 
+    def test_xls_properties_are_not_called_absent(self):
+        f = self.write(self.root, "a.xls", "x")
+        ident = {"sha256": "ab", "size": 1, "mtime": "t"}
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            mi.announce_manual("S17 MARAC", f, ident)
+        out = buf.getvalue()
+        self.assertIn("cannot read .xls document properties", out)
+        self.assertNotIn("none recorded", out)
+
 
 if __name__ == "__main__":
     unittest.main()

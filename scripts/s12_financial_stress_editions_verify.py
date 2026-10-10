@@ -84,7 +84,8 @@ migration; w1-read for EFS is that set less the codes of
 WITHDRAWN_ONLY_NOT_SUPPORT (Scott, 2026-10-10: the EFS flag is dropped for
 Bournemouth, Christchurch and Poole E06000058 and North Northamptonshire
 E06000061; Bexley E09000004 is kept, in the rule's 'kept' list), and for
-S.114 the set of lad24cd with any notice (not changed). The set hash is sha256 of the sorted codes, LF-joined.
+S.114 the set of lad24cd with any notice, less the authorities whose every notice is a named
+removal in S114_REMOVALS (Hillingdon E09000017 after Task 7: 10 authorities). The set hash is sha256 of the sorted codes, LF-joined.
 `python scripts/s12_financial_stress_editions_verify.py --print-note-lines`
 prints them for the live tables as they stand (read-only); run it before
 migrate-legacy and paste the lines into the decision note.

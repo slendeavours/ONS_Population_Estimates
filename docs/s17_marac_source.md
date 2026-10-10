@@ -17,7 +17,7 @@ consumed-by: scripts/s17_marac_editions.py, scripts/s17_marac_editions_verify.py
 | Editions | `marac_cases_editions` (append-only) and `marac_cases_editions_file_checks` (ledger) |
 | Natural key | `(pfa_name_safelives, financial_year)` |
 | Held | 312 rows: eight years (2018-19 to 2025-26) for 39 English police force areas |
-| Loader | `scripts/s17_marac_editions.py`; gates `scripts/s17_marac_editions_verify.py` (20). Manual-input helper `scripts/manual_input.py`; `xlrd==2.0.1` reads the `.xls` files |
+| Loader | `scripts/s17_marac_editions.py`; gates `scripts/s17_marac_editions_verify.py` (20). Manual-input helper `scripts/manual_input.py`; `xlrd==2.0.1` reads the `.xls` files; the repo has no requirements file, so the pin exists only in docs (open item 6 in `docs/decisions/README.md`) |
 | Record | `docs/decisions/2026-10-10-s17-editions-first-load.md` (with the before-state hashes, the restored zeros and the West Midlands finding) |
 
 A W1 and map input: `sql/w1/05_la_signals.sql` reads `cases_discussed` and `cases_per_10k_adult_females` at the newest `financial_year` through `la_pfa_mapping`. The other six columns are not read by W1.

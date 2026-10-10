@@ -439,6 +439,17 @@ class Identity(unittest.TestCase):
             m.year_pages(collection(["2025-26"], title="Something else"))
 
 
+    def test_year_pages_unrecognised_year_title_halts(self):
+        for bad in ("Exceptional Financial Support for local authorities "
+                    "for 2027 to 2028",
+                    "Exceptional financial support for local authorities "
+                    "for 2027-28",
+                    "Exceptional Financial Support: 2027-28 requests"):
+            with self.assertRaises(ValueError) as cm:
+                m.year_pages(collection(["2025-26"], extra=[bad]))
+            self.assertIn(bad, str(cm.exception))
+
+
 # ---------------------------------------------------------------------------
 # Names
 # ---------------------------------------------------------------------------

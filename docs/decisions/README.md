@@ -65,13 +65,17 @@ Closed: Scott decided the two zero rules reach `cc5a` too, for exactly their key
 so live holds 21 `cc5a` zeros (was 24). Editions 1 and 2, 2025 and every `households_on_register` are unchanged. See the
 addendum in [2026-10-10-s13-editions-first-load.md](2026-10-10-s13-editions-first-load.md) and the Closed table.
 
+### 6. No requirements file (opened 2026-10-11)
+
+The repo has no requirements file (none in `ONS_Population_Estimates` or `ucws-repo`). `xlrd==2.0.1`, which reads the five SafeLives `.xls` years for S17, is pinned only in prose (CHANGELOG, `docs/s17_marac_source.md`, the S17 decision note). Not created, to keep deliverables minimal; if one is ever created it should list `xlrd==2.0.1`, `openpyxl` and `psycopg2`.
+
 ### 5. For Scott: S12 section 114 register and Bexley (opened 2026-10-10)
 
 Five points from the S.114 evidence work and the withdrawn-only rule, none decided; see
 [2026-10-10-s12-editions-first-load.md](2026-10-10-s12-editions-first-load.md).
 
 - **Hillingdon 2000-07 (removed).** No primary source, council statement or readable press report could be found, but the
-  notice may well be real (the IfG explainer and Wikipedia's list name it; both are secondary sources). Reversible: `restore-edition s12_s114 2000-01 1`, or re-add the row with its evidence.
+  notice may well be real (the IfG explainer and Wikipedia's list name it, and a Public Finance article of October 2000 states Hillingdon "issued a 114 notice in July"; none is a council document or quotes the council). The removal is Scott's call. Reversible: `restore-edition s12_s114 2000-01 1`, or re-add the row with its evidence.
 - **Northumberland `financial_year`.** The notice date is now 23 May 2022 (council minutes), which falls in 2022-23; the
   register still says 2021-22. The loader cannot pair a date correction across years, so it prints a warning and keeps the
   held value.

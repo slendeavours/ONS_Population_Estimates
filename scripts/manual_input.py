@@ -208,6 +208,9 @@ def announce_manual(source, path, identity) -> None:
     if any(props.values()):
         print("  document properties: "
               + "; ".join(f"{k}={v}" for k, v in props.items()))
+    elif Path(str(path)).suffix.lower() == ".xls":
+        print("  document properties: not readable (the reader, xlrd, cannot "
+              "read .xls document properties; nothing is claimed about them)")
     else:
         print("  document properties: none recorded in the file")
     print("  checked: path is under data/raw or data/reference, exists, is a "

@@ -187,6 +187,8 @@ USER_AGENT = ("ucws-pipeline S12 loader (read-only download of the public "
               "MHCLG Exceptional Financial Support pages)")
 
 LABEL = r"([0-9]{4}-[0-9]{2})"
+PAGE_TITLE_TEXT = ("Exceptional Financial Support for local authorities "
+                   "for <yyyy-yy>")
 PAGE_TITLE_RE = re.compile(r"Exceptional Financial Support for local "
                            rf"authorities for {LABEL}")
 HEADER_FIRST = "Local authority"
@@ -307,9 +309,16 @@ S114_REMOVALS = {
                     "council statement, the Hillingdon committee papers "
                     "site and council website, the LGC archive, the Public "
                     "Finance archive (its page could not be opened), "
-                    "Hansard 2000-01 (no mention). Only Wikipedia and the "
-                    "IfG explainer (both secondary) name it. See the "
-                    "decision note, 'Unsupported notices removed'."},
+                    "Hansard 2000-01 (no mention). Wikipedia and the "
+                    "IfG explainer (both secondary) name it, and a Public "
+                    "Finance article of October 2000 (about Hackney) states "
+                    "that Hillingdon 'issued a 114 notice in July' (it does "
+                    "not quote the council; the page refuses an automated "
+                    "fetch and was seen only in a search-engine copy). No "
+                    "council document found. The removal is Scott's call and "
+                    "is reversible (restore edition 1 for 2000-01, or re-add "
+                    "the row with evidence). See the decision note, "
+                    "'Unsupported notices removed'."},
     ("E09000008", "2022-01-01"): {
         "decided": "Scott, 2026-10-10 (unsupported notices are removed as a "
                    "named, listed step)",
@@ -857,6 +866,14 @@ def year_pages(collection_json, held=()) -> YearPages:
                              f"to choose one; titles seen: {titles}")
         out[y] = doc["base_path"]
         out.updated[y] = doc.get("public_updated_at")
+    odd = [t for t in out.others
+           if re.search(r"\b(?:19|20)\d\d\b", t)
+           or "financial support for local authorities" in t.lower()]
+    if odd:
+        raise ValueError(f"the collection lists document(s) that look like "
+                         f"year pages but are not titled exactly "
+                         f"{PAGE_TITLE_TEXT!r}: {odd}; not skipping them "
+                         "quietly")
     missing = sorted(set(held) - set(out))
     if missing:
         raise ValueError(f"no page in the collection for held year(s) "
