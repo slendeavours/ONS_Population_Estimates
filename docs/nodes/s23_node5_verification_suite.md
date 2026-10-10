@@ -1,5 +1,7 @@
 # S23 Node 5: Verification Suite
 
+> **Superseded 2026-10-09.** The old S23 scripts this note describes (`s23_rsh_stock_build.py`, `s23_rsh_stock_verify.py`) were loaded once, on 2026-08-14 (run-log id 95), and are retired to `scripts/historical/`, where they stop with a RETIRED message. S23 is now loaded by `scripts/s23_rsh_stock_editions.py`, which finds the newest release itself, reads the file's identity from the workbook and keeps each file's statement about each stock date as an edition (`rsh_rp_stock_by_la_editions`). The source note is `docs/s23_rsh_stock_source.md`. The text below is left as written and describes the old method.
+
 - **Type:** Code (read-only, seven hard gates)
 - **Purpose:** Prove the load against the source sheet and the publisher's own per-authority subtotals.
 - **Credential:** `PG_READONLY_USER` / `PG_READONLY_PASSWORD` where configured, otherwise `PG_USER` with the session forced read-only.

@@ -4,10 +4,28 @@ Never commits. Reads through get_readonly_conn(); the idempotency check
 re-runs the real upsert inside a transaction that is rolled back in a finally
 block. The upsert SQL is imported from the build module rather than copied.
 
-Usage:
+Retired on 2026-10-09: replaced by scripts/s23_rsh_stock_editions_verify.py
+(see the RETIRED message below).
+
+Usage (historical; the script now stops at once):
     python scripts/s23_rsh_stock_verify.py
 """
 import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s23_rsh_stock_editions_verify.py. The old S23 build (s23_rsh_stock_build.py and '
+    's23_rsh_stock_verify.py) was loaded once, on 2026-08-14 (run-log id 95); the build upserted by '
+    'design and wrote when run, with no preview and no --commit, and nothing was overwritten in practice. '
+    'This is the seven-gate verify script (it wrote nothing): it read the edition from one hard-coded release page '
+    '(the 2024 to 2025 one) through the old build, and its idempotency gate re-ran the real upsert '
+    'inside a transaction that it rolled back. Its gate 5 argued that a blank cell means zero because '
+    'the components sum to the total, which a blank coerced to 0 satisfies by construction; the 2025 '
+    'file has no blank stock cell, so it never mattered. The loader that replaced the build is '
+    'scripts/s23_rsh_stock_editions.py; use scripts/s23_rsh_stock_editions_verify.py (21 gates) '
+    'instead.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 from pathlib import Path
 
 import openpyxl

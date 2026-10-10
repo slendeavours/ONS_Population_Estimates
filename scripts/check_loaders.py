@@ -61,7 +61,7 @@ LOADERS = {
     "S19": ["s19_pip_editions.py"],
     "S21": ["s21_statistical_neighbours_build.py"],
     "S22": ["s22_ctb_editions.py"],
-    "S23": ["s23_rsh_stock_build.py"],
+    "S23": ["s23_rsh_stock_editions.py"],
     "S24": ["s24_rsh_register_build.py"],
 }
 

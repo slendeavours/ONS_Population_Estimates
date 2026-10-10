@@ -316,6 +316,18 @@ main and class tables together, and reaches live only through
 `Council Taxbase <year> in England` release; Table 615 is not detected by
 it. Record: `docs/decisions/2026-10-09-s22-editions-first-load.md`.
 
+S23 (RSH registered provider social housing stock by local authority) is on
+the same engine since 2026-10-09. One annual look-up tool workbook holds one
+stock date (31 March) with a row per provider and authority, so the key inside
+a period is `(rp_code, lad24cd)`. The publisher has no scheduled revisions,
+republishes in the following April only for a major provider-driven revision,
+and corrects substantial errors as they are found; the 2025 tool was reissued
+once within weeks (version 1.1, November 2025). Each file's statement about
+each stock date is stored as an edition in `rsh_rp_stock_by_la_editions`; the
+live table reaches a revision only through `refresh-latest --commit`.
+`check_sources.py` (`find_s23`) reads the collection. Not a W1 or map input.
+Record: `docs/decisions/2026-10-09-s23-editions-first-load.md`.
+
 S11 (the CQC register) is on the same engine since 2026-10-09 but is
 snapshots, not revisions: each monthly file is a dated copy of the register
 (the period is the as-at date on the file's README sheet), stored as its own

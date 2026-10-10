@@ -16,7 +16,7 @@ The top of this list is the documentation debt.
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
 | `hss_lens` | 20 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 20 | an explicit dual-lens note in the source documentation |
-| `verification_checks` | 18 | the source's verification suite and its documented check count |
+| `verification_checks` | 17 | the source's verification suite and its documented check count |
 | `source_doc_path` | 16 | a source documentation file — the single largest gap for undocumented sources |
 | `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
 | `join_path` | 13 | the build script's geography resolution step |
@@ -35,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 307 null fields across 26 published sources.
+Total: 306 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -506,10 +506,9 @@ Total: 307 null fields across 26 published sources.
 | `auth_env_var` | the build script, where the source needs a credential |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
 | `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 
-**Note.** 296 of 296 authorities, 10,171 provider-by-authority rows for the 2024 to 2025 edition, stock at 31 March 2025. 504,902 supported housing and older people units nationally; 295 of 296 authorities carry some. Verified against the publisher's own 296 LA subtotal rows, which reconcile exactly on all five measures. SDR and LADR are held in one table with a provider_type column because the publisher already merges them into this sheet with an identical column set. The first direct supply-side measure in the pipeline: S11 counts CQC locations and S8 counts HB caseload, both indirect. Not yet wired into staging_la_signals.
+**Note.** 296 of 296 authorities, 10,171 provider-by-authority rows for the 2024 to 2025 release (look-up tool version 1.1, November 2025), stock at 31 March 2025. 504,902 supported housing and older people units nationally; 295 of 296 authorities carry some. Verified inside the file against the publisher's own 296 LA subtotal rows, which reconcile exactly on all five measures. Held as editions of rsh_rp_stock_by_la_editions (the live table is the latest-edition layer): edition 1 as loaded, proved equal to a re-read of the held file as published; edition 2 the same file with the not-counted rule (2,738 Small PRP LCHO cells NULL). Only the 2025 look-up tool is held: the 2024 tool has a different layout and is not loaded. SDR and LADR are held in one table with a provider_type column because the publisher already merges them into this sheet with an identical column set. The first direct supply-side measure in the pipeline: S11 counts CQC locations and S8 counts HB caseload, both indirect. Not a W1 or map input.
 
 ### S24
 
