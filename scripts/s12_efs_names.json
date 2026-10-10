@@ -1,0 +1,72 @@
+{
+  "_about": "S12 EFS page names that are not exactly a la_boundaries.lad24nm (aliases), and names of bodies that are not lower-tier or unitary authorities (exclusions). Exact strings only; scripts/s12_financial_stress_editions.py never matches a name fuzzily (docs/decisions/2026-08-20-s12-efs-misattribution.md). Every entry records the GOV.UK year page(s) it was read on (content API JSON in data/raw/s12_efs, dated 2026-10-10) and where on the page. A name on a page that is neither a lad24nm, an alias nor an exclusion halts the load.",
+  "aliases": {
+    "Redcar & Cleveland": {
+      "lad24cd": "E06000003",
+      "seen": [{"year": "2020-21", "where": "table"}]
+    },
+    "Windsor & Maidenhead": {
+      "lad24cd": "E06000040",
+      "seen": [{"year": "2025-26", "where": "table"}]
+    },
+    "Kensington & Chelsea": {
+      "lad24cd": "E09000020",
+      "seen": [{"year": "2022-23", "where": "capitalisation directions"}]
+    },
+    "Kensington and Chelsea Council": {
+      "lad24cd": "E09000020",
+      "seen": [{"year": "2023-24", "where": "capitalisation directions"}]
+    },
+    "Lambeth Council": {
+      "lad24cd": "E09000022",
+      "seen": [{"year": "2023-24", "where": "capitalisation directions"},
+               {"year": "2024-25", "where": "capitalisation directions"}]
+    },
+    "Westmorland & Furness": {
+      "lad24cd": "E06000064",
+      "seen": [{"year": "2023-24", "where": "capitalisation directions"}]
+    },
+    "Copeland": {
+      "lad24cd": "E06000063",
+      "predecessor_code": "E07000029",
+      "note": "Copeland Borough Council (E07000029) was abolished on 1 April 2023; Cumberland (E06000063) succeeds it (la_code_lookup new_unitary E07000029 -> E06000063, checked by the loader). The n8n load stored Copeland's rows against E06000063 the same way.",
+      "seen": [{"year": "2021-22", "where": "table"},
+               {"year": "2021-22", "where": "capitalisation directions"},
+               {"year": "2022-23", "where": "table"},
+               {"year": "2022-23", "where": "capitalisation directions"}]
+    }
+  },
+  "exclusions": {
+    "East Sussex": {
+      "kind": "county council",
+      "code": "E10000011",
+      "seen": [{"year": "2026-27", "where": "table"}]
+    },
+    "Worcestershire": {
+      "kind": "county council",
+      "code": "E10000034",
+      "seen": [{"year": "2025-26", "where": "table"},
+               {"year": "2025-26", "where": "capitalisation directions"},
+               {"year": "2026-27", "where": "table"}]
+    },
+    "Norfolk": {
+      "kind": "county council",
+      "code": "E10000020",
+      "seen": [{"year": "2024-25", "where": "table under 'Capitalisation support for 2024-25'"},
+               {"year": "2024-25", "where": "capitalisation directions"}]
+    },
+    "Kent Police and Crime Commissioner": {
+      "kind": "police and crime commissioner",
+      "code": null,
+      "seen": [{"year": "2026-27", "where": "Police Force table"},
+               {"year": "2026-27", "where": "capitalisation directions"}]
+    },
+    "South Yorkshire Mayoral Combined Authority": {
+      "kind": "mayoral combined authority (police and crime commissioner functions)",
+      "code": null,
+      "seen": [{"year": "2025-26", "where": "Police Force table"},
+               {"year": "2025-26", "where": "capitalisation directions"},
+               {"year": "2026-27", "where": "Police Force table"}]
+    }
+  }
+}
