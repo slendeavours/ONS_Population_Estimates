@@ -898,26 +898,25 @@ class Geography(unittest.TestCase):
         self.assertTrue(any("E08000038" in p and "'old'" in p
                             for p in problems), problems)
 
-    def test_lookup_gaps_apply_only_where_la_code_lookup_has_no_row(self):
-        self.assertEqual(sorted(m.LOOKUP_GAPS), [
-            "E07000049", "E07000050", "E07000051", "E07000052", "E07000053"])
-        for code, (succ, why) in m.LOOKUP_GAPS.items():
-            self.assertEqual(succ, "E06000059")
-            self.assertIn("LAD24CD", why)
-        rmap, problems = m.resolve_codes(_Cur(), {"E07000049"}, "2019",
-                                         {"E07000049": "E06000059"})
+    def test_dorset_districts_resolve_only_through_la_code_lookup(self):
+        dorset = ["E07000049", "E07000050", "E07000051", "E07000052",
+                  "E07000053"]
+        rows = [(c, "E06000059", "new_unitary") for c in dorset]
+        cur = _Cur(lookup=_Cur.LOOKUP + rows)
+        rmap, problems = m.resolve_codes(
+            cur, set(dorset), "2019", {c: "E06000059" for c in dorset})
         self.assertEqual(problems, [])
-        self.assertEqual(rmap["E07000049"], "E06000059")
-        # the publisher's LAD24CD must agree with the gap entry
-        _, problems = m.resolve_codes(_Cur(), {"E07000049"}, "2019",
+        self.assertEqual(set(rmap.values()), {"E06000059"})
+        # the publisher's LAD24CD must agree with the lookup row
+        _, problems = m.resolve_codes(cur, {"E07000049"}, "2019",
                                       {"E07000049": "E06000058"})
         self.assertTrue(problems)
-        # once la_code_lookup has a row for the code, the gap entry halts
-        cur = _Cur(lookup=_Cur.LOOKUP + [("E07000049", "E06000059",
-                                          "merger")])
-        _, problems = m.resolve_codes(cur, {"E07000049"}, "2019",
+        # without the lookup rows there is no other route (no private table)
+        _, problems = m.resolve_codes(_Cur(), {"E07000049"}, "2019",
                                       {"E07000049": "E06000059"})
-        self.assertTrue(any("LOOKUP_GAPS" in p for p in problems), problems)
+        self.assertTrue(any("UNEXPLAINED E07000049" in p for p in problems),
+                        problems)
+        self.assertFalse(hasattr(m, "LOOKUP_GAPS"))
 
     def test_the_declaration_is_old_with_the_file_evidence(self):
         import geography

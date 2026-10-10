@@ -79,9 +79,10 @@ documented transformation rule (Scott).
 Geography (rule 4): rows are keyed on the publisher's local_authority_code
 (declared 'old': Barnsley and Sheffield as E08000016/19), resolved by
 geography.resolve('13', ...), then la_code_lookup rows of type new_unitary
-or merger with exactly one target in la_boundaries, then LOOKUP_GAPS (the five
-Dorset district codes la_code_lookup lacks, each with its evidence). The CSV's
-own LAD24CD must equal the resolved code (or be E08000038/39 where the
+or merger with exactly one target in la_boundaries (the five Dorset district
+codes abolished on 1 April 2019 resolve this way, through rows added to
+la_code_lookup on 2026-10-10: docs/decisions/2026-10-10-s13-editions-first-load.md).
+The CSV's own LAD24CD must equal the resolved code (or be E08000038/39 where the
 resolved code is E08000016/19); anything else is UNEXPLAINED and stops.
 
 Stop conditions (calibrated 2026-10-10 on the June 2026 file's 2015-2025
@@ -276,36 +277,6 @@ ALLERDALE_ZERO = {
                  "because a part is NULL (rule 1.7)."),
 }
 ZERO_RULES = (TELFORD_NO_REGISTER, ALLERDALE_ZERO)
-
-# ---------------------------------------------------------------------------
-# Codes la_code_lookup lacks (read 2026-10-10): the five Dorset districts
-# abolished on 1 April 2019 (Christchurch, which joined BCP, has its merger
-# row). Each appears in the open data for 2014-15 to 2018-19 only;
-# la_code_lookup has no row for it, so without this table it is UNEXPLAINED. The successor
-# is the one the LAHS CSV's own LAD24CD column gives (February and June 2026
-# files agree). Applied only while la_code_lookup has no row for the code
-# (a row there makes the entry a problem: remove it), only to a target in
-# la_boundaries, and only where the row's LAD24CD equals the target.
-# Adding these five rows to la_code_lookup (a separate, approved change)
-# retires this table.
-# ---------------------------------------------------------------------------
-
-_GAP = ("la_code_lookup has no row for it (read 2026-10-10); the LAHS open "
-        "data CSV's own LAD24CD column maps it to {} for 2014-15 to 2018-19 "
-        "(February and June 2026 files); {}")
-LOOKUP_GAPS = {
-    "E07000049": ("E06000059", _GAP.format("E06000059 Dorset", "East Dorset "
-                                           "became part of Dorset Council on "
-                                           "1 April 2019")),
-    "E07000050": ("E06000059", _GAP.format("E06000059 Dorset", "North Dorset "
-                                           "likewise")),
-    "E07000051": ("E06000059", _GAP.format("E06000059 Dorset", "Purbeck "
-                                           "likewise")),
-    "E07000052": ("E06000059", _GAP.format("E06000059 Dorset", "West Dorset "
-                                           "likewise")),
-    "E07000053": ("E06000059", _GAP.format("E06000059 Dorset", "Weymouth and "
-                                           "Portland likewise")),
-}
 
 # ---------------------------------------------------------------------------
 # Stop conditions (see the module docstring and CALIBRATION)
@@ -1151,8 +1122,7 @@ def resolve_codes(cur, codes, period, lad24cd_pub=None) -> tuple:
     this order: geography.resolve(cur, '13', ...) (Barnsley/Sheffield;
     declared 'old', so E08000038/39 as a publisher code is a problem); then
     la_code_lookup new_unitary or merger rows with exactly one target in
-    la_boundaries; then LOOKUP_GAPS (only while la_code_lookup has no row
-    for the code). The resolved code must be in la_boundaries, else
+    la_boundaries. The resolved code must be in la_boundaries, else
     'UNEXPLAINED'. lad24cd_pub {code: the CSV's LAD24CD}: each must equal
     the resolved code, or be the new Barnsley/Sheffield code of it."""
     codes = set(codes)
@@ -1164,27 +1134,19 @@ def resolve_codes(cur, codes, period, lad24cd_pub=None) -> tuple:
     succ = {}
     for old, new in cur.fetchall():
         succ.setdefault(old, set()).add(new)
-    cur.execute("SELECT DISTINCT old_code FROM public.la_code_lookup")
-    known = {r[0] for r in cur.fetchall()}
     cur.execute("SELECT lad24cd FROM public.la_boundaries")
     valid = {r[0] for r in cur.fetchall()}
     out = {}
     for c in sorted(codes):
-        if c in LOOKUP_GAPS and c in known:
-            problems.append(f"LOOKUP_GAPS {c}: la_code_lookup now has a row "
-                            "for it; remove the entry from LOOKUP_GAPS")
-            continue
         r = geography.canonical(c, recode)
         if r not in valid:
             targets = {t for t in succ.get(r, ()) if t in valid}
             if len(targets) == 1 and len(succ[r]) == 1:
                 r = targets.pop()
-            elif c in LOOKUP_GAPS:
-                r = LOOKUP_GAPS[c][0]
         if r not in valid:
             problems.append(f"UNEXPLAINED {c}: not in la_boundaries, not a "
                             "la_code_lookup recode, new_unitary or merger "
-                            "with one target there, and not in LOOKUP_GAPS")
+                            "with one target there")
             continue
         out[c] = r
         pub = (lad24cd_pub or {}).get(c)
@@ -2183,7 +2145,7 @@ def _build(cur, od, ods) -> tuple:
     except ValueError as e:
         halt(f"{e}; nothing stored")
     newest = str(label_year(ods["year"]))
-    out, used, recoded, problems = {}, set(), set(), []
+    out, recoded, problems = {}, set(), []
     for p in sorted({r["period"] for r in parsed}):
         rows = [r for r in parsed if r["period"] == p]
         rmap, probs = resolve_codes(cur, {r["code"] for r in rows}, p,
@@ -2192,7 +2154,6 @@ def _build(cur, od, ods) -> tuple:
         problems += probs
         if probs:
             continue
-        used |= {c for c in rmap if c in LOOKUP_GAPS}
         recoded |= {(c, r) for c, r in rmap.items() if r != c}
         try:
             recs = successor_records(rows, rmap, p)
@@ -2204,13 +2165,9 @@ def _build(cur, od, ods) -> tuple:
     if problems:
         halt("geography check failed, nothing stored: "
              + "; ".join(dict.fromkeys(problems)))
-    multi = sorted({c for c, r in recoded if c not in LOOKUP_GAPS})
+    multi = sorted({c for c, r in recoded})
     print(f"codes resolved (geography.resolve, la_code_lookup): {len(multi)} "
           "publisher code(s) to a successor or canonical code")
-    if used:
-        print("LOOKUP_GAPS used (la_code_lookup lacks them; the CSV's own "
-              "LAD24CD agrees): " + ", ".join(
-                  f"{c} -> {LOOKUP_GAPS[c][0]}" for c in sorted(used)))
     for rule in ZERO_RULES:
         hits = [a for a in applied if a["rule"] == rule["name"]]
         print(f"zero rule {rule['name']} ({rule['code']} "

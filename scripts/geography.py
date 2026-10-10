@@ -95,7 +95,10 @@ DATASET_FORM = {
            "2014-15 to 2024-25, while its own LAD24CD column gives Barnsley "
            "and Sheffield as E08000038/39 (the February 2026 file's LAD24CD "
            "gave E08000016/19); the loader accepts that one difference in "
-           "its LAD24CD cross-check."),
+           "its LAD24CD cross-check. The five Dorset districts abolished "
+           "on 1 April 2019 (E07000049 to E07000053) resolve to E06000059 "
+           "through new_unitary rows added to la_code_lookup on 2026-10-10 "
+           "(docs/decisions/2026-10-10-s13-editions-first-load.md)."),
     "14": ("none",
            "Keyed by BRMA name; lad24cd comes from la_brma_mapping, built "
            "from BRMA polygons."),
