@@ -9,7 +9,34 @@ Loads two Home Office datasets into exempt_pipeline:
 
 Structure: discover, download, parse, resolve geography, validate, upsert, log.
 Every download URL is discovered from its GOV.UK landing page at run time.
+
+Retired on 2026-10-10: this script was run 15 times (pipeline_run_log ids 69 to
+82 on 25 and 26 July 2026, id 98 on 4 September 2026) and is replaced by
+scripts/s6_asylum_editions.py. See the RETIRED message below.
+
+Usage (historical; the script now stops at once):
+    python scripts/s6_asylum_build.py
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s6_asylum_editions.py. The old S6 build (s6_asylum_build.py and '
+    's6_asylum_verify.py) was run 15 times (pipeline_run_log ids 69 to 82 on 25 and 26 July 2026, '
+    'id 98 on 4 September 2026); seven of the runs (69 to 75) came before its code was first '
+    'committed (19:21 UTC on 25 July). This is the build: it upserted every period of the file on every run '
+    '(INSERT ... ON CONFLICT DO UPDATE, loaded_at = now()), deleted and re-inserted '
+    'asylum_series_breaks, ran the DDL and CREATE OR REPLACE VIEW on every run, wrote when run '
+    'with no preview and no --commit, took the edition from the link text rather than the file, '
+    'kept its downloads only under fixed temp names (overwritten each run), and its verify module '
+    'rewrote docs/s6_source_anomalies.md on every run. The 4 September run rewrote earlier periods '
+    'with values identical to those it replaced (the March and June 2026 Asy_D11 files agree cell '
+    'for cell), so no held value was lost in practice. It accepted only .ods Reg_02 links, so with '
+    'the March 2025 Reg_02 published as .xlsx it would have taken the December 2024 snapshot as the newest '
+    '(it did not run in that window). Use '
+    'scripts/s6_asylum_editions.py (load, refresh-latest, status) instead.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
 
 import calendar
 import datetime

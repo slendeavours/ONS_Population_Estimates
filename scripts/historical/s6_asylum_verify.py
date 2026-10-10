@@ -1,8 +1,27 @@
 """S6 asylum dispersal verification suite.
 
-Twelve halting checks. Every check must pass or the load is rolled back.
-Imported by s6_asylum_build.py; not run standalone.
+Twelve numbered checks (thirteen results: check 8 reports 8a and 8b). Every
+check must pass or the load is rolled back. Imported by s6_asylum_build.py;
+not run standalone.
+
+Retired on 2026-10-10: replaced by scripts/s6_asylum_editions_verify.py (see
+the RETIRED message below).
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s6_asylum_editions_verify.py. The old S6 build (s6_asylum_build.py and '
+    's6_asylum_verify.py) was run 15 times (pipeline_run_log ids 69 to 82 on 25 and 26 July 2026, '
+    'id 98 on 4 September 2026). This is the verify module: it was imported by the build and run '
+    'inside its transaction (the build rolled back on a failed check), and its idempotency check '
+    're-ran the real upsert inside the same transaction as the load. It rewrote docs/s6_source_anomalies.md on every run, even one that '
+    'was then rolled back. Its checks 3, 5, 8a and 8b tested a hand-sourced anchor period '
+    '(2026-03-31), not the period loaded. The loader that replaced the build is '
+    'scripts/s6_asylum_editions.py; use scripts/s6_asylum_editions_verify.py (22 gates) instead.'
+)
+if __name__ == "__main__":
+    sys.exit(_RETIRED)
+
 
 import datetime
 import os

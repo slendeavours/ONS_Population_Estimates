@@ -891,6 +891,24 @@ To go back for a stock date: `restore-edition YYYY-MM-DD N` (preview by default)
 
 **Never run the old scripts.** `scripts/historical/s23_rsh_stock_build.py` and `s23_rsh_stock_verify.py` now stop with a RETIRED message. The build upserted with `INSERT ... ON CONFLICT ... DO UPDATE`, setting `loaded_at`, wrote when run with no preview, read the edition from one hard-coded release page and was run once, on 2026-08-14 (run-log id 95).
 
+## S6 Home Office asylum support by local authority: each quarter
+
+`la_asylum_support`, `la_asylum_support_unallocated`, `asylum_support_non_england` and `la_immigration_groups` are the latest-edition layers of four `*_editions` tables (one file's statement about one quarter; each has a file-check ledger, `*_editions_file_checks`, that records every file read). Asy_D11 (a time series that restates every quarter since 2014) feeds the first three, applied together one quarter at a time; Reg_02 (one snapshot per file) feeds the fourth. The Home Office publishes quarterly on Thursdays at 09:30; the next release is **26 November 2026** (year ending September 2026, a new period `2026-09-30`). Record: [S6](decisions/2026-10-10-s6-editions-first-load.md). Source note: [s6_asylum_source.md](s6_asylum_source.md).
+
+Run from `ONS_Population_Estimates`. `check_sources.py 6` reads the newest "year ending" in the data tables page's change notes; nothing runs the load for you. Downloading a file needs Scott's permission, and a preview downloads.
+
+1. Each quarterly release: `python scripts/s6_asylum_editions.py load` (preview). It finds the newest Asy_D11, Asy_D09 and Reg_02 releases on their GOV.UK pages through the content API, downloads them to `data/raw/s6_asylum/` (also in a preview; the database is not written), prints which release it saw as newest for each, reads each file's identity from its own cover sheet and checks the reconciliations (pivot cache, Asy_D09, Reg_02 against Asy_D11). It then prints what is new, revised, unchanged or skipped as older, with the NULL, `*` and zero counts per column. Read the whole preview. `--release "Month YYYY"` and `--file PATH` (with `--d09-file PATH` or `--no-d09` for Asy_D11) take other files with the same checks.
+2. `load --commit` stores a new quarter as edition 1 with its live rows and ledger rows (the three Asy_D11 tables in one savepoint) and a restated quarter as the next edition. Run `status` and `python scripts/s6_asylum_editions_verify.py` (22 gates) afterwards.
+3. A restatement of a held quarter: the same `load`, then `refresh-latest` (preview) and `refresh-latest --commit`, which copies the edition into the live rows and sets `source_edition` on every row of the quarter. If the preview lists authorities added or dropped, add `--accept-key-changes YYYY-MM-DD`. A restatement beyond the stop thresholds is REJECTED until the period is named with `--acknowledge YYYY-MM-DD`, after reading what moved; a partial file is never released.
+4. A Reg_02 file reissued under the same cover (the publisher's November 2025 reissues kept their old cover dates): the load stops on equal rank with different content. Read the page's change note, then `load --only reg02 --file PATH --accept-reissue YYYY-MM-DD`.
+5. What a halt means: an older file (by its own cover) is skipped per period and the run halts if every period is older (`--allow-older-file` overrides and is logged). A blank, zero or text `People` cell in Asy_D11 halts; a Reg_02 cell other than a whole number or `*` halts; a Reg_02 cell going between 0 and `*` needs `--acknowledge`. A changed header, a new support or accommodation type, or an unexplained code is **fixed deliberately, with evidence, in a small commit, then the load is re-run.** Barnsley and Sheffield switch from E08000016/19 to E08000038/39 by publication (Asy_D11 from December 2025, Reg_02 from June 2026): `geography.DATASET_FORM['6']` is `mixed`, one form per table per period.
+   **"Nothing newer than the held release" is not proof there is nothing new.** The preview says which release it saw as newest. After the held file's "Next update" date (26 November 2026) it prints a WARNING if nothing newer is listed: the release may not be listed yet, or discovery is missing it. Check the GOV.UK pages by hand and use `--file PATH`. The data tables page lists only the newest Asy_D11, so a missed quarter has to come from an archived copy.
+6. S6 is not a W1 or map input, so `refresh_map.py` is not needed. If it is ever wired into W1, run `refresh-latest --commit` in the same session and before W1: refresh copies the edition's time into the live `loaded_at`, and a W1 run in between would hide the revision from `refresh_map.py --check`.
+
+To go back for a quarter: `restore-edition TABLE YYYY-MM-DD N` (preview by default; TABLE is a live table name) stores edition N's rows as the next edition, then `refresh-latest --commit`. Nothing is deleted from the editions.
+
+**Never run the old scripts.** `scripts/historical/s6_asylum_build.py` and `s6_asylum_verify.py` now stop with a RETIRED message. The build upserted every period of the file on every run (`INSERT ... ON CONFLICT ... DO UPDATE`, setting `loaded_at`), wrote when run with no preview, took the edition from link text, and was run 15 times (run-log ids 69 to 82 and 98).
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
@@ -903,6 +921,7 @@ To go back for a stock date: `restore-edition YYYY-MM-DD N` (preview by default)
 - **Running the S4 November load.** `check_sources.py 4` detects a new release but nothing runs `s4_care_leaver_editions.py load` for you; see the S4 section.
 - **Running the S22 November load and the Table 615 updates.** `check_sources.py 22` detects a new Council Taxbase release, nothing detects a new Table 615 file, and nothing runs `s22_ctb_editions.py load` or `load-615` for you; see the S22 section.
 - **Running the S23 autumn load.** `check_sources.py 23` detects a newer release but nothing runs `s23_rsh_stock_editions.py load` for you; see the S23 section.
+- **Running the S6 quarterly load.** `check_sources.py 6` detects a newer release but nothing runs `s6_asylum_editions.py load` for you; see the S6 section.
 - **Spotting that the publisher has revised a quarter.** Nothing detects it
   automatically yet; someone has to re-check each loaded quarter against the
   release page and, if it changed, follow Step 3. Recording it as

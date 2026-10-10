@@ -2,7 +2,8 @@
 short, empty, drifted or unmigrated state. The gate bodies (real_*) take the
 four specs as a dict, so they are called here against the throwaway zz_s6_*
 tables (created inside a transaction that is always rolled back); no real
-table is written, and the S6 editions tables are never created. Every test
+table is written, and the real S6 editions tables are never created or
+changed. Every test
 ends in a rollback (also on an exception), and tearDownClass reads the
 database on a separate read-only connection and fails if a zz_s6 table was
 left committed."""
@@ -133,13 +134,22 @@ class VerifyGates(unittest.TestCase):
         self.assertFalse(v.exists(self.cur, gone))
         self.assertTrue(v.exists(self.cur, ZZ))
 
-    def test_the_real_editions_tables_are_never_created(self):
+    def test_the_real_editions_tables_are_left_as_they_were(self):
+        # The real editions tables exist since the 2026-10-10 migration; the
+        # throwaway gates must neither create nor drop any of them.
         names = [s.editions_table for s in v.REAL.values()] + [
             v.ledger_name(s) for s in v.REAL.values()]
-        self.cur.execute("SELECT " + ", ".join(f"to_regclass('public.{n}')"
-                                               for n in names))
-        self.assertEqual(set(self.cur.fetchone()), {None})
-        self.assertFalse(v.exists(self.cur))
+        sql = "SELECT " + ", ".join(f"to_regclass('public.{n}')::text"
+                                    for n in names)
+        self.cur.execute(sql)
+        before = self.cur.fetchone()
+        exists_before = v.exists(self.cur)
+        self.seed()
+        for fn in self.gates():
+            fn(self.cur, ZZ)
+        self.cur.execute(sql)
+        self.assertEqual(self.cur.fetchone(), before)
+        self.assertEqual(v.exists(self.cur), exists_before)
 
     def test_a_pending_real_part_prints_not_yet_migrated(self):
         out = io.StringIO()

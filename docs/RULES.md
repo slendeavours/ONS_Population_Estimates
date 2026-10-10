@@ -28,7 +28,7 @@ Known breaches until corrected: S10 is unchecked. S22 (council taxbase) had one,
 1. A new release **and** a revision of a figure already held are both stored as new rows (a new edition). Nothing is overwritten.
 2. The live table is the latest-edition layer, refreshed from the editions table. The latest edition is the one no other edition supersedes.
 3. A sent or published deliverable is never overwritten. A new version is written and what changed is stated.
-4. Sources the registry marks `revises_back_series` must keep editions. Today S1, S1b, RO4, S8b, S19, S15, S18, S9a, S9b, S4, S22 and S23 do; the other revising sources are being brought across. S11 (the CQC register) is not a revising source: it keeps every dated snapshot of the register as its own period, on the same engine, and a reissued file for a date already held would be stored as the next edition, unless it adds or drops locations (the engine refuses a changed location set). That also refuses a recheck of the July, August and September 2026 snapshots: one location (1-28257167158) is kept unresolved there as loaded but now resolves through postcodes.io, so the mapping, not the file, changes the set; the held editions stay as loaded.
+4. Sources the registry marks `revises_back_series` must keep editions. Today S1, S1b, RO4, S8b, S19, S15, S18, S9a, S9b, S4, S6, S22 and S23 do; the other revising sources are being brought across. S11 (the CQC register) is not a revising source: it keeps every dated snapshot of the register as its own period, on the same engine, and a reissued file for a date already held would be stored as the next edition, unless it adds or drops locations (the engine refuses a changed location set). That also refuses a recheck of the July, August and September 2026 snapshots: one location (1-28257167158) is kept unresolved there as loaded but now resolves through postcodes.io, so the mapping, not the file, changes the set; the held editions stay as loaded.
 
 Detail: `METHODOLOGY.md` (Revision Handling), `QUARTERLY_REFRESH.md`.
 
@@ -52,17 +52,17 @@ Why: a second release was once loaded and labelled as the third. See `docs/decis
    - A load stops if the codes it sees disagree with the declaration. The declaration is corrected deliberately, with the evidence, never silently.
    - Moving `la_boundaries` to a vintage carrying the new codes flips the canonical form in one place: the `la_code_lookup` recode rows.
 
-   Declared forms (2026-10-08; S4 moved from unverified to old on 2026-10-09 after the five release files were read):
+   Declared forms (2026-10-08; S4 moved from unverified to old on 2026-10-09 after the five release files were read; S6 moved from unverified to mixed on 2026-10-10 after the Asy_D11 and Reg_02 files were read):
 
    | Form | Sources |
    |---|---|
    | old | 3, 4, 5, 7, 9a, 13, 19, 23 |
    | new | 10, 15, 18, 21 |
-   | mixed | 1, 1b, 2, 9b, 22 |
+   | mixed | 1, 1b, 2, 6, 9b, 22 |
    | none | 11, 12, 14, 17, 20, 24 |
-   | unverified | 3b, 6, 8, 8b |
+   | unverified | 3b, 8, 8b |
 
-   The evidence for each is in `python scripts/geography.py` and `docs/decisions/2026-10-08-barnsley-sheffield-rule.md`. Adoption: S15, S18, S9a, S9b, S11, S4, S22 and S23 use it; the other loaders adopt it as they are migrated.
+   The evidence for each is in `python scripts/geography.py` and `docs/decisions/2026-10-08-barnsley-sheffield-rule.md`. Adoption: S15, S18, S9a, S9b, S11, S4, S6, S22 and S23 use it; the other loaders adopt it as they are migrated.
 
 Detail: `METHODOLOGY.md` (Boundary Data), `docs/decisions/2026-10-08-barnsley-sheffield-rule.md`, `docs/decisions/2026-08-14-barnsley-sheffield-code-split.md`, `docs/geography_dimension.md`.
 
@@ -77,11 +77,11 @@ Detail: `METHODOLOGY.md` (Boundary Data), `docs/decisions/2026-10-08-barnsley-sh
 
 Loaders are to meet one standard, built from shared parts in `scripts/`. The parts below exist and are tested; adoption by the loaders is under way and not finished.
 
-- **Editions core** (`editions_core.py`): the append-only editions table, the supersedes chain, the latest-edition layer and the gates around them. A loader describes its table in a spec and supplies its own parser. S1, S1b, RO4, S8b, S19, S15, S18, S9a, S9b, S11, S4, S22 and S23 run on it today. Their commands are `status` (read-only health check), `load` (a revised or first edition of a period), `sync-new` (a newly published period) and `refresh-latest` (copy the latest edition into the live table).
+- **Editions core** (`editions_core.py`): the append-only editions table, the supersedes chain, the latest-edition layer and the gates around them. A loader describes its table in a spec and supplies its own parser. S1, S1b, RO4, S8b, S19, S15, S18, S9a, S9b, S11, S4, S6, S22 and S23 run on it today. Their commands are `status` (read-only health check), `load` (a revised or first edition of a period), `sync-new` (a newly published period) and `refresh-latest` (copy the latest edition into the live table).
 - **Blank reader** (`blank_reader.py`): turns the publisher's markers into NULL or a number as rule 1 requires. No loader uses it yet; loaders are to adopt it in place of their own conversion code.
-- **Shared checks** (`load_checks.py`): the per-column NULL, flagged and zero report, the check against the previous edition (rule 1.10), file identity (rule 3), geography resolution (rule 4), row counts, and the check that the live table equals the latest editions. `check_codes` is called by S8b, S15, S18 and S19, and `check_coverage` and `check_latest_equals_live` by RO4 and by the shared period engine (S15, S18, S9a, S9b, S11, S4, S22; S23 calls `check_coverage` only). S23 has its own copy of the `refresh-latest` command, with its own live-equals-tip check (`live_equals_tip`), because the shared check compares by column name and fails on S23's five `file_*` provenance columns. Folding S23's refresh into the engine is a listed follow-up (see its decision note); the per-column report and the previous-edition check are not yet called by any loader. Loaders are to adopt them.
+- **Shared checks** (`load_checks.py`): the per-column NULL, flagged and zero report, the check against the previous edition (rule 1.10), file identity (rule 3), geography resolution (rule 4), row counts, and the check that the live table equals the latest editions. `check_codes` is called by S6, S8b, S15, S18 and S19, and `check_coverage` and `check_latest_equals_live` by RO4 and by the shared period engine (S15, S18, S9a, S9b, S11, S4, S6, S22; S23 calls `check_coverage` only; S6 also calls `check_latest_equals_live` itself in `refresh-latest` and `status`). S23 has its own copy of the `refresh-latest` command, with its own live-equals-tip check (`live_equals_tip`), because the shared check compares by column name and fails on S23's five `file_*` provenance columns. Folding S23's refresh into the engine is a listed follow-up (see its decision note); the per-column report and the previous-edition check are not yet called by any loader. Loaders are to adopt them.
 - **Preview by default:** in the loaders on it every command that writes is a dry run unless given `--commit`, with one exception: `ddl` (create the editions table and its triggers if absent) writes when run. `status` is read-only. `--simulate` runs everything and rolls back.
-- **Conformance checker:** `python scripts/check_loaders.py` lists each loader as PASS or with the reasons it does not conform. 13 of 18 loaders conform today (S1, S1b, S2, S4, S8b, S9a, S9b, S11, S15, S18, S19, S22, S23); the checker lists the rest. It reports only and does not yet gate a push. Its checks are heuristics and do not yet test use of the blank reader or the shared checks; the verify script remains the real test.
+- **Conformance checker:** `python scripts/check_loaders.py` lists each loader as PASS or with the reasons it does not conform. 14 of 18 loaders conform today (S1, S1b, S2, S4, S6, S8b, S9a, S9b, S11, S15, S18, S19, S22, S23); the checker lists the rest. It reports only and does not yet gate a push. Its checks are heuristics and do not yet test use of the blank reader or the shared checks; the verify script remains the real test.
 
 The other loaders are to be brought across one at a time; the checker's FAIL list is that worklist. A source that is never revised may declare `NO_EDITIONS = "<reason>"` instead of using the core, but is still to use the blank reader and shared checks. Related: `docs/decisions/2026-10-07-editions-quarterly-refresh.md`.
 

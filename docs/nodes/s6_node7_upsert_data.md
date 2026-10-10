@@ -1,5 +1,7 @@
 # Node 7 — Upsert Data
 
+> **Superseded 2026-10-10.** The old S6 scripts this note describes (`s6_asylum_build.py`, `s6_asylum_verify.py`) were run 15 times (run-log ids 69 to 82 on 25 and 26 July 2026, id 98 on 4 September 2026) and are retired to `scripts/historical/`, where they stop with a RETIRED message. S6 is now loaded by `scripts/s6_asylum_editions.py`, which finds the newest Asy_D11, Asy_D09 and Reg_02 releases itself, reads each file's identity from its own cover sheet and keeps each file's statement about each quarter as an edition (four `*_editions` tables); it is checked by `scripts/s6_asylum_editions_verify.py`. The source note is `docs/s6_asylum_source.md` and the record is `docs/decisions/2026-10-10-s6-editions-first-load.md`. The text below is left as written and describes the old method.
+
 ## Type
 Batched parameterised upsert inside a single transaction
 

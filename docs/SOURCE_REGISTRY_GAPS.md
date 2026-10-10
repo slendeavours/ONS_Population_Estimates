@@ -25,7 +25,7 @@ The top of this list is the documentation debt.
 | `build_script_path` | 11 | the build script, if it is in the published tree |
 | `detected_period_type` | 11 | — |
 | `revision_note` | 11 | — |
-| `api_endpoint` | 10 | the build script or node documentation, where acquisition is an API |
+| `api_endpoint` | 9 | the build script or node documentation, where acquisition is an API |
 | `publication_window` | 9 | the publisher's stated release window |
 | `series_name` | 9 | the publisher's dataset or table title, as named in a source documentation file |
 | `known_gotchas` | 8 | a source documentation file — acquisition traps are only known once written down |
@@ -35,7 +35,7 @@ The top of this list is the documentation debt.
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 306 null fields across 26 published sources.
+Total: 305 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -179,7 +179,6 @@ Total: 306 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
 | `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
@@ -188,7 +187,7 @@ Total: 306 null fields across 26 published sources.
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 | `detected_period_type` | — |
 
-**Note.** Two structural breaks make the England series non-comparable before 2025-03-31; they are recorded in asylum_series_breaks. Standalone: not wired into Workflow 1, adds no staging_la_signals column, no tenant type and no map layer. Additional tables: la_asylum_support_unallocated, asylum_support_non_england, la_immigration_groups, asylum_series_breaks.
+**Note.** Four editions tables (la_asylum_support_editions, la_asylum_support_unallocated_editions, asylum_support_non_england_editions, la_immigration_groups_editions) with four file-check ledgers; the four live tables are their latest-edition layers: la_asylum_support 21,953 rows, la_asylum_support_unallocated 84, asylum_support_non_england 2,553 (34 quarters, 2018-03-31 to 2026-06-30; unallocated to 2024-12-31) and la_immigration_groups 7,104 (two Reg_02 snapshots, 2026-03-31 and 2026-06-30; earlier Reg_02 snapshots are not loaded). Edition 1 is the data exactly as held. Two reporting changes make the England series non-comparable before 2025-03-31; they are held in asylum_series_breaks. Standalone: not wired into Workflow 1, adds no staging_la_signals column, no tenant type and no map layer. Asy_D09 is read for reconciliation and not loaded.
 
 ### S7
 
