@@ -101,7 +101,11 @@ DATASET_FORM = {
            "(docs/decisions/2026-10-10-s13-editions-first-load.md)."),
     "14": ("none",
            "Keyed by BRMA name; lad24cd comes from la_brma_mapping, built "
-           "from BRMA polygons."),
+           "from BRMA polygons. Read 2026-10-11: the rates CSVs (data/raw/"
+           "s14_lha, 2024-25 to 2026-27) carry no local authority code; the "
+           "crosswalk is keyed by la_boundaries codes (scripts/"
+           "s14_lha_editions.py: la_boundaries centroids in the VOA BRMA "
+           "layer, GML.zip), so no publisher code is resolved."),
     "15": ("new",
            "Average-prices-2026-07.csv and Average-prices-Property-Type-"
            "2026-07.csv (data/raw, read 2026-10-08) carry E08000038/39 for "
