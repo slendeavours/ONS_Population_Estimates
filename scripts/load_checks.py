@@ -98,7 +98,8 @@ def check_latest_equals_live(cur, spec: EditionSpec, periods=None) -> list:
     problem string.
 
     A live_single_period spec compares the live period only: a given period
-    not in live (a vintage held as editions only) is skipped.
+    not in live (a vintage held as editions only) is skipped. So does a
+    live_newest_period_only spec (a period not in live is history).
     """
     cur.execute(f"SELECT DISTINCT {spec.period_col} FROM "
                 f"public.{spec.live_table}")
@@ -106,7 +107,8 @@ def check_latest_equals_live(cur, spec: EditionSpec, periods=None) -> list:
     cols = ", ".join(spec.data_cols)
     bad = []
     todo = periods or live_periods
-    if getattr(spec, "live_single_period", False):
+    if (getattr(spec, "live_single_period", False)
+            or getattr(spec, "live_newest_period_only", False)):
         live_str = {str(x) for x in live_periods}
         todo = [p for p in todo if str(p) in live_str]
     for p in todo:
