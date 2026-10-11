@@ -47,7 +47,10 @@ Gates:
   9  the map sets: distinct lad24cd in la_efs_support (the before-state set
      less the two WITHDRAWN_ONLY_NOT_SUPPORT codes, E06000058 and
      E06000061; Bexley E09000004 is kept) and in la_s114_notices
-     equal the decision note's w1-read lines               (seeded + real)
+     equal the decision note's w1-read lines; live S.114 equals the
+     register, 14 notices over 10 authorities (Scott, 2026-10-11),
+     every S114_REFILES notice under its new year (Northumberland
+     2022-23), every financial_year the notice date's own  (seeded + real)
  10  older-page guard: the rank is the page's own (never the file name); an
      older register halts; --allow-older-file is logged
  11  stop conditions: each seeded REJECTED (or halted), stores nothing, no
@@ -85,7 +88,9 @@ WITHDRAWN_ONLY_NOT_SUPPORT (Scott, 2026-10-10: the EFS flag is dropped for
 Bournemouth, Christchurch and Poole E06000058 and North Northamptonshire
 E06000061; Bexley E09000004 is kept, in the rule's 'kept' list), and for
 S.114 the set of lad24cd with any notice, less the authorities whose every notice is a named
-removal in S114_REMOVALS (Hillingdon E09000017 after Task 7: 10 authorities). The set hash is sha256 of the sorted codes, LF-joined.
+removal in S114_REMOVALS (Hillingdon E09000017 after Task 7: 10 authorities;
+unchanged by the 2026-10-11 Croydon addition and Northumberland re-filing,
+so the line was not regenerated). The set hash is sha256 of the sorted codes, LF-joined.
 `python scripts/s12_financial_stress_editions_verify.py --print-note-lines`
 prints them for the live tables as they stand (read-only); run it before
 migrate-legacy and paste the lines into the decision note.
@@ -1451,6 +1456,63 @@ def real_map_sets(cur, efs=REAL_EFS, s114=REAL_S114, note=NOTE):
         f"la_s114_notices {len(s_live)}, as the note's w1-read lines")
 
 
+# Scott's decisions of 2026-10-11 (decision note, 2026-10-11 section): 14
+# notices (Croydon's second notice of 2 December 2020 added), the same 10
+# authorities, Northumberland re-filed under 2022-23 (S114_REFILES).
+S114_NOTICES = 14
+S114_AUTHORITIES = 10
+
+
+def real_s114_register(cur, s114=REAL_S114, register=None,
+                       notices=S114_NOTICES, authorities=S114_AUTHORITIES,
+                       refiles=None):
+    """Live S.114 against the register and the decided counts: live holds
+    exactly the register's (lad24cd, notice_date, financial_year) rows,
+    `notices` of them over `authorities` authorities; every named re-filing
+    (S114_REFILES) is live under its 'to' year only; every live
+    financial_year is the April-March year of its notice_date."""
+    _need(cur, s114)
+    reg = m.read_s114(register or m.S114_FILE)
+    want = {(r["lad24cd"], r["notice_date"], y)
+            for y, recs in reg.by_period.items() for r in recs}
+    cur.execute(f"SELECT lad24cd, notice_date, financial_year FROM "
+                f"public.{s114.live_table}")
+    got = {tuple(r) for r in cur.fetchall()}
+    bad = []
+    if got != want:
+        bad.append(f"live differs from the register: live-only "
+                   f"{sorted(got - want)[:3]}, missing {sorted(want - got)[:3]}")
+    if len(got) != notices:
+        bad.append(f"live holds {len(got)} notices, not {notices}")
+    n_auth = len({c for c, _, _ in got})
+    if n_auth != authorities:
+        bad.append(f"live holds {n_auth} authorities, not {authorities}")
+    for (code, d), rf in sorted((m.S114_REFILES if refiles is None
+                                 else refiles).items()):
+        years = sorted(y for c, nd, y in got
+                       if c == code and nd.isoformat() == d)
+        if years != [rf["to"]]:
+            where = years or "no year"
+            bad.append(f"re-filed {code} {d} is live under {where}, not "
+                       f"{rf['to']}")
+    off = sorted((c, str(nd), y) for c, nd, y in got if m.fy_of(nd) != y)
+    if off:
+        bad.append(f"financial_year is not the notice's April-March year: "
+                   f"{off[:3]}")
+    return not bad, "; ".join(bad[:3]) if bad else (
+        f"live la_s114_notices equals the register: {len(got)} notices, "
+        f"{n_auth} authorities, every re-filing under its new year, every "
+        "year the notice's own")
+
+
+def real_map_sets_and_register(cur):
+    ok1, d1 = real_map_sets(cur)
+    if not ok1:
+        return ok1, d1
+    ok2, d2 = real_s114_register(cur)
+    return ok2, f"{d1}; {d2}"
+
+
 def gate_9_map_sets(cur):
     name = ("the map sets: distinct lad24cd in la_efs_support (before-state "
             "less the withdrawn-only codes) and in la_s114_notices equal the "
@@ -1524,7 +1586,8 @@ def gate_9_map_sets(cur):
           "unchanged; the gate passes only on the note's lines; a live set "
           "that still holds a rule code, a missing or wrong line, a missing "
           "note and an extra authority fail" if not problems
-          else "; ".join(problems[:3]), cur, lambda c: real_map_sets(c))
+          else "; ".join(problems[:3]), cur,
+          lambda c: real_map_sets_and_register(c))
 
 
 # ---------------------------------------------------------------- gate 10

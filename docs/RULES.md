@@ -90,7 +90,7 @@ The other loaders are to be brought across one at a time; the checker's FAIL lis
 1. This repository is public. Nothing private goes into it: no rate-card figures, no counterparty names, no personal data, no credentials.
 2. Anything that lists tables, columns or schema is scanned for counterparty names before it is staged.
 3. Pushes go through `python scripts/push.py` only.
-4. Research-tier data (desk research, not publisher data) is held in separate tables, dated, and never mixed with source data. The S.114 notice register (`la_s114_notices`, source 12) is research-tier: no publisher issues it, so it is compiled from councils' own reports, papers and statements (and, where nothing else was found, press reports quoting the council), held in its own table, dated by `register_as_at`, and evidenced row by row (`evidence_url`, `evidence_title`, `checked_on`). The loader cannot remove a notice; a removal is a named entry with what was searched.
+4. Research-tier data (desk research, not publisher data) is held in separate tables, dated, and never mixed with source data. The S.114 notice register (`la_s114_notices`, source 12) is research-tier: no publisher issues it, so it is compiled from councils' own reports, papers and statements (and, where nothing else was found, press reports quoting the council), held in its own table, dated by `register_as_at`, and evidenced row by row (`evidence_url`, `evidence_title`, `checked_on`). The loader cannot remove a notice; a removal is a named entry with what was searched, and a move to another financial year is a named re-filing. As at 2026-10-11 it holds 14 notices for 10 authorities.
 
 ## 7. Derived values and the map data
 

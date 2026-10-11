@@ -972,7 +972,8 @@ SOURCES = [
             "central source: a row without evidence is reported, never "
             "invented or dropped, and the loader cannot remove a notice "
             "(only a named entry in S114_REMOVALS, with what was "
-            "searched)."),
+            "searched); a notice moves between financial years only as a "
+            "named entry in S114_REFILES."),
         verification_checks={
             "method": "editions",
             "script": "scripts/s12_financial_stress_editions_verify.py",
@@ -1024,22 +1025,22 @@ SOURCES = [
         caveats=[
             "S.114 notices are held in a second table, la_s114_notices, "
             "keyed (lad24cd, notice_date). It is a curated, research-tier "
-            "register, not a publisher dataset: 13 notices as at "
-            "2026-10-10, each with an evidence_url, evidence_title and "
-            "checked_on (9 backed by a council's own report or meeting "
+            "register, not a publisher dataset: 14 notices as at "
+            "2026-10-11, each with an evidence_url, evidence_title and "
+            "checked_on (10 backed by a council's own report or meeting "
             "papers, 1 by a council statement, 3 by a press report quoting "
             "the council). Two notices that could not be evidenced "
             "(Hillingdon 2000-07 and Croydon 2022-01) were removed on "
-            "2026-10-10 as a named step and remain in edition 1. Open for "
-            "Scott: the Hillingdon removal may be of a real notice; "
-            "Northumberland's financial_year is 2021-22 although its notice "
-            "date, 23 May 2022, falls in 2022-23; Croydon's second notice "
-            "of 2 December 2020 is not in the register; the day of "
-            "Hackney's notice (17 October 2000) is not stated in the report "
-            "found.",
+            "2026-10-10 as a named step and remain in edition 1; Scott "
+            "confirmed the Hillingdon removal on 2026-10-11 (reversible). "
+            "On 2026-10-11 Croydon's second notice of 2 December 2020 was "
+            "added (the council's own report) and Northumberland's notice "
+            "(23 May 2022) was re-filed under financial_year 2022-23 as a "
+            "named re-filing (S114_REFILES). Open: the day of Hackney's "
+            "notice (17 October 2000) is not stated in the report found.",
             "Notices are attributed to the authority that issued them and "
             "are never propagated to successors. la_s114_notices.attribution "
-            "is 'direct' where the issuer still exists (11 notices, 9 "
+            "is 'direct' where the issuer still exists (12 notices, 9 "
             "authorities) and 'predecessor' where it does not (2, both "
             "Northamptonshire County Council E10000021, abolished 31 March "
             "2021). In 2018 Northamptonshire was two-tier: the county held "
@@ -2418,11 +2419,11 @@ TIER_C_FINDINGS = {
               "while the register went unwatched would be worse than "
               "reporting it manual."),
         completeness_extra=(
-            " Held (2026-10-10): la_efs_support, 111 rows for 49 "
-            "authorities over 2020-21 to 2026-27, and la_s114_notices, 13 "
+            " Held (2026-10-11): la_efs_support, 111 rows for 49 "
+            "authorities over 2020-21 to 2026-27, and la_s114_notices, 14 "
             "notices for 10 authorities, the latest-edition layers of "
-            "la_efs_support_editions and la_s114_notices_editions (two "
-            "editions each) with file-check ledgers. W1 and the map read "
+            "la_efs_support_editions and la_s114_notices_editions (two or "
+            "three editions per year) with file-check ledgers. W1 and the map read "
             "only whether an authority has any row in either table.")),
     "13": dict(
         tier="B", method="landing_page",

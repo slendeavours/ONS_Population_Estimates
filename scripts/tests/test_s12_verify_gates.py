@@ -77,6 +77,34 @@ class VerifyGates(unittest.TestCase):
         self.assertEqual(v.shape_problems(self.cur, E), [])
         self.assertEqual(v.shape_problems(self.cur, S), [])
 
+    def test_the_s114_register_and_counts_check(self):
+        self.seed()
+        reg = self.e.register
+        with mock.patch.object(m, "S114_ROOTS", (Path(self.tmpdir.name),)):
+            def run(**kw):
+                args = dict(register=reg, notices=3, authorities=2,
+                            refiles={})
+                args.update(kw)
+                return v.real_s114_register(self.cur, S, **args)
+            ok, detail = run()
+            self.assertTrue(ok, detail)
+            ok, detail = run(notices=14)
+            self.assertFalse(ok)
+            self.assertIn("not 14", detail)
+            ok, detail = run(authorities=10)
+            self.assertFalse(ok)
+            ok, detail = run(refiles={("E09000008", "2022-01-01"): {
+                "from": "2021-22", "to": "2022-23"}})
+            self.assertFalse(ok)
+            self.assertIn("not 2022-23", detail)
+            self.cur.execute(f"UPDATE public.{S.live_table} SET "
+                             "financial_year = '2020-21' WHERE notice_date = "
+                             "'2022-01-01'")
+            ok, detail = run()
+            self.assertFalse(ok)
+            self.assertIn("differs from the register", detail)
+            self.assertIn("April-March", detail)
+
     def test_an_empty_state_is_not_a_pass(self):
         ok, detail = v.real_edition1_and_latest(self.cur, E, S)
         self.assertFalse(ok)

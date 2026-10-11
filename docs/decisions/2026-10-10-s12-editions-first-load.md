@@ -316,3 +316,50 @@ says the £6.6m was subsequently reprofiled to £6.52m for 2024-25, and the 2024
 The same support may therefore be counted in both years; under the module's rule (the latest figure the year's own page states)
 it could belong as `other-years-only`. This affects the amount only: the EFS flag is unaffected (West Northamptonshire has
 2024-25 rows). Held as loaded; for Scott to decide.
+
+## 2026-10-11: Scott's decisions on the S.114 register
+
+Scott decided the three open S.114 points on 2026-10-11.
+
+1. **Hillingdon, E09000017, 2000-07-01: stays removed.** No change. It is still in edition 1 of 2000-01 and in
+   `S114_REMOVALS`. Restoring it is reversible: `restore-edition s12_s114 2000-01 1`, or add the row to the register with
+   its evidence, load it, run `refresh-latest --accept-key-changes 2000-01` and take it out of `S114_REMOVALS`.
+2. **Croydon, E09000008, 2 December 2020: added.** The evidence is the council's own second report under section 114(3).
+   It was re-fetched on 2026-10-11 from
+   `https://www.croydon.gov.uk/sites/default/files/2021-03/Section%20114%20report%20-%202%20December%202020.pdf`
+   (the same document already cited for the 11 November 2020 row). It is from Lisa Taylor, Director of Finance, Investment
+   and Risk and Section 151 Officer, to all elected members, dated 02/12/20, subject "Report under Section 114(3) of the
+   Local Government Finance Act 1988". It calls itself the second report issued under section 114(3). Paragraph 1.3 gives
+   the first notice as 11 November 2020. The row follows the conventions of Croydon's other rows: reason `Overspend`,
+   `date_confirmed` exact, attribution `direct`, `financial_year` 2020-21, `checked_on` 2026-10-11.
+3. **Northumberland, E06000057, 23 May 2022: re-filed under 2022-23.** 23 May 2022 falls in financial year 2022-23 (April
+   to March). The earlier date correction left the row under 2021-22. The loader now has a named list, `S114_REFILES`
+   (from, to, decided, why), alongside `S114_REMOVALS`. A named re-filing is listed in the preview. The load stores the
+   next edition of the old year without the notice and the next edition of the new year with it, and stores both years or
+   neither. The notice's values must not change: a re-filing only moves the row. `refresh-latest` then needs
+   `--accept-key-changes` for both years. The engine's key-change refresh now runs every period's deletes before any
+   insert, so a key that moves between years never collides with itself in the live table (live key
+   `(lad24cd, notice_date)`). Nothing is deleted from the editions tables, and editions 1 and 2 of 2021-22 still hold the
+   row.
+
+The register `data/reference/la_s114_notices.csv` is now `register_as_at,2026-10-11`. It holds 14 notices for 10
+authorities, all evidenced (unevidenced: 0 of 14). Ten notices rest on a council's own report or meeting papers, 1 on a
+council statement and 3 on press reports quoting the council. The loader no longer warns about a `financial_year`.
+
+### What was written (2026-10-11)
+
+- `load --only s114 --acknowledge 2020-21`: preview read in full, then `--simulate`, then `--commit`. The added Croydon
+  notice is a soft stop, so it needs `--acknowledge`. The preview listed the Northumberland re-filing out of 2021-22 and
+  into 2022-23. Edition 3 was stored for 2020-21 (2 rows), 2021-22 (2 rows) and 2022-23 (3 rows). The other five years
+  were `unchanged` (ledger rows only). One run-log row was written.
+- `refresh-latest --accept-key-changes 2020-21 --accept-key-changes 2021-22 --accept-key-changes 2022-23`: preview, then
+  `--simulate`, then `--commit`. 2 keys were inserted (Croydon 2020-12-02 in 2020-21, Northumberland 2022-05-23 in 2022-23)
+  and 1 deleted (Northumberland 2022-05-23 from 2021-22). The before/after guard passed.
+- Live `la_s114_notices`: 14 notices, 10 authorities. Northumberland is under 2022-23 only. `status` is OK with 0 notices
+  without evidence. The verify script exits 0 with all 21 gates passing. Gate 9 also checks that live equals the register,
+  that the counts are 14 and 10, that every `S114_REFILES` notice is under its new year, and that every `financial_year` is
+  the notice date's own.
+
+Effect on the map: none. The S.114 authority set is the same 10 codes, so Croydon's and Northumberland's `s114_flag` are
+unchanged. The `w1-read la_s114_notices` line above is still correct. `--print-note-lines` printed the same line, so it was
+not regenerated. W1, `refresh_map.py`, the export, `push.py` (real) and `git push` were not run.

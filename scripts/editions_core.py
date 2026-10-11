@@ -1135,9 +1135,13 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
                                - set(plan[p]["removed"]))
         common_b = _common_kept_hashes(cur, spec, common)
         deleted, inserted = {}, {}
+        # every period's deletes before any insert, so a key moving between
+        # periods (a live key without the period column, such as S.114's
+        # (lad24cd, notice_date)) never meets itself, whatever the order
+        for p in keyed:
+            deleted[p] = _delete_removed(cur, spec, p, plan[p]["removed"])
         for p in keyed:
             v = plan[p]
-            deleted[p] = _delete_removed(cur, spec, p, v["removed"])
             inserted[p] = _insert_added(cur, spec, p, v["edition"], v["added"])
         cur.execute(f"""UPDATE public.{spec.live_table} l SET {sets}
                         FROM public.{spec.editions_table} e

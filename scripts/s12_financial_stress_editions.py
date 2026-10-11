@@ -77,7 +77,11 @@ register stops the year (no flag releases it); a removal is stored only when
 named in S114_REMOVALS, with what was searched (a decision for Scott, made as
 a listed step, never by this loader on its own). A month-only date corrected
 to an exact date in the same month is a listed date correction (the key
-changes, so refresh-latest needs --accept-key-changes YEAR). Rows are
+changes, so refresh-latest needs --accept-key-changes YEAR). A notice moved,
+unchanged, from one financial year to another is stored only when named in
+S114_REFILES (a decision for Scott, with why): the next edition of the old
+year omits it and the next edition of the new year gains it, both or
+neither, and refresh-latest needs --accept-key-changes for both years. Rows are
 attributed to the issuing authority (docs/decisions/2026-08-16-s114-
 attribution-and-gate-14.md): every lad24cd is in la_boundaries unless
 attribution = 'predecessor' with successor codes and a note.
@@ -116,7 +120,9 @@ exit 1; a committed run writes a run-log row, partial runs included):
         (--acknowledge YEAR)
     S.114: a held notice missing (never removed by the loader); a notice
         added or a new year, or a held value changed (--acknowledge YEAR);
-        an older register (register_as_at earlier than the held one)
+        an older register (register_as_at earlier than the held one); a
+        named re-filing whose register or held year disagrees with it, that
+        changes a value, or whose other year is rejected (both or neither)
     both: the set of authorities with any row (the map's flags) may lose an
         authority only under the withdrawn-only rule or S114_REMOVALS
 
@@ -330,6 +336,28 @@ S114_REMOVALS = {
                     "Government Lawyer, the IfG explainer (Croydon issued "
                     "three: 11 November 2020, 2 December 2020, 22 "
                     "November 2022). See the decision note."},
+}
+
+# Named S.114 re-filings: a held notice moved, unchanged, from one financial
+# year to another (its key (lad24cd, notice_date) is the same, its period is
+# not). To the engine that is a removal from one year and an addition to
+# another, so it is stored only when named here, with why (Scott's decision,
+# a listed step): {(lad24cd, 'yyyy-mm-dd'): {'from': year, 'to': year,
+# 'decided': ..., 'why': ...}}. load stores the next edition of 'from'
+# without the notice and of 'to' with it, both or neither (_refile_check);
+# refresh-latest then needs --accept-key-changes for both years. Nothing is
+# deleted from the editions tables; the earlier editions keep the old year.
+S114_REFILES = {
+    ("E06000057", "2022-05-23"): {
+        "from": "2021-22", "to": "2022-23",
+        "decided": "Scott, 2026-10-11 (re-file Northumberland under 2022-23)",
+        "why": "Northumberland's notice was issued on 23 May 2022 (the "
+               "council's minutes system: the Chief Finance Officer issued "
+               "the report to members on 23 May 2022; extraordinary County "
+               "Council 8 June 2022, item 4), which falls in financial year "
+               "2022-23 (April to March), not 2021-22 as held. The month "
+               "only date of the n8n list (May 2022) was filed under 2021-22. "
+               "See the decision note, 2026-10-11."},
 }
 
 # ---------------------------------------------------------------------------
@@ -1522,14 +1550,18 @@ def s114_ledger_source(where, as_at) -> str:
                else "legacy format, no register_as_at") + ")")
 
 
-def s114_period_problems(new, tip, *, kind) -> tuple:
+def s114_period_problems(new, tip, *, kind, period=None) -> tuple:
     """(hard, soft, listed) of one S.114 year against the held edition: hard
     a held notice missing from the register (never removed by the loader,
-    unless named in S114_REMOVALS) or no notices left; soft a notice added,
-    a new year, or a held value changed (--acknowledge YEAR); listed the
-    date corrections, named removals and evidence changes."""
+    unless named in S114_REMOVALS, or named in S114_REFILES as moved out of
+    this year) or no notices left; soft a notice added (unless named in
+    S114_REFILES as moved into this year), a new year, or a held value
+    changed (--acknowledge YEAR); listed the date corrections, named
+    removals, named re-filings and evidence changes. The pairing of a
+    re-filing across its two years is checked by _refile_check."""
     hard, soft, listed = [], [], []
     removals = globals()["S114_REMOVALS"]
+    refiles = globals()["S114_REFILES"]
     if kind == "new":
         soft.append(f"a new year of notices ({len(new)}): s114_flag may "
                     "change; read the preview")
@@ -1554,6 +1586,15 @@ def s114_period_problems(new, tip, *, kind) -> tuple:
             removed.remove(r)
             added.remove(a)
     for r in list(removed):
+        rf = refiles.get((r[0], r[1].isoformat()))
+        if rf and period is not None and rf["from"] == period:
+            listed.append(f"named re-filing {r[0]} {r[1]} moves out of "
+                          f"{period} to {rf['to']} (S114_REFILES: "
+                          f"{rf['decided']}; {rf['why']}); refresh-latest "
+                          f"needs --accept-key-changes {period} and "
+                          f"{rf['to']}")
+            removed.remove(r)
+            continue
         named = removals.get((r[0], r[1].isoformat()))
         if named:
             listed.append(f"named removal {r[0]} {r[1]} (S114_REMOVALS: "
@@ -1568,6 +1609,13 @@ def s114_period_problems(new, tip, *, kind) -> tuple:
     if not new:
         hard.append("no notices left for the year; an empty year cannot be "
                     "stored as an edition")
+    for a in list(added):
+        rf = refiles.get((a[0], a[1].isoformat()))
+        if rf and period is not None and rf["to"] == period:
+            listed.append(f"named re-filing {a[0]} {a[1]} moves into {period} "
+                          f"from {rf['from']} (S114_REFILES: "
+                          f"{rf['decided']})")
+            added.remove(a)
     if added:
         soft.append(f"{len(added)} notice(s) added: "
                     + ", ".join(f"{c} {d}" for c, d in added)
@@ -1586,6 +1634,60 @@ def s114_period_problems(new, tip, *, kind) -> tuple:
         soft.append(f"{len(changed)} held notice(s) change: "
                     + "; ".join(changed))
     return hard, soft, listed
+
+
+def _refile_check(reg_by_period, held, periods) -> tuple:
+    """(hard {year: [msg]}, pairs [(from, to)]) of S114_REFILES against the
+    register read (reg_by_period {year: records}), the held tips (held {year:
+    records}) and the years this run compares (periods). A named re-filing
+    is pending when the held tips file the notice under 'from' only and the
+    register under 'to' only: both years must be compared, and the notice's
+    values (S114_VALUES) must be unchanged (a re-filing moves the row; a
+    value change is a separate step), and the pair is returned so the two
+    years are stored both or neither. Done (both under 'to' only), not
+    started (both under 'from' only) or absent from both: nothing to do.
+    Anything else is hard on both years: the register or the held editions
+    disagree with the named re-filing."""
+    hard, pairs = {}, []
+    for (code, d), rf in sorted(globals()["S114_REFILES"].items()):
+        key = (code, date.fromisoformat(d))
+        src, dst = rf["from"], rf["to"]
+
+        def years(by):
+            return sorted(y for y, recs in (by or {}).items()
+                          if key in _by_key(recs, S114_KEY))
+        ry, hy = years(reg_by_period), years(held)
+        if (ry, hy) in (([dst], [dst]), ([src], [src]), ([], [])):
+            continue         # done, not started, or not in this data
+
+        if ry == [dst] and hy == [src]:
+            missing = [y for y in (src, dst) if y not in periods]
+            if missing:
+                for y in (src, dst):
+                    hard.setdefault(y, []).append(
+                        f"named re-filing {code} {d} {src} -> {dst}: "
+                        f"{', '.join(missing)} not compared in this run; "
+                        "both years must be stored together")
+                continue
+            old = _by_key(held[src], S114_KEY)[key]
+            new = _by_key(reg_by_period[dst], S114_KEY)[key]
+            diffs = [c for c in S114_VALUES if not _same(old[c], new[c])]
+            if diffs:
+                for y in (src, dst):
+                    hard.setdefault(y, []).append(
+                        f"named re-filing {code} {d} {src} -> {dst} also "
+                        f"changes {', '.join(diffs)}; a re-filing moves the "
+                        "notice unchanged (change values in a separate step)")
+                continue
+            pairs.append((src, dst))
+            continue
+        for y in (src, dst):
+            hard.setdefault(y, []).append(
+                f"S114_REFILES names {code} {d} as moved from {src} to {dst}, "
+                f"but the register files it under {ry or 'no year'} and the "
+                f"held editions under {hy or 'no year'}; fix the register "
+                "or the named re-filing")
+    return hard, pairs
 
 
 # ---------------------------------------------------------------------------
@@ -2254,6 +2356,7 @@ class Plan:
     older: dict = dataclasses.field(default_factory=dict)
     info_args: dict = dataclasses.field(default_factory=dict)
     run_notes: list = dataclasses.field(default_factory=list)
+    refile_pairs: list = dataclasses.field(default_factory=list)
     nothing: bool = False
     rank_halt: "str | None" = None
 
@@ -2612,7 +2715,8 @@ def _prepare_s114(args, cur, writing) -> Plan:
         recs = reg.by_period.get(p, [])
         kind = "new" if p in plan.new else "revised"
         hard, soft, listed = s114_period_problems(
-            recs, held_recs.get(p) if kind == "revised" else None, kind=kind)
+            recs, held_recs.get(p) if kind == "revised" else None, kind=kind,
+            period=p)
         for line in listed:
             print(f"  {p}: {line}")
         gained = sorted({r["lad24cd"] for r in recs} - before)
@@ -2634,6 +2738,22 @@ def _prepare_s114(args, cur, writing) -> Plan:
                              "lsrc": lsrc, "n": len(reg.rows),
                              "unev": len(reg.unevidenced)}
         plan.by_period[p] = recs
+    rhard, plan.refile_pairs = _refile_check(reg.by_period, held_recs,
+                                             plan.periods)
+    for p, msgs in sorted(rhard.items()):
+        for msg in msgs:
+            print(f"  {p}: {msg}")
+        if p in plan.periods:
+            plan.hard.setdefault(p, []).extend(msgs)
+        else:
+            plan.run_notes.append(f"{p}: {'; '.join(msgs)}")
+            plan.rank_halt = plan.rank_halt or (
+                f"{p} is not compared in this run but a named re-filing "
+                f"needs it: {'; '.join(msgs)}")
+    for src, dst in plan.refile_pairs:
+        print(f"  re-filing: {src} and {dst} are stored together or not at "
+              "all; refresh-latest needs --accept-key-changes "
+              f"{src} {dst}")
     plan.before_flags = before
     plan.held_recs = held_recs
     plan.rule_codes = set()
@@ -2682,6 +2802,9 @@ def _finalize(plan, args, ack, reissue) -> tuple:
                 bad.append(plan.reissue[p] + "; a publisher reissue keeps its "
                            f"date: read the change note, then "
                            f"--accept-reissue {p}")
+        for src, dst in plan.refile_pairs:
+            if p in (src, dst):
+                n.append(f"named re-filing {src} -> {dst} (S114_REFILES)")
         if bad:
             problems[p] = bad
             continue
@@ -2689,6 +2812,15 @@ def _finalize(plan, args, ack, reissue) -> tuple:
         a = plan.info_args[p]
         infos[p] = (_efs_info(p, a, notes[p]) if plan.part == "efs"
                     else _s114_info(p, a, notes[p]))
+    # a re-filing is stored in both of its years or in neither
+    for src, dst in plan.refile_pairs:
+        for p, other in ((src, dst), (dst, src)):
+            if other in problems and p not in problems:
+                problems[p] = [f"its re-filing partner {other} is rejected; "
+                               f"a named re-filing {src} -> {dst} is stored "
+                               "in both years or in neither"]
+                infos.pop(p, None)
+                notes.pop(p, None)
     return problems, infos, notes
 
 

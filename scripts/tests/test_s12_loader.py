@@ -321,6 +321,8 @@ class Fixture(unittest.TestCase):
                 mock.patch.object(m, "S114_FILE", self.register), \
                 mock.patch.object(m, "S114_REMOVALS",
                                   getattr(self, "removals", {})), \
+                mock.patch.object(m, "S114_REFILES",
+                                  getattr(self, "refiles", {})), \
                 mock.patch.object(m, "log_run") as logged, \
                 contextlib.redirect_stdout(out):
             try:
@@ -989,6 +991,161 @@ class S114Load(MigrateBase):
                           "2023-24", "--commit"])
             self.assertEqual(editions(cur, "2023-24", "zz_s12_s114_editions"),
                              [(1, None, 1)])
+
+    # -- named re-filings (S114_REFILES) ------------------------------------
+
+    REFILE = {("E09000008", "2022-01-01"): {
+        "from": "2021-22", "to": "2020-21", "decided": "test",
+        "why": "test re-filing"}}
+    SLOUGH = register_row("Slough", "E06000039", "2021-07-02", "2021-22",
+                          "Overspend", "exact")
+    MOVED = register_row("Croydon", "E09000008", "2022-01-01", "2020-21",
+                         "Unlawful expenditure",
+                         "approximate - month only confirmed")
+
+    def with_slough(self, cur):
+        """Held: 2021-22 with Croydon 2022-01-01 and Slough (so the year is
+        not left empty when Croydon moves out)."""
+        self.migrated(cur)
+        self.write_register(ROWS_AS_HELD + [self.SLOUGH])
+        self.ok(cur, ["load", "--only", "s114", "--acknowledge", "2021-22",
+                      "--commit"])
+        self.ok(cur, ["refresh-latest", "--accept-key-changes", "2021-22",
+                      "--commit"])
+
+    def test_a_refile_unnamed_is_a_removal_and_stores_nothing(self):
+        with rolled_back(self.conn) as cur:
+            self.with_slough(cur)
+            self.write_register([ROWS_AS_HELD[0], self.MOVED, ROWS_AS_HELD[2],
+                                 self.SLOUGH], as_at="2026-10-11")
+            rc, text, _ = self.run_main(cur, ["load", "--only", "s114",
+                                              "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("never removes", text)
+            self.assertIn("--acknowledge 2020-21", text)
+            self.assertEqual(editions(cur, "2020-21", "zz_s12_s114_editions"),
+                             [(1, None, 1)])
+
+    def test_a_named_refile_moves_the_notice_in_both_years(self):
+        self.refiles = self.REFILE
+        with rolled_back(self.conn) as cur:
+            self.with_slough(cur)
+            self.write_register([ROWS_AS_HELD[0], self.MOVED, ROWS_AS_HELD[2],
+                                 self.SLOUGH], as_at="2026-10-11")
+            text, _ = self.ok(cur, ["load", "--only", "s114"])
+            self.assertIn("moves out of 2021-22 to 2020-21", text)
+            self.assertIn("moves into 2020-21 from 2021-22", text)
+            self.assertEqual(editions(cur, "2020-21", "zz_s12_s114_editions"),
+                             [(1, None, 1)])
+            text, _ = self.ok(cur, ["load", "--only", "s114", "--commit"])
+            self.assertEqual(editions(cur, "2020-21", "zz_s12_s114_editions"),
+                             [(1, None, 1), (2, 1, 2)])
+            self.assertEqual(editions(cur, "2021-22", "zz_s12_s114_editions"),
+                             [(1, None, 1), (2, 1, 2), (3, 2, 1)])
+            # the earlier editions keep the old year: nothing deleted
+            self.assertEqual(count(cur, "zz_s12_s114_editions",
+                                   "WHERE lad24cd = 'E09000008' AND "
+                                   "notice_date = '2022-01-01' AND "
+                                   "financial_year = '2021-22'"), 2)
+            rc, text, _ = self.run_main(cur, ["refresh-latest", "--commit"])
+            self.assertEqual(rc, "halt", text)
+            rc, text, _ = self.run_main(cur, ["refresh-latest",
+                                              "--accept-key-changes",
+                                              "2021-22", "--commit"])
+            self.assertEqual(rc, "halt", text)
+            # 2020-21 inserts, 2021-22 deletes: the deletes run first
+            self.ok(cur, ["refresh-latest", "--accept-key-changes", "2020-21",
+                          "--accept-key-changes", "2021-22", "--commit"])
+            cur.execute("SELECT financial_year FROM public.zz_s12_s114_live "
+                        "WHERE lad24cd = 'E09000008' AND notice_date = "
+                        "'2022-01-01'")
+            self.assertEqual(cur.fetchall(), [("2020-21",)])
+            self.assertEqual(count(cur, "zz_s12_s114_live"), 4)
+            self.assertTrue(m.status_ok(cur, "s12_s114"))
+            # done: a re-read with --recheck lists nothing and stores nothing
+            text, _ = self.ok(cur, ["load", "--only", "s114", "--recheck",
+                                    "2020-21", "--commit"])
+            self.assertNotIn("re-filing", text)
+
+    def test_a_refile_is_stored_in_both_years_or_neither(self):
+        self.refiles = self.REFILE
+        with rolled_back(self.conn) as cur:
+            self.with_slough(cur)
+            changed = ROWS_AS_HELD[0].replace("Overspend", "Overspending")
+            self.write_register([changed, self.MOVED, ROWS_AS_HELD[2],
+                                 self.SLOUGH], as_at="2026-10-11")
+            rc, text, _ = self.run_main(cur, ["load", "--only", "s114",
+                                              "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("re-filing partner 2020-21 is rejected", text)
+            self.assertEqual(editions(cur, "2020-21", "zz_s12_s114_editions"),
+                             [(1, None, 1)])
+            self.assertEqual(editions(cur, "2021-22", "zz_s12_s114_editions"),
+                             [(1, None, 1), (2, 1, 2)])
+
+    def test_a_refile_that_changes_a_value_is_hard(self):
+        self.refiles = self.REFILE
+        with rolled_back(self.conn) as cur:
+            self.with_slough(cur)
+            moved = self.MOVED.replace("Unlawful expenditure", "Overspend")
+            self.write_register([ROWS_AS_HELD[0], moved, ROWS_AS_HELD[2],
+                                 self.SLOUGH], as_at="2026-10-11")
+            rc, text, _ = self.run_main(cur, ["load", "--only", "s114",
+                                              "--acknowledge", "2020-21",
+                                              "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("also changes reason", text)
+            self.assertEqual(editions(cur, "2021-22", "zz_s12_s114_editions"),
+                             [(1, None, 1), (2, 1, 2)])
+
+    def test_refile_period_problems_and_check_are_pure(self):
+        import datetime as dt
+        base = {"reason": "x", "date_confirmed": "exact",
+                "attribution": "direct", "successor_codes": None,
+                "attribution_note": None, "evidence_url": None,
+                "evidence_title": None, "checked_on": None}
+        a = dict(base, lad24cd="E06000057", notice_date=dt.date(2022, 5, 23))
+        b = dict(base, lad24cd="E09000008", notice_date=dt.date(2021, 6, 1))
+        c = dict(base, lad24cd="E09000008", notice_date=dt.date(2022, 11, 22))
+        rf = {("E06000057", "2022-05-23"): {"from": "2021-22", "to": "2022-23",
+                                            "decided": "d", "why": "w"}}
+        with mock.patch.object(m, "S114_REFILES", rf), \
+                mock.patch.object(m, "S114_REMOVALS", {}):
+            hard, soft, listed = m.s114_period_problems(
+                [b], [a, b], kind="revised", period="2021-22")
+            self.assertFalse(hard)
+            self.assertTrue(any("moves out of 2021-22" in x for x in listed))
+            hard, _, _ = m.s114_period_problems([b], [a, b], kind="revised",
+                                                period="2020-21")
+            self.assertTrue(hard)        # not the named 'from' year
+            hard, soft, listed = m.s114_period_problems(
+                [a, c], [c], kind="revised", period="2022-23")
+            self.assertFalse(hard or soft)
+            self.assertTrue(any("moves into 2022-23" in x for x in listed))
+            _, soft, _ = m.s114_period_problems([a, c], [c], kind="revised",
+                                                period="2023-24")
+            self.assertTrue(soft)        # not the named 'to' year
+            reg = {"2021-22": [b], "2022-23": [a, c]}
+            held = {"2021-22": [a, b], "2022-23": [c]}
+            hard, pairs = m._refile_check(reg, held, ["2021-22", "2022-23"])
+            self.assertEqual((hard, pairs), ({}, [("2021-22", "2022-23")]))
+            hard, pairs = m._refile_check(reg, held, ["2021-22"])
+            self.assertEqual(sorted(hard), ["2021-22", "2022-23"])
+            self.assertEqual(pairs, [])
+            done = {"2021-22": [b], "2022-23": [a, c]}
+            self.assertEqual(m._refile_check(reg, done, []), ({}, []))
+            back = {"2021-22": [a, b], "2022-23": [c]}
+            # not started (both under 'from') and absent: nothing to do
+            self.assertEqual(m._refile_check(back, held, []), ({}, []))
+            self.assertEqual(m._refile_check({"2021-22": [b]},
+                                             {"2021-22": [b]}, []), ({}, []))
+            # the register moving it back after it was done: hard
+            hard, pairs = m._refile_check(back, done, ["2021-22", "2022-23"])
+            self.assertEqual(sorted(hard), ["2021-22", "2022-23"])
+            a2 = dict(a, reason="y")
+            hard, _ = m._refile_check({"2021-22": [b], "2022-23": [a2, c]},
+                                      held, ["2021-22", "2022-23"])
+            self.assertEqual(sorted(hard), ["2021-22", "2022-23"])
 
     def test_an_older_register_halts(self):
         with rolled_back(self.conn) as cur:
