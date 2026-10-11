@@ -223,9 +223,11 @@ def title_period_s2(title):
 
 
 def title_period_s5(title):
-    """'English indices of deprivation 2019' -> 2019."""
+    """'English indices of deprivation 2025' -> IoD2025, the vintage key the
+    S5 loader stores (la_imd_2025.vintage), so that a later IoD year sorts
+    above it as text (a bare 2030 would sort below 'IoD2025')."""
     m = re.search(r"english indices of deprivation (\d{4})", title.lower())
-    return m.group(1) if m else None
+    return f"IoD{m.group(1)}" if m else None
 
 
 def title_period_s13(title):

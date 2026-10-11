@@ -31,8 +31,9 @@ until then its file halts on the header, which is the intended stop.
 
 History (so the wording here stays truthful): the n8n workflow loaded the
 table on 2026-04-01 (pipeline_run_log 30) from a CSV converted in a chat
-session (imd_2025_la_summary.csv); its code turned a blank into 0, but no held
-value is affected: every held value equals the held File 10 v2 read again
+session (imd_2025_la_summary.csv); its code applied parseFloat and parseInt
+to the CSV (no zero default: a blank would have become NaN, then NULL), and
+every held value equals the held File 10 v2 read again
 (sha256 6c38a2fd3998e0ca..., data/raw/s5_imd, the same bytes as the
 data/reference copy and scripts/verify/src/imd2025_file10.xlsx).
 migrate-legacy (one-off) records the held vintage as edition 1 "as

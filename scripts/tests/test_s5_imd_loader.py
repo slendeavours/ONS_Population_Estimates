@@ -129,6 +129,10 @@ def rolled_back(conn, *, ddl=True, real_rows=False):
                                "table; refusing to run")
         cur.execute("CREATE TABLE public.zz_s5_live (LIKE "
                     "public.la_imd_2025 INCLUDING ALL)")
+        # the real la_imd_2025 gained its vintage column on 2026-10-11; the
+        # copy starts from the held shape, before the ddl under test adds it
+        cur.execute("ALTER TABLE public.zz_s5_live DROP COLUMN IF EXISTS "
+                    "vintage")
         if real_rows:
             cols = ", ".join(LIVE_COLS)
             cur.execute(f"INSERT INTO public.zz_s5_live ({cols}) "
@@ -307,7 +311,9 @@ class LiveColumn(Fixture):
                     self.assertEqual(want, ("numeric", p, s), col)
             self.assertEqual(live["la_name"][0], "text")
             self.assertEqual(live["source"][0], "text")
-            self.assertNotIn("vintage", live)    # the real DDL is Task 6's
+            # the real DDL ran on 2026-10-11 (the loader's own definition
+            # is checked on the copy in the tests above)
+            self.assertEqual(live["vintage"][0], "text")
 
     def test_ddl_preview_shows_the_alter_then_commit_then_status(self):
         with rolled_back(self.conn, ddl=False) as cur:

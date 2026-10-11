@@ -49,7 +49,8 @@ w1-read la_boundaries geometry rows=296 sha256-first32=3690c7a0b940d669e4a9c7eb1
   docProps modified 2025-11-14 12:48:06 UTC) is File 10 version 2: the publisher reissued File 10 on 14 November 2025 and
   noted it on 17 November 2025 after an ONS LSOA-to-LAD look-up error in the allocation of LSOAs (first published
   2025-10-30). The proof run below shows the live values equal v2 on every cell, so the chat-made CSV was made from v2 or from
-  values equal to it.
+  values equal to it. The workflow's Code node applied `parseFloat` and `parseInt` to the CSV text (it has no `|| 0`: a blank
+  would have become NaN and then NULL), and its upsert cast the values; the file has no blank cell.
 - **S3b Census 2021 TS054 tenure (`la_tenure_2021`).** Loaded 2026-04-01 01:55 UTC by the n8n workflow "Census 2021 TS054
   Tenure (S3b)", run-log row 29 (309 rows written, "static, runs once"). The workflow fetched the ONS beta API
   (`api.beta.ons.gov.uk`, TS054 version 4), coerced a missing cell with `|| 0`, built `total_households` from the parts
@@ -64,15 +65,17 @@ w1-read la_boundaries geometry rows=296 sha256-first32=3690c7a0b940d669e4a9c7eb1
 - **S7 LAD May 2024 boundaries (`la_boundaries`).** The spine of W1. Loaded by the n8n workflow "LA Boundaries (S7)" (an
   ArcGIS query then an upsert). The only run-log row, id 1 (2026-03-25 12:38:29 UTC, `source_07_boundaries`, 296 rows),
   predates the 15:13:11 UTC that every row carries by two and a half hours; the workflow's "Log Run" node is a SELECT and
-  writes nothing, so a later run or step that was not logged wrote the rows. After its upsert the workflow also ran
+  writes nothing (re-checked on 2026-10-11 by reading the workflow's nodes read-only from n8n: `SELECT agent_name, status,
+  rows_written, started_at FROM pipeline_run_log ORDER BY started_at DESC LIMIT 1`; the upsert sets `loaded_at = NOW()`), so
+  a later run or step that was not logged wrote the rows. After its upsert the workflow also ran
   `DELETE FROM la_code_lookup WHERE change_type != 'current'` and re-inserted its own March 2026 list, which could have
   undone the July and August 2026 lookup fixes (its ArcGIS fetch still worked although the workflow was inactive). That
   workflow was retired on 2026-10-10 (its Code node, and the `la_code_lookup` DELETE and
   INSERT nodes, now stop with an error naming the new loader; `scripts/n8n_retire_no_loader_sources.py`). The new loader
   never writes `la_code_lookup` and never deletes or updates a `la_boundaries` row (an AST gate, S7 gate 16).
 - **The registry and METHODOLOGY caveat "Simplified to approximately 20% of original vertex count for web performance" for
-  S7 was unsupported and is removed in Task 7** (it is still in `scripts/backfill_source_registry.py` and
-  `docs/METHODOLOGY.md` as this note is written). The workflow's code does no simplification, and the proof below shows
+  S7 was unsupported and was removed on 2026-10-11** (Task 7: `scripts/backfill_source_registry.py`, `docs/METHODOLOGY.md`
+  and the map viewer's text). The workflow's code does no simplification, and the proof below shows
   that all 296 stored shapes are identical, as canonical JSON text and as `jsonb`, to the publisher's generalised
   (BGC, clipped to the coast) layer as published, England only.
 

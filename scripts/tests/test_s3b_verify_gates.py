@@ -1,8 +1,8 @@
 """Tests that the real-table gates of s3b_tenure_editions_verify fail on a
 short, empty, drifted or unmigrated state. The gate bodies (real_*) take a
 spec, so they are called here against the throwaway zz_s3b_* tables (created
-inside a transaction that is always rolled back); no real table is touched,
-and the S3b editions table is never created. Every test ends in a rollback
+inside a transaction that is always rolled back); no real table is written
+(test_the_gates_leave_the_real_tables_as_they_were compares their row counts). Every test ends in a rollback
 (also on an exception), and tearDownClass reads the database on a separate
 read-only connection and fails if a zz_s3b table was left committed."""
 import contextlib
@@ -34,12 +34,21 @@ class VerifyGates(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.conn = get_conn()
+        # a second, read-only view of committed state: what other sessions
+        # see, taken before any scenario runs
+        cls.conn2 = get_conn()
+        cls.conn2.set_session(readonly=True)
+        cls.raw_second = cls.conn2.cursor()
+        cls.real_before = cls.real_state(None, cls.raw_second)
 
     @classmethod
     def tearDownClass(cls):
         try:
             cls.conn.rollback()
             cls.conn.close()
+            cls.raw_second.close()
+            cls.conn2.rollback()
+            cls.conn2.close()
         finally:
             left = [t for t in v.leftovers() if t.startswith("zz_s3b")]
             if left:
@@ -124,9 +133,36 @@ class VerifyGates(unittest.TestCase):
         self.assertIn("GATE 98 y: FAIL", text)
         self.assertNotIn("pending", text)
 
-    def test_the_real_editions_table_does_not_exist_yet(self):
-        # read-only: nothing has created it
-        self.assertFalse(v.exists(self.cur))
+    def test_the_gates_leave_the_real_tables_as_they_were(self):
+        """The real tables (live, editions, ledger) hold the same rows after
+        the throwaway scenarios as before them; only the zz_s3b copies were
+        touched. The real editions table exists since the first load of
+        2026-10-11."""
+        self.assertTrue(v.exists(self.cur, ZZ))
+        self.assertNotEqual(ZZ.editions_table, v.REAL.editions_table)
+        self.assertTrue(ZZ.editions_table.startswith("zz_s3b_"))
+        self.assertTrue(ZZ.live_table.startswith("zz_s3b_"))
+        self.seed()
+        self.assertEqual(self.real_state(self.cur), type(self).real_before)
+        self.assertEqual(self.real_state(self.cur, self.raw_second),
+                         type(self).real_before)
+
+    @staticmethod
+    def real_state(cur, other=None):
+        """Row counts of the three real relations, None where one does not
+        exist. `other` is a second cursor on a separate connection, which
+        sees only committed state."""
+        cur = other if other is not None else cur
+        state = {}
+        for name in (v.REAL.live_table, v.REAL.editions_table,
+                     v.REAL.editions_table + "_file_checks"):
+            cur.execute("SELECT to_regclass(%s)", (f"public.{name}",))
+            if cur.fetchone()[0] is None:
+                state[name] = None
+                continue
+            cur.execute(f"SELECT count(*) FROM public.{name}")
+            state[name] = cur.fetchone()[0]
+        return state
 
     def plant(self, sql, fn, needle):
         self.seed()

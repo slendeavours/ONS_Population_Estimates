@@ -16,26 +16,25 @@ The top of this list is the documentation debt.
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
 | `hss_lens` | 20 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 20 | an explicit dual-lens note in the source documentation |
-| `n8n_workflow_name` | 16 | the n8n workflow that runs the source, where one does |
+| `n8n_workflow_name` | 17 | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
-| `verification_checks` | 13 | the source's verification suite and its documented check count |
-| `source_doc_path` | 12 | a source documentation file — the single largest gap for undocumented sources |
 | `detected_period_type` | 11 | — |
-| `join_path` | 10 | the build script's geography resolution step |
+| `verification_checks` | 10 | the source's verification suite and its documented check count |
 | `api_endpoint` | 9 | the build script or node documentation, where acquisition is an API |
-| `revises_back_series` | 9 | — |
+| `source_doc_path` | 9 | a source documentation file — the single largest gap for undocumented sources |
 | `publication_window` | 8 | the publisher's stated release window |
-| `build_script_path` | 7 | the build script, if it is in the published tree |
-| `revision_note` | 7 | — |
-| `caveats` | 5 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
-| `series_name` | 5 | the publisher's dataset or table title, as named in a source documentation file |
-| `known_gotchas` | 4 | a source documentation file — acquisition traps are only known once written down |
+| `join_path` | 7 | the build script's geography resolution step |
+| `revises_back_series` | 6 | — |
+| `build_script_path` | 4 | the build script, if it is in the published tree |
+| `caveats` | 4 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `landing_page_url` | 4 | the publisher's landing page, recorded in a source or node documentation file |
+| `revision_note` | 4 | — |
 | `cadence_months` | 3 | the publisher's stated cadence, where it is regular enough to express in months |
-| `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
+| `series_name` | 3 | the publisher's dataset or table title, as named in a source documentation file |
 | `completeness_note` | 2 | the source documentation's coverage statement |
+| `known_gotchas` | 2 | a source documentation file — acquisition traps are only known once written down |
 
-Total: 276 null fields across 26 published sources.
+Total: 251 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -118,26 +117,16 @@ Total: 276 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `series_name` | the publisher's dataset or table title, as named in a source documentation file |
 | `auth_env_var` | the build script, where the source needs a credential |
-| `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
 | `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
-| `build_script_path` | the build script, if it is in the published tree |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
-| `caveats` | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `latest_period_loaded` | the check job, or the source documentation's 'month loaded' field |
-| `revises_back_series` | — |
-| `revision_note` | — |
 
-**Note.** Mechanics established 2026-08-14. Census 2021 tables are retrievable from the NOMIS API, which responds and is machine-readable. Cadence makes this close to academic: the next census is 2031, so detection will not fire for years.
+**Note.** Mechanics established 2026-08-14. Census 2021 tables are retrievable from the NOMIS API, which responds and is machine-readable. Cadence makes this close to academic: the next census is 2031, so detection will not fire for years. Held (2026-10-11): la_tenure_2021, 296 authorities and one census (2021), the latest-edition layer of la_tenure_2021_editions (edition 1 as loaded) with a file-check ledger. No reader in W1, the export or the map. scripts/s3b_tenure_editions.py loads it from the NOMIS API (or --file with the definition) in preview by default.
 
 ### S4
 
@@ -156,24 +145,16 @@ Total: 276 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `series_name` | the publisher's dataset or table title, as named in a source documentation file |
 | `auth_env_var` | the build script, where the source needs a credential |
-| `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
-| `build_script_path` | the build script, if it is in the published tree |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `latest_period_loaded` | the check job, or the source documentation's 'month loaded' field |
-| `revises_back_series` | — |
-| `revision_note` | — |
 
-**Note.** Mechanics established 2026-08-14. The English indices of deprivation collection resolves through the GOV.UK content API. Detection is automatable, though a new IMD edition is a deliberate pipeline decision rather than a routine refresh.
+**Note.** Mechanics established 2026-08-14. The English indices of deprivation collection resolves through the GOV.UK content API. Detection is automatable, though a new IMD edition is a deliberate pipeline decision rather than a routine refresh. Held (2026-10-11): la_imd_2025, 296 authorities and one vintage (IoD2025, File 10 v2), the latest-edition layer of la_imd_2025_editions (edition 1 as loaded) with a file-check ledger. W1 and the map read imd_rank_of_average_rank. scripts/s5_imd_editions.py loads it from the GOV.UK page (or --file) in preview by default. check_sources compares the newest page year as IoD<year> with latest_period_loaded.
 
 ### S6
 
@@ -197,21 +178,14 @@ Total: 276 null fields across 26 published sources.
 | `cadence_months` | the publisher's stated cadence, where it is regular enough to express in months |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
 | `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
-| `build_script_path` | the build script, if it is in the published tree |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `latest_period_loaded` | the check job, or the source documentation's 'month loaded' field |
-| `revises_back_series` | — |
-| `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** Mechanics established 2026-08-14. The Open Geography Portal exposes an ArcGIS REST service list — 3,906 services, machine-readable, searchable for LAD*BGC vintages. Detection is automatable. Ingestion is heavily gated: changing the boundary vintage re-bases every join in the pipeline and is a deliberate decision, never a routine refresh.
+**Note.** Mechanics established 2026-08-14. The Open Geography Portal exposes an ArcGIS REST service list — 3,906 services, machine-readable, searchable for LAD*BGC vintages. Detection is automatable. Ingestion is heavily gated: changing the boundary vintage re-bases every join in the pipeline and is a deliberate decision, never a routine refresh. Held (2026-10-11): la_boundaries, 296 English districts and one vintage (May 2024 BGC, source_date 2024-05-01), the latest-edition layer of la_boundaries_editions (edition 1 as loaded) with a file-check ledger. The vintage was settled from load provenance and is now proved against the publisher's layer, geometry included. The code list is not identical across LAD vintages: December 2025 and May 2026 carry E08000038 and E08000039 for E08000016 and E08000019, and are redrawn on all 294 shared districts. scripts/s7_boundaries_editions.py loads and previews it; it never rebuilds the W1 spine.
 
 ### S8
 

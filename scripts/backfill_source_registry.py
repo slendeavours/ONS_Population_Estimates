@@ -162,9 +162,102 @@ SOURCES = [
         publisher="ONS",
         acquisition_method="manual",
         cadence="periodic", cadence_months=120,
-        publication_window="Decennial",
+        series_name=("Census 2021 TS054: Tenure (households), NOMIS dataset "
+                     "NM_2072_1"),
+        publication_window=(
+            "Decennial. Census Day was 21 March 2021; the NOMIS dataset's "
+            "FirstReleased and LastUpdated are both 2023-01-05 09:30:00"),
         target_table="la_tenure_2021", geography_level="LAD24",
-        completeness_note=("No source documentation file exists. " + CAUTIOUS),
+        join_path=(
+            "Rows are keyed on the publisher's GEOGRAPHY_CODE for the "
+            "geography type 'local authorities: district / unitary (as of "
+            "April 2023)'. Source 3b is declared 'old' in "
+            "scripts/geography.py: NOMIS returns E08000016 and E08000019 for "
+            "Barnsley and Sheffield (9 rows each) and never E08000038 or "
+            "E08000039. Codes resolve through geography.resolve and each "
+            "canonical code must be in la_boundaries; England (E06 to E09) "
+            "is stored, Wales (W06) is read and ignored. The four 2023 "
+            "unitary authorities (Cumberland, Westmorland and Furness, "
+            "Somerset, North Yorkshire) are on their own codes in this "
+            "geography type and are never re-based from predecessor "
+            "districts."),
+        build_script_path="scripts/s3b_tenure_editions.py",
+        source_doc_path="docs/s3b_tenure_source.md",
+        known_gotchas=(
+            "Traps. (1) The tenure codelist holds aggregate codes beside the "
+            "nine published categories: 1001 (Owned), 1002 (Shared "
+            "ownership), 1003 (Social rented), 1004 (Private rented), 9996 "
+            "(Owns with a mortgage or loan or shared ownership) and 9997 "
+            "(Private rented or lives rent free) are derived aggregates with "
+            "children. The loader looks each category up by exact name in "
+            "the dataset's own codelist (the nine are codes 0 to 8) and "
+            "halts if a part's code is an aggregate. (2) The geography type "
+            "decides the codes: the 2023-boundaries type gives the four "
+            "2023 unitaries on their own codes; a type on 2021 boundaries "
+            "would give their predecessor districts. Every CSV row's "
+            "GEOGRAPHY_TYPE must be exactly the 2023 type. (3) The "
+            "publisher's own total ('Total: All households') is stored and "
+            "the eight parts must sum to it on every authority; the total "
+            "is never built from the parts. The n8n load built it, coerced a "
+            "missing cell to 0 with || 0, and re-based the four 2023 "
+            "unitaries from their predecessors. (4) The CSV and definition "
+            "bytes are API output (the definition carries the time it was "
+            "prepared), so the content hash decides unchanged, not the file "
+            "hash. (5) social_rented_total and private_rented_total are "
+            "generated columns and are never written."),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s3b_tenure_editions_verify.py",
+            "checks": 17,
+            "first_load": "2026-10-11",
+            "migration_proof": ("migrate-legacy: the held NOMIS reply "
+                                "(NM_2072_1, 2,862 rows, 296 English and 22 "
+                                "Welsh authorities) read again reproduces "
+                                "every live count, 296 x 9 = 2,664, 0 "
+                                "differences; the eight parts sum to the "
+                                "publisher's total on all 296"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an identity, geography type, category code, blank "
+                     "or total mismatch or an older definition, rejects a "
+                     "reissue of the held census unless named with "
+                     "--accept-reissue, and never lets another census into "
+                     "the live table"),
+            "retired": ("the n8n workflow 'Census 2021 TS054 Tenure (S3b)' "
+                        "is retired (its Code node throws, 2026-10-10); it "
+                        "read the ONS beta API, coerced a missing cell with "
+                        "|| 0, built the total from the parts and re-based "
+                        "four unitaries")},
+        revises_back_series=False,
+        revision_note=(
+            "No revision of the published figures has been seen. NOMIS "
+            "LastUpdated read 2023-01-05 09:30:00 on 2026-10-10 and again on "
+            "2026-10-11 with identical content, and the 2026-08-20 extract "
+            "agrees on every count. Census counts are not expected to "
+            "change; a later LastUpdated with different content, or the "
+            "same LastUpdated with different content, stops the load unless "
+            "--accept-reissue names the year, and an accepted reissue is "
+            "stored as the next edition (la_tenure_2021_editions) and "
+            "reaches the live table only through refresh-latest. The four "
+            "rows corrected on 2026-08-20 were this pipeline's own error "
+            "(the re-basing), not a publisher revision. Record: "
+            "docs/decisions/2026-10-10-reference-trio-editions-first-load.md."),
+        caveats=[
+            "The counts are households (the Census 2021 tenure of household "
+            "classification, as at Census Day, 21 March 2021), England only, "
+            "on the April 2023 local authority boundaries. total_households "
+            "is the publisher's own total. social_rented_total and "
+            "private_rented_total are generated by the database from their "
+            "two parts; they are not published figures.",
+            "The source column of la_tenure_2021 carries two variants: "
+            "'ONS Census 2021 TS054 Tenure, Nomis NM_2072_1, Census Day 21 "
+            "March 2021' on 292 rows and 'ONS Census 2021 TS054 Tenure, "
+            "Nomis NM_2072_1, 2023 local authority boundaries' on the 4 rows "
+            "reloaded on 2026-08-20. They are kept as provenance and are "
+            "not compared.",
+            "Census counts carry the publisher's disclosure control "
+            "(targeted record swapping and small changes to some counts), "
+            "which can make small differences between tables."],
+        latest_period_loaded="2021",
         refresh_tier="C", status="active",
         publish_github=True, publish_map=False,
     ),
@@ -296,19 +389,97 @@ SOURCES = [
         publisher="MHCLG",
         acquisition_method="manual",
         cadence="periodic", cadence_months=60,
-        publication_window="Every ~5 years",
+        series_name=("English indices of deprivation 2025, File 10: Local "
+                     "Authority District summaries - lower tier"),
+        publication_window=(
+            "Every ~5 years (collection: 2010, 2015, 2019, 2025). IoD2025 "
+            "was first published on 30 October 2025; File 10 was reissued "
+            "as v2 on 14 November 2025 (page note of 17 November 2025)"),
         target_table="la_imd_2025", geography_level="LAD24",
-        n8n_workflow_name="Workflow 1",
-        caveats=["IMD 2025 is used: MHCLG English Indices of Deprivation "
-                 "2025, File 10 Local Authority District Summaries "
-                 "(lower-tier) v2, published 30 October 2025. Verified "
-                 "against the published file at 296 of 296 authorities on "
-                 "2026-08-20. An earlier caveat stating that IMD 2019 was "
-                 "used was wrong and understated the data actually held.",
-                 "imd_rank_of_average_rank ranks LAs from 1 (most deprived) "
-                 "to 296 (least deprived) on the average rank of constituent "
-                 "LSOAs."],
-        completeness_note=("No source documentation file exists. " + CAUTIOUS),
+        join_path=(
+            "Rows are keyed on the publisher's 'Local Authority District "
+            "code (2024)', 296 districts (E06 to E09). Source 5 is declared "
+            "'old' in scripts/geography.py: File 10 carries Barnsley and "
+            "Sheffield as E08000016 and E08000019 and never E08000038 or "
+            "E08000039. Codes resolve through geography.resolve and each "
+            "canonical code must be in la_boundaries. W1 and the map read "
+            "imd_rank_of_average_rank only."),
+        build_script_path="scripts/s5_imd_editions.py",
+        source_doc_path="docs/s5_imd_source.md",
+        known_gotchas=(
+            "File 10 has no cover sheet and its Notes sheet is empty, so "
+            "nothing in the workbook says which release it is. The loader "
+            "relies on the exact sheet set (11), the exact IMD header (the "
+            "last four measures are named 'IMD25 - ...', which ties the "
+            "file to IoD2025), the 296 English district rows and docProps "
+            "modified (2025-11-14 12:48:06 UTC for v2), which is also the "
+            "file's rank; the release page's attachment title corroborates. "
+            "A 'v2' in a file name is not evidence. Traps. (1) Five of the "
+            "ten measures are ranks and ties share the lowest rank: the 104 "
+            "districts with no LSOA in the most deprived 10% share "
+            "imd_rank_of_proportion 193 and the 15 with an extent of 0 "
+            "share imd_rank_of_extent 282, so those two columns are not "
+            "permutations of 1 to 296. (2) The published zeros stay 0 (104 "
+            "and 15). (3) Ranks run 1 (most deprived) to 296 among the 296 "
+            "districts of the lower-tier file, not 317. (4) The summary "
+            "measures differ by design (average rank, average score, "
+            "proportion in the most deprived 10%); W1 reads the rank of "
+            "average rank. (5) la_imd_2025.vintage is 'IoD2025' on every "
+            "row and a CHECK refuses another value: a different IoD year is "
+            "stored as editions only, and adopting one is a deliberate "
+            "change to that table's CHECK and W1's layer, decided by Scott."),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s5_imd_editions_verify.py",
+            "checks": 17,
+            "first_load": "2026-10-11",
+            "migration_proof": ("migrate-legacy: the held File 10 v2 "
+                                "(docProps modified 2025-11-14) read again "
+                                "reproduces every live value, 296 "
+                                "authorities x 11 = 3,256 values (la_name "
+                                "and the ten measures), 0 differences"),
+            "gate": ("all gates must pass, including the rank of average "
+                     "rank that W1 and the map read; the loader halts "
+                     "before any write on an identity, header, blank, rank "
+                     "or geography failure or an older file, and a second "
+                     "vintage can never reach the live table"),
+            "retired": ("the n8n workflow 'Indices of Deprivation (S5)' is "
+                        "retired (its Code node throws, 2026-10-10); it "
+                        "loaded a CSV converted in a chat session")},
+        revises_back_series=True,
+        revision_note=(
+            "The publisher has reissued this file once: File 10 v2, "
+            "docProps modified 2025-11-14 12:48:06 UTC, noted on the "
+            "release page on 17 November 2025 after an ONS look-up error: "
+            "LSOA E01027305 (West Northamptonshire 048E) was allocated to "
+            "Cherwell instead of West Northamptonshire, and Files 10, 11 "
+            "and 14 were updated with 'minor changes' (Files 1 to 9 "
+            "'with no change to the data'). The IoD2025 page offers v2 "
+            "only; v1 is not held, so the size of the change is not "
+            "measured here. The table holds v2 (verified cell for cell). "
+            "A later reissue is stored as the next edition "
+            "(la_imd_2025_editions) and reaches the live table only "
+            "through refresh-latest. Record: "
+            "docs/decisions/2026-10-10-reference-trio-editions-first-load.md."),
+        caveats=[
+            "IoD2025, File 10 Local Authority District summaries (lower "
+            "tier), v2: first published on 30 October 2025, reissued as v2 "
+            "on 14 November 2025 (page note of 17 November 2025) after an "
+            "LSOA allocation error. Verified against the published file at "
+            "296 of 296 authorities, every column (3,256 values), "
+            "2026-10-11.",
+            "imd_rank_of_average_rank ranks the 296 districts from 1 (most "
+            "deprived) to 296 (least deprived) on the average rank of their "
+            "LSOAs (the publisher's 'IMD - Rank of average rank'). Ranks "
+            "tie: where districts share a value the rank is shared, as "
+            "published.",
+            "imd_proportion_most_deprived_10 is the proportion of a "
+            "district's LSOAs in the most deprived 10% of LSOAs nationally; "
+            "104 districts have none and hold the published 0. imd_extent "
+            "and imd_local_concentration are the publisher's 'IMD25 - "
+            "Extent' and 'IMD25 - Local concentration'; this pipeline does "
+            "not define them (see docs/s5_imd_source.md)."],
+        latest_period_loaded="IoD2025",
         refresh_tier="C", status="active",
         publish_github=True, publish_map=True,
     ),
@@ -469,26 +640,101 @@ SOURCES = [
         publisher="ONS",
         series_name="Local Authority Districts (May 2024) Boundaries UK BGC",
         acquisition_method="manual",
+        join_path=(
+            "la_boundaries.lad24cd is the canonical key of the pipeline and "
+            "the W1 spine (sql/w1/05_la_signals.sql reads FROM "
+            "la_boundaries); 20 foreign keys point at it (read 2026-10-11). "
+            "Source 7 is declared 'old' in scripts/geography.py: it defines "
+            "the canonical codes, E08000016 and E08000019 for Barnsley and "
+            "Sheffield, and is checked against itself. Nothing here maps a "
+            "code, and la_code_lookup is never written by the loader."),
+        build_script_path="scripts/s7_boundaries_editions.py",
+        source_doc_path="docs/s7_boundaries_source.md",
         known_gotchas=(
             "la_boundaries is LAD May 2024 BGC and carries E08000016 and "
             "E08000019 for Barnsley and Sheffield. The 1 April 2025 recode "
             "(SI 1328/2024) means sources published after that date may use "
             "E08000038 and E08000039 instead, and must resolve through "
-            "la_code_lookup as change_type = 'recode'."),
+            "la_code_lookup as change_type = 'recode'. The newer vintages "
+            "the publisher offers (December 2025 and May 2026, both BGC) "
+            "differ from May 2024 in more than the recode: read on "
+            "2026-10-11, both are redrawn files, with different geometry, "
+            "LONG, LAT and Shape__Area on all 294 districts they share with "
+            "May 2024 (and 87 MultiPolygon and 209 Polygon features, where "
+            "May 2024 has 93 and 203). They are previewed, not stored. "
+            "Adopting either is Scott's decision: it re-bases W1's spine "
+            "and every foreign key, changes the map's geometry and flips "
+            "the canonical form of Barnsley and Sheffield. The loader "
+            "stores another vintage as editions only and never promotes it "
+            "to the live table, and never deletes or re-keys a "
+            "la_boundaries row. A change to the live vintage's own "
+            "geometry or names is rejected unless --acknowledge "
+            "2024-05-01."),
         cadence="periodic",
-        publication_window="On boundary changes",
+        publication_window=(
+            "On boundary changes. The May 2024 layer's lastEditDate is "
+            "2024-07-02 13:28:58 UTC; the service list offers later "
+            "vintages (December 2025: lastEditDate 2026-04-29; May 2026: "
+            "2026-09-09)"),
         target_table="la_boundaries", geography_level="LAD24",
-        caveats=["Simplified to approximately 20% of original vertex count "
-                 "for web performance.",
-                 "England only — 296 districts, unitary authorities and "
-                 "metropolitan boroughs."],
-        completeness_note=(
-            "The boundary vintage was settled from load provenance, not "
-            "inferred: la_boundaries.source_date is 2024-05-01 for all 296 "
-            "rows and the S7 run log note reads 'LA boundaries loaded — May "
-            "2024 BGC — England only'. The code list is identical across "
-            "LAD24 vintages, so the loaded data cannot adjudicate it alone. "
-            + CAUTIOUS),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s7_boundaries_editions_verify.py",
+            "checks": 19,
+            "first_load": "2026-10-11",
+            "migration_proof": ("migrate-legacy: the held GeoJSON of the "
+                                "publisher's May 2024 BGC layer (England, "
+                                "EPSG:4326) read again reproduces every "
+                                "live value, 296 districts x 5 = 1,480 "
+                                "cells (lad24nm, longitude, latitude, "
+                                "shape_area, geojson), 0 differences; all "
+                                "296 geometries are identical as canonical "
+                                "JSON text and as jsonb (93 MultiPolygon, "
+                                "203 Polygon)"),
+            "gate": ("all gates must pass, including the geometry the map "
+                     "reads and the foreign keys to la_boundaries (counted "
+                     "from the database, 0 orphan rows); the loader never "
+                     "writes la_code_lookup, never deletes or re-keys a "
+                     "la_boundaries row and never rebuilds an empty one, "
+                     "and rejects a change to the live vintage's names or "
+                     "geometry unless named with --acknowledge"),
+            "retired": ("the n8n workflow 'LA Boundaries (S7)' is retired "
+                        "(its Code node and its la_code_lookup DELETE and "
+                        "INSERT nodes stop with an error, 2026-10-10); it "
+                        "upserted la_boundaries and then replaced "
+                        "la_code_lookup's non-current rows with its own "
+                        "March 2026 list")},
+        revises_back_series=False,
+        revision_note=(
+            "The publisher issues boundaries as dated vintages rather than "
+            "revising a vintage, and the May 2024 layer has not changed: "
+            "its lastEditDate was 2024-07-02 13:28:58 UTC on 2026-10-10 and "
+            "again on 2026-10-11, with a byte-identical download. A "
+            "reissue of the live vintage (a later lastEditDate with "
+            "different content) would be stored as the next edition "
+            "(la_boundaries_editions) and reach the live table only "
+            "through refresh-latest with --acknowledge 2024-05-01. Another "
+            "vintage is stored as editions only. Record: "
+            "docs/decisions/2026-10-10-reference-trio-editions-first-load.md."),
+        caveats=[
+            "The shapes are the publisher's generalised (BGC) boundaries "
+            "as published, England only: the layer is described by the "
+            "publisher as '(BGC) Generalised (20m) - clipped to the "
+            "coastline (Mean High Water mark)'. This pipeline does not "
+            "simplify them: all 296 stored geometries are identical to the "
+            "publisher's layer queried in EPSG:4326 (checked 2026-10-11, "
+            "as canonical JSON text and as jsonb). An earlier caveat "
+            "saying they were simplified to about 20% of the original "
+            "vertex count had no support and was withdrawn.",
+            "England only: 296 districts, unitary authorities and "
+            "metropolitan boroughs (203 Polygon and 93 MultiPolygon). The "
+            "query asks for England only and the loader stores only E06 to "
+            "E09 codes.",
+            "The vintage is May 2024 (source_date 2024-05-01 on all 296 "
+            "rows), before the 1 April 2025 recode of Barnsley and "
+            "Sheffield, so the canonical codes are E08000016 and "
+            "E08000019."],
+        latest_period_loaded="2024-05-01",
         refresh_tier="C", status="active",
         publish_github=True, publish_map=True,
     ),
@@ -2311,7 +2557,14 @@ TIER_C_FINDINGS = {
         note=("Mechanics established 2026-08-14. Census 2021 tables are "
               "retrievable from the NOMIS API, which responds and is "
               "machine-readable. Cadence makes this close to academic: the "
-              "next census is 2031, so detection will not fire for years.")),
+              "next census is 2031, so detection will not fire for years."),
+        completeness_extra=(
+            " Held (2026-10-11): la_tenure_2021, 296 authorities and one "
+            "census (2021), the latest-edition layer of "
+            "la_tenure_2021_editions (edition 1 as loaded) with a "
+            "file-check ledger. No reader in W1, the export or the map. "
+            "scripts/s3b_tenure_editions.py loads it from the NOMIS API "
+            "(or --file with the definition) in preview by default.")),
     "4": dict(
         tier="B", method="api",
         url=("https://explore-education-statistics.service.gov.uk/"
@@ -2347,7 +2600,15 @@ TIER_C_FINDINGS = {
         note=("Mechanics established 2026-08-14. The English indices of "
               "deprivation collection resolves through the GOV.UK content "
               "API. Detection is automatable, though a new IMD edition is a "
-              "deliberate pipeline decision rather than a routine refresh.")),
+              "deliberate pipeline decision rather than a routine refresh."),
+        completeness_extra=(
+            " Held (2026-10-11): la_imd_2025, 296 authorities and one "
+            "vintage (IoD2025, File 10 v2), the latest-edition layer of "
+            "la_imd_2025_editions (edition 1 as loaded) with a file-check "
+            "ledger. W1 and the map read imd_rank_of_average_rank. "
+            "scripts/s5_imd_editions.py loads it from the GOV.UK page "
+            "(or --file) in preview by default. check_sources compares the "
+            "newest page year as IoD<year> with latest_period_loaded.")),
     "7": dict(
         tier="B", method="api",
         url="https://geoportal.statistics.gov.uk/",
@@ -2359,7 +2620,19 @@ TIER_C_FINDINGS = {
               "machine-readable, searchable for LAD*BGC vintages. Detection "
               "is automatable. Ingestion is heavily gated: changing the "
               "boundary vintage re-bases every join in the pipeline and is a "
-              "deliberate decision, never a routine refresh.")),
+              "deliberate decision, never a routine refresh."),
+        completeness_extra=(
+            " Held (2026-10-11): la_boundaries, 296 English districts and "
+            "one vintage (May 2024 BGC, source_date 2024-05-01), the "
+            "latest-edition layer of la_boundaries_editions (edition 1 as "
+            "loaded) with a file-check ledger. The vintage was settled from "
+            "load provenance and is now proved against the publisher's "
+            "layer, geometry included. The code list is not identical "
+            "across LAD vintages: December 2025 and May 2026 carry "
+            "E08000038 and E08000039 for E08000016 and E08000019, and are "
+            "redrawn on all 294 shared districts. "
+            "scripts/s7_boundaries_editions.py loads and previews it; it "
+            "never rebuilds the W1 spine.")),
     "8": dict(
         tier="A", method="api",
         status="superseded", superseded_by="8b",
@@ -2720,7 +2993,11 @@ def backfill_run_log_source_code(cur, register_codes):
 # scripts/s13_lahs_editions.py); Workflow 1 only reads the tables. S12 and
 # S17: their n8n loader workflows were retired on 2026-10-10 (the loaders are
 # scripts/s12_financial_stress_editions.py and scripts/s17_marac_editions.py).
+# S5: its n8n loader workflow was retired on 2026-10-10 (the loader is
+# scripts/s5_imd_editions.py); its row said Workflow 1, which only reads the
+# table. S3b and S7 never named a workflow in the registry.
 CLEAR_FIELDS = {"4": ("n8n_workflow_name",),
+                "5": ("n8n_workflow_name",),
                 "10": ("n8n_workflow_name",),
                 "12": ("n8n_workflow_name",),
                 "13": ("n8n_workflow_name",),

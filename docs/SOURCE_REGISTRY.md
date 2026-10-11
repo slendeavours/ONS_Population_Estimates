@@ -283,8 +283,8 @@ Detection uses the per-period `source` column the target table already
 records, where it has one. That column says which file each loaded period
 actually came from, so a republished file is visible from the link list alone
 — the `-Revised` suffix on the DRD filenames is the whole signal, and nothing
-is downloaded. Fourteen sources are currently flagged as revising
-(`revises_back_series` true): S1, S1b, S2, S4, S6, S8b, S9a, S9b, S12, S13, S15, S18, S22 and S23.
+is downloaded. Fifteen sources are currently flagged as revising
+(`revises_back_series` true): S1, S1b, S2, S4, S5, S6, S8b, S9a, S9b, S12, S13, S15, S18, S22 and S23.
 
 S18 is no longer immune by accident: every edition republishes the full back
 series, but since 2026-10-01 the loader does not overwrite held rows. A revision
@@ -380,6 +380,25 @@ cannot see a change inside a held EFS page or a reissued workbook. W1 and map
 inputs (S12 as two flags). Records:
 `docs/decisions/2026-10-10-s12-editions-first-load.md` and
 `docs/decisions/2026-10-10-s17-editions-first-load.md`.
+
+S5 (IMD 2025 File 10), S3b (Census 2021 TS054 tenure) and S7 (LAD May 2024
+boundaries, the W1 spine) are on the same engine since 2026-10-11, each with an
+editions table and a file-check ledger; the live tables `la_imd_2025`,
+`la_tenure_2021` and `la_boundaries` are their latest-edition layers. They are
+reference data with one vintage each: a different vintage (IoD2030, Census 2031,
+LAD May 2026) is stored as editions only and never reaches the live table
+through a load. S5 is flagged as revising because the publisher reissued File 10
+as v2 (14 November 2025); S3b and S7 are not (`revises_back_series` false: no
+revision seen; a reissue would be stored as the next edition). The registry
+rows carry the loader, the source note, the gotchas, the caveats and the
+verification record, and none names an n8n workflow (all three were retired on
+2026-10-10). `latest_period_loaded` is `IoD2025`, `2021` and `2024-05-01`; S5's
+was blank, which had made its check inconclusive, and `check_sources.py` now
+reads the newest IoD page as `IoD<year>` so that a later IoD year compares above
+it. S7's caveat that the shapes were simplified to about 20% of the original
+vertex count had no support and is replaced: they are the publisher's
+generalised (BGC) boundaries as published. Records:
+`docs/decisions/2026-10-10-reference-trio-editions-first-load.md`.
 
 S11 (the CQC register) is on the same engine since 2026-10-09 but is
 snapshots, not revisions: each monthly file is a dated copy of the register

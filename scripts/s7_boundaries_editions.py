@@ -6,8 +6,9 @@ The live table la_boundaries keeps its name, key (lad24cd) and columns and
 holds one vintage: May 2024 (source_date 2024-05-01). It is the W1 spine
 (sql/w1/05_la_signals.sql reads FROM la_boundaries), the map's geometry
 (scripts/export_map_data.py exports lad24cd and geojson) and the target of
-18 foreign keys (read 2026-10-11: la_asylum_support, la_immigration_groups
-and sixteen editions tables). This loader therefore never deletes, re-keys,
+20 foreign keys (read 2026-10-11: la_asylum_support, la_immigration_groups
+and eighteen editions tables, the S5 and S3b ones among them; 18 before
+those two were added). This loader therefore never deletes, re-keys,
 inserts or rebuilds a live row: the only write to la_boundaries is
 refresh-latest's UPDATE of the value columns and loaded_at on rows that
 already exist, and that needs --acknowledge 2024-05-01 (it changes the

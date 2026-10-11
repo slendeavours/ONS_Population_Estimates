@@ -69,6 +69,15 @@ addendum in [2026-10-10-s13-editions-first-load.md](2026-10-10-s13-editions-firs
 
 The repo has no requirements file (none in `ONS_Population_Estimates` or `ucws-repo`). `xlrd==2.0.1`, which reads the five SafeLives `.xls` years for S17, is pinned only in prose (CHANGELOG, `docs/s17_marac_source.md`, the S17 decision note). Not created, to keep deliverables minimal; if one is ever created it should list `xlrd==2.0.1`, `openpyxl` and `psycopg2`.
 
+### 7. For Scott: adopting a newer LAD boundary vintage (opened 2026-10-11, not decided)
+
+The publisher offers LAD December 2025 and May 2026 BGC layers. Previewed and held on disk, not stored: codes differ by the
+Barnsley/Sheffield recode only (E08000016/19 to E08000038/39, no names changed), but both are **redrawn on all 294 shared
+districts** (geometry, `LONG`, `LAT` and `Shape__Area`), so adopting one re-bases W1's spine and the 20 foreign keys to
+`la_boundaries`, changes the map's geometry on every district and flips the canonical form of the two areas. The loader stores
+such a vintage as editions only and never promotes it. See [2026-10-10-reference-trio-editions-first-load.md](2026-10-10-reference-trio-editions-first-load.md)
+and `docs/s7_boundaries_source.md`. Likewise a new IoD year can only reach `la_imd_2025` by a deliberate change to its CHECK.
+
 ### 5. For Scott: S12 section 114 register and Bexley (opened 2026-10-10)
 
 Five points from the S.114 evidence work and the withdrawn-only rule; the first three decided by Scott on 2026-10-11; see
