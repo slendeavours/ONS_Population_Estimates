@@ -1,9 +1,15 @@
 -- S24 - RSH register of providers and regulatory judgements
 --
--- Generated from scripts/s24_rsh_register_build.py on 2026-08-14. That script is the
--- authority: it executes this DDL at load time, so this file is a
--- readable copy for review and not a second definition to maintain.
--- Additive only - CREATE TABLE IF NOT EXISTS, every ALTER guarded.
+-- HISTORICAL DDL. Generated from scripts/historical/s24_rsh_register_build.py on
+-- 2026-08-14, which is retired (its load ran twice, run-log ids 96 and 101).
+-- The three live tables below are now the latest-edition layers of
+-- rsh_registered_providers_editions, rsh_regulatory_judgements_editions and
+-- rsh_enforcement_notices_editions (append-only, each with a file-check
+-- ledger <editions table>_file_checks); all are created and kept by
+-- scripts/s24_rsh_register_editions.py (ddl). The live tables keep these
+-- names, keys and columns. The register keeps every snapshot; the judgements
+-- and notices tables hold the newest edition only. This file is a readable
+-- copy of the original definition, not what to run.
 
 CREATE TABLE IF NOT EXISTS rsh_registered_providers (
     snapshot_date       date        NOT NULL,

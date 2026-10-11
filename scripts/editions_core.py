@@ -18,7 +18,8 @@ Read side and refresh:
     sync_new         edition 1 'as loaded' for live periods with no editions
     refresh_latest   copy the latest edition into live, hash-guarded
     period_hashes    per-period content hash of the live or editions table
-    refuse_non_live  live_single_period: halt on a named period not in live
+    refuse_non_live  live_single_period / live_newest_period_only: halt on a
+                     named period not in live
 
 Extracted from s1_editions.py (create_schema, insert_edition, the chain
 validator in latest_edition, and the generic read/refresh pieces), compared
@@ -142,6 +143,19 @@ class EditionSpec:
     edition and refreshes as usual. Refused with refresh_key_changes (a
     one-vintage table never changes its key set by refresh). False keeps
     every statement and result as before.
+    live_newest_period_only: opt-in (default False), for a source where
+    every held file is a period and live holds the newest period only (S24's
+    judgements and notices). Two or more live periods halt latest_map (so
+    status, sync-new and refresh-latest). Every editions period other than
+    the live one is history (latest_map's history, status's 'history'):
+    information, not a fault and not new; sync-new never inserts it, and
+    refresh-latest refreshes the live period only and halts when
+    --accept-drift or --accept-key-changes names any other period. Key
+    changes between editions of the live period follow refresh_key_changes
+    as usual. period_editions replaces live with a new period newer than
+    the live one, and stores an older one as editions only
+    ('held-not-live'). Mutually exclusive with live_single_period. False
+    keeps every statement and result as before.
     """
     name: str
     live_table: str
@@ -162,6 +176,7 @@ class EditionSpec:
     refresh_key_changes: bool = False
     whole_period_cols: tuple = ()
     live_single_period: bool = False
+    live_newest_period_only: bool = False
 
     def __post_init__(self):
         for n in (self.name, self.live_table, self.editions_table,
@@ -225,6 +240,10 @@ class EditionSpec:
             raise ValueError(f"{self.name}: live_single_period with "
                              "refresh_key_changes is refused (a one-vintage "
                              "table never changes its key set by refresh)")
+        if self.live_newest_period_only and self.live_single_period:
+            raise ValueError(f"{self.name}: live_newest_period_only and "
+                             "live_single_period are mutually exclusive "
+                             "(choose one)")
 
     @property
     def whole_period_pairs(self) -> tuple:
@@ -496,17 +515,27 @@ class LatestMap(tuple):
     """latest_map's (tips, new_periods, chain_errors), unpacked as the plain
     3-tuple it always was, plus held_not_live: the editions periods absent
     from live, sorted (filled for a live_single_period spec only; [] for
-    every other spec, whose editions table is then not read for it)."""
+    every other spec, whose editions table is then not read for it), and
+    history: the same for a live_newest_period_only spec (the periods older
+    than, or otherwise not, the live one; [] for every other spec)."""
 
-    def __new__(cls, tips, new, errors, held_not_live=()):
+    def __new__(cls, tips, new, errors, held_not_live=(), history=()):
         obj = super().__new__(cls, (tips, new, errors))
         obj.held_not_live = list(held_not_live)
+        obj.history = list(history)
         return obj
+
+
+def one_live_period(spec: EditionSpec) -> bool:
+    """The spec keeps one period in live (live_single_period or
+    live_newest_period_only)."""
+    return spec.live_single_period or spec.live_newest_period_only
 
 
 def held_not_live_periods(cur, spec: EditionSpec) -> list:
     """Editions periods with no live rows, sorted as the database returns
-    them (live_single_period: vintages held as editions only)."""
+    them (live_single_period: vintages held as editions only;
+    live_newest_period_only: history)."""
     pc = spec.period_col
     cur.execute(f"SELECT DISTINCT e.{pc} FROM public.{spec.editions_table} e "
                 f"WHERE NOT EXISTS (SELECT 1 FROM public.{spec.live_table} l "
@@ -523,7 +552,9 @@ def latest_map(cur, spec: EditionSpec) -> tuple:
 
     Returned as a LatestMap; for a live_single_period spec its
     held_not_live lists the editions periods absent from live (neither new
-    nor a fault), and two or more live periods halt."""
+    nor a fault), and two or more live periods halt. For a
+    live_newest_period_only spec the same list is its history, and two or
+    more live periods halt."""
     pc = spec.period_col
     cur.execute(f"SELECT DISTINCT {pc} FROM public.{spec.live_table} "
                 "ORDER BY 1")
@@ -534,6 +565,11 @@ def latest_map(cur, spec: EditionSpec) -> tuple:
         halt(f"{spec.live_table}: live holds {len(periods)} periods "
              f"{[str(p) for p in periods]}; a live_single_period table holds "
              "one vintage only")
+    if spec.live_newest_period_only and len(periods) > 1:
+        halt(f"{spec.live_table}: live holds {len(periods)} periods "
+             f"{[str(p) for p in periods]}; a live_newest_period_only table "
+             "holds the newest period only (older periods are history in "
+             f"{spec.editions_table})")
     tips, new, errors = {}, [], {}
     for p in periods:
         try:
@@ -544,19 +580,28 @@ def latest_map(cur, spec: EditionSpec) -> tuple:
             errors[p] = str(e)
     held = (held_not_live_periods(cur, spec) if spec.live_single_period
             else ())
+    if spec.live_newest_period_only:
+        return LatestMap(tips, new, errors, (),
+                         held_not_live_periods(cur, spec))
     return LatestMap(tips, new, errors, held)
 
 
 def refuse_non_live(cur, spec: EditionSpec, periods, what: str) -> None:
-    """live_single_period: halt, naming them, when any of `periods` (CLI
-    strings or database values) is not the live period. Nothing for any
-    other spec or when periods is empty."""
-    if not spec.live_single_period or not periods:
+    """live_single_period or live_newest_period_only: halt, naming them,
+    when any of `periods` (CLI strings or database values) is not the live
+    period. Nothing for any other spec or when periods is empty."""
+    if not one_live_period(spec) or not periods:
         return
     cur.execute(f"SELECT DISTINCT {spec.period_col} "
                 f"FROM public.{spec.live_table}")
     live = sorted(str(r[0]) for r in cur.fetchall())
     other = sorted({str(p) for p in periods} - set(live))
+    if other and spec.live_newest_period_only:
+        halt(f"{what} {other}: not the live period "
+             f"({', '.join(live) or 'live is empty'}); {spec.name} keeps the "
+             "newest period in live and refreshes only that one (an older "
+             "period is history, stored as editions only and never "
+             "refreshed into live)")
     if other:
         halt(f"{what} {other}: not the live period "
              f"({', '.join(live) or 'live is empty'}); {spec.name} holds one "
@@ -646,7 +691,10 @@ def status(cur, spec: EditionSpec) -> dict:
 
     live_single_period specs only, an extra key held_not_live: editions
     periods absent from live (vintages held as editions only); information,
-    not a fault, so it does not affect ok. Other specs' dict is unchanged."""
+    not a fault, so it does not affect ok. live_newest_period_only specs
+    only, an extra key history: editions periods other than the live one;
+    information, not a fault, not new, so it does not affect ok. Other
+    specs' dict is unchanged."""
     lm = latest_map(cur, spec)
     tips, new, errors = lm
     drift, pending = [], []
@@ -679,6 +727,8 @@ def status(cur, spec: EditionSpec) -> dict:
            "forked": errors, "periods": len(counts), "ok": ok}
     if spec.live_single_period:
         out["held_not_live"] = sorted(lm.held_not_live)
+    if spec.live_newest_period_only:
+        out["history"] = sorted(lm.history)
     return out
 
 
@@ -1176,7 +1226,9 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
     Single vintage (opt-in, spec.live_single_period): only the live period
     is planned (as for every spec, only live periods are), and an
     accept_drift or accept_key_changes period that is not the live period
-    halts first, naming it (refuse_non_live).
+    halts first, naming it (refuse_non_live). Newest period only (opt-in,
+    spec.live_newest_period_only): the same; a history period is never
+    planned and naming one halts.
 
     Result: {'updated': {period: rows}, 'rows': n, 'drift_accepted': [...],
     'inserted': {period: rows}, 'deleted': {period: rows}} (inserted and

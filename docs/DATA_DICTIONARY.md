@@ -434,6 +434,45 @@ In the view, `is_active` means the location is in the **latest snapshot**; it do
 
 ---
 
+## RSH Register, Judgements and Enforcement Notices (S24)
+
+Source: Regulator of Social Housing (RSH), the monthly register of registered providers and the regulatory judgements and enforcement notices table. Entity-level: **no local authority geography**, not in `staging_la_signals`, not a map layer. Loaded by `scripts/s24_rsh_register_editions.py`; source note `docs/s24_rsh_register_source.md`.
+
+| Live table | Key | Holds |
+|---|---|---|
+| `rsh_registered_providers` | `snapshot_date`, `registration_number` | every held monthly snapshot (24 July, 17 August and 17 September 2026) |
+| `rsh_regulatory_judgements` | `registration_number`, `publication_date` | the newest judgements issue only (`edition_date` 2026-09-30, 311 rows) |
+| `rsh_enforcement_notices` | `registration_number`, `publication_date` | the newest issue only (2 rows) |
+
+Each live table has an append-only editions table (`rsh_registered_providers_editions`, `rsh_regulatory_judgements_editions`, `rsh_enforcement_notices_editions`, keyed on the live key plus `edition`) and a file-check ledger (`<editions table>_file_checks`). A period is a register `snapshot_date` or a judgements and notices `edition_date`. The older judgements issue (12 August 2026) is history in the editions tables, not in the live table.
+
+| Column | Type | Description |
+|---|---|---|
+| `organisation_name`, `registration_date`, `designation`, `corporate_form`, `notes` | text, date | The register's own columns. `designation` is Local authority, Non-profit or Profit. `notes` has text only for Pivotal Housing Association (24 July and 17 September snapshots). |
+| `landlord_name`, `landlord_type`, `status`, `publication_type`, `engagement_process`, `name_or_code_change`, `other_landlords` | text | The judgements table's columns, stored as published. `landlord_type` is Local Authority or Private Registered Provider. |
+| `consumer_grade`, `governance_grade`, `viability_grade` | text | C1 to C4, G1 to G4, V1 to V4, with `*` after a landlord designated on the register as for-profit (for example `C2*`). NULL where the file has `-`; the reason is in `null_reasons`. |
+| `rent_grade` | text | `Y` where the file has it; NULL where the file has `-` (305 of 311 rows). |
+| `*_grade_change`, `*_grade_date` | text, date | The publisher's change description and grade date beside each grade. |
+| `edition_date` | date | The issue date of the judgements file. |
+| `source_url`, `source_file`, `release_page_url`, `loaded_at` | | Provenance of the file the live row came from. |
+
+### null_reasons (editions tables only)
+
+`null_reasons` is jsonb `{column: reason}` on every editions row: a reason for every NULL value, never a bare NULL (rule 1.5). The live tables have no `null_reasons` column.
+
+| Reason | Meaning | 30 September issue |
+|---|---|---:|
+| `not_applicable_local_authority` | Governance or viability `-` on a Local Authority row. RSH's guidance says a local authority's grade is its consumer-standards view. Accepted by Scott, 2026-10-11 | 206 |
+| `not_assessed_yet` | Consumer `-` whose change text begins "Not assessed yet" (the publisher's own words) | 66 |
+| `marked_dash_no_reason` | Any other grade `-`: 305 rent cells and 27 cells on nine private providers. **Unexplained**: neither the file nor the guidance says what these mean | 332 |
+| `marked_dash` | A change, date or text cell `-` beside a flagged grade | 1,140 |
+| `blank` | An empty cell (3 in the judgements; the register's empty Notes cells) | 3 |
+| `publisher_text_none` | The publisher's text "None" in a descriptive column, kept verbatim | 573 |
+| `stored_text_none_not_from_file` | The 17 August 2026 register's `notes`: 1,578 cells held the text "None" (written by code not in the repo); NULL in edition 2 | |
+| `reason_not_recorded_as_loaded` | Edition 1 of a judgements or notices issue: the old build stored a bare NULL and recorded no reason; edition 2 holds the reasons | |
+
+Edition 1 is the data as held for every period (including the August register with its "None" notes); edition 2 of each judgements and notices issue has the reasons, and edition 2 of the 17 August register has the NULL notes. The live tables show the latest edition.
+
 ## Discharge Delays
 
 ### S9a — DRD (Acute Discharge Ready Date)

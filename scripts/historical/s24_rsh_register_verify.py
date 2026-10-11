@@ -13,10 +13,32 @@ its place and labelled as the substitute it is.
 Never commits. The idempotency check re-runs the real upserts inside a
 transaction rolled back in a finally block.
 
-Usage:
+Retired on 2026-10-11: replaced by scripts/s24_rsh_register_editions_verify.py
+(see the RETIRED message below).
+
+Usage (historical; the script now stops at once):
     python scripts/s24_rsh_register_verify.py
 """
 import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s24_rsh_register_editions_verify.py (21 gates). The old S24 build '
+    '(s24_rsh_register_build.py) and this seven-gate verify script were committed together on 2026-08-14 '
+    '(ad8e349). This is the verify script: it wrote nothing (its idempotency gate 6 re-ran the upserts of the build in a '
+    'transaction that it rolled back in a finally block), and it re-read the newest '
+    'publisher files through the old build. Its gate 5 compared the "-" markers in the four grade columns '
+    'of the current judgements file (604 in the 30 September file) with the NULL grades in the whole '
+    'judgements table (633), which since the load of 2026-10-01 (run-log id 101) held the 30 September '
+    'file mixed with 15 stale 12 August rows that carry 29 NULL grades (604 + 29 = 633), so it compared one '
+    'file with a mixture and failed (exit 1 on 2026-10-09). Its "lost the change description" count (114) '
+    'was not a loss: those rows have "-" as the governance change in the file of the publisher itself. The data '
+    'defect behind it was rule 1.5: "-", an empty cell and the text "None" were stored as one NULL with '
+    'no reason. The loader that replaced the build is scripts/s24_rsh_register_editions.py; use '
+    'scripts/s24_rsh_register_editions_verify.py instead.'
+)
+if __name__ == "__main__":
+    print(_RETIRED, file=sys.stderr)
+    sys.exit(2)
 from pathlib import Path
 
 import psycopg2.extras
