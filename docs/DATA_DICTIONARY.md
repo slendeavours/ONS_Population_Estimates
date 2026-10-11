@@ -284,11 +284,53 @@ Table `la_s114_notices`, key `(lad24cd, notice_date)`; the latest-edition layer 
 
 ## Deprivation
 
-Source: MHCLG English Indices of Deprivation 2019 (updated from 2025 supplementary data)
+Source: MHCLG English Indices of Deprivation 2025 (IoD2025), File 10 Local Authority District summaries (lower tier), v2 (first published 30 October 2025, reissued 14 November 2025). Table `la_imd_2025`, key `lad24cd`, 296 districts; the latest-edition layer of `la_imd_2025_editions`. Source note: [s5_imd_source.md](s5_imd_source.md).
 
 | Column | Type | Range | Description |
 |---|---|---|---|
-| `imd_rank_of_average_rank` | integer | 1 – 317 | Rank of average rank across all LSOA-level IMD domains. **Lower rank = more deprived overall.** Note: this is at LA level, not LSOA level. |
+| `imd_rank_of_average_rank` | integer | 1 – 296 | The district's rank on the average rank of its LSOAs (the publisher's "IMD - Rank of average rank"). **Lower rank = more deprived overall.** At district level: 296 districts, not LSOAs. The only column W1 and the map read |
+| `imd_average_rank`, `imd_average_score` | numeric(10,2), numeric(10,3) | | The publisher's average rank and average score for the district; `imd_rank_of_average_score` ranks the average score |
+| `imd_proportion_most_deprived_10`, `imd_rank_of_proportion` | numeric(8,4), integer | 0 – 1 | Proportion of the district's LSOAs in the most deprived 10% nationally, and its rank. 104 districts have 0, as published; they share rank 193 |
+| `imd_extent`, `imd_rank_of_extent` | numeric(8,4), integer | 0 – 1 | The publisher's "IMD25 - Extent" and its rank. 15 districts have 0, as published; they share rank 282. Not defined in the statistical release; the pipeline does not use it |
+| `imd_local_concentration`, `imd_rank_of_local_concentration` | numeric(10,2), integer | | The publisher's "IMD25 - Local concentration" and its rank. Not defined in the statistical release; the pipeline does not use it |
+| `vintage` | text, NOT NULL | `IoD2025` | The IoD vintage; a CHECK allows only `IoD2025`. Added 2026-10-11. A different IoD year is stored as editions only and does not reach this table through a load |
+| `source`, `loaded_at` | text, timestamptz | | The release label and when the live row was last written |
+
+Ranks tie: where districts share a value they share the lowest rank number, so `imd_rank_of_proportion` and `imd_rank_of_extent` are not permutations of 1 to 296.
+
+---
+
+## Tenure (S3b)
+
+Source: ONS Census 2021 TS054 "Tenure" (NOMIS `NM_2072_1`), households, as at Census Day 21 March 2021, on the April 2023 local authority boundaries. Table `la_tenure_2021`, key `lad24cd`, 296 English authorities; the latest-edition layer of `la_tenure_2021_editions`. Not read by W1 or the map. Source note: [s3b_tenure_source.md](s3b_tenure_source.md).
+
+| Column | Type | Description |
+|---|---|---|
+| `total_households` | integer | The publisher's "Total: All households". Not built from the parts: the eight parts sum to it on all 296 authorities |
+| `owned_outright`, `owned_mortgage`, `shared_ownership` | integer | "Owned: Owns outright", "Owned: Owns with a mortgage or loan", "Shared ownership: Shared ownership" |
+| `social_rented_council`, `social_rented_other` | integer | "Social rented: Rents from council or Local Authority", "Social rented: Other social rented" |
+| `private_rented_landlord`, `private_rented_other` | integer | "Private rented: Private landlord or letting agency", "Private rented: Other private rented" |
+| `lives_rent_free` | integer | "Lives rent free" |
+| `social_rented_total`, `private_rented_total` | integer, generated | Computed by the database from their two parts; not published figures and never written by the loader |
+| `census_year` | integer | 2021 |
+| `source`, `loaded_at` | text, timestamptz | Provenance. `source` has two held variants (292 rows, and the 4 unitary rows reloaded on 2026-08-20); not compared |
+
+No NULLs and no zeros are held. Census counts carry the publisher's disclosure control (record swapping and small changes to some counts).
+
+---
+
+## Boundaries (S7)
+
+Source: ONS Open Geography Portal, "Local Authority Districts (May 2024) Boundaries UK BGC" (generalised, clipped to the coastline), England only. Table `la_boundaries`, key `lad24cd`, 296 districts, the W1 spine; the latest-edition layer of `la_boundaries_editions`. Source note: [s7_boundaries_source.md](s7_boundaries_source.md).
+
+| Column | Type | Description |
+|---|---|---|
+| `lad24cd`, `lad24nm` | varchar | The district. Barnsley and Sheffield are E08000016 and E08000019 in this vintage |
+| `longitude`, `latitude` | numeric(10,6) | The publisher's `LONG` and `LAT` |
+| `shape_area` | numeric(20,2) | The publisher's `Shape__Area` |
+| `geojson` | jsonb | The publisher's geometry in EPSG:4326, Polygon or MultiPolygon, exactly as published (not simplified here) |
+| `source_date` | date | The vintage, 2024-05-01 |
+| `loaded_at` | timestamptz | When the live row was written |
 
 ---
 

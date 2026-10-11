@@ -185,7 +185,7 @@
         <tr><td><code>ro4_total_homelessness_000</code></td><td><span class="type-num badge">num</span></td><td>£0 – £200,000k+</td><td>Total LA homelessness gross expenditure (£000s)</td></tr>
         <tr><td><code>efs_flag</code></td><td><span class="type-bool badge">bool</span></td><td>true / false</td><td>LA is receiving Exceptional Financial Support from MHCLG</td></tr>
         <tr><td><code>s114_flag</code></td><td><span class="type-bool badge">bool</span></td><td>true / false</td><td>LA has issued a Section 114 notice (effective bankruptcy declaration)</td></tr>
-        <tr><td><code>imd_rank_of_average_rank</code></td><td><span class="type-int badge">int</span></td><td>1 (most deprived) – 317</td><td>IMD 2019 rank of average rank — lower = more deprived overall</td></tr>
+        <tr><td><code>imd_rank_of_average_rank</code></td><td><span class="type-int badge">int</span></td><td>1 (most deprived) – 296</td><td>IMD 2025 rank of average rank among the 296 districts — lower = more deprived overall</td></tr>
         <tr><td><code>data_quality</code></td><td><span class="type-json badge">json</span></td><td>JSON object</td><td>Per-source quality flags: submission gaps, missing data, estimation notes</td></tr>
       </tbody>
     </table>
@@ -204,13 +204,13 @@
       <li>MHCLG RO4 — Local authority housing revenue account expenditure</li>
       <li>MHCLG EFS — Exceptional Financial Support recipients</li>
       <li>Published S.114 notices — LA fiscal distress flags</li>
-      <li>MHCLG IMD 2019 — Index of Multiple Deprivation</li>
+      <li>MHCLG IMD 2025 — Index of Multiple Deprivation</li>
       <li>ONS MYE — Mid-year population estimates</li>
     </ul>
     <h3>Refresh Frequency</h3>
     <p>Data is updated automatically after each Workflow 1 pipeline run (currently approximately weekly). The run ID and timestamp are shown in the map header.</p>
     <h3>Boundaries</h3>
-    <p>LA polygon boundaries from ONS Open Geography Portal — LAD Dec 2024, England only, simplified for web display (GeoJSON WGS84 RFC 7946).</p>
+    <p>LA polygon boundaries from ONS Open Geography Portal — LAD May 2024 (BGC, generalised and clipped to the coastline, as published), England only (GeoJSON WGS84 RFC 7946).</p>
     <h3>Raw Data Access</h3>
     <ul>
       <li><a href="https://raw.githubusercontent.com/slendeavours/ONS_Population_Estimates/main/data/boundaries/la_boundaries.geojson" target="_blank">la_boundaries.geojson</a> — Full combined GeoJSON (~9.5 MB)</li>

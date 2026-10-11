@@ -90,9 +90,12 @@ DETECTORS = {
               title_filter=r"outturn",
               note="RO4 outturn releases (not the budget releases) in the "
                    "revenue expenditure and financing collection"),
+    # reissue: the held vintage's own page is read too (reissue_s5), because
+    # a File 10 v3 on the same IoD2025 page is not a newer page year
     "5": dict(method="govuk_content_api",
               collection="english-indices-of-deprivation",
               title_filter=r"English indices of deprivation \d{4}$",
+              reissue="s5",
               note="English indices of deprivation collection"),
     "10": dict(method="govuk_content_api",
                collection="homelessness-statistics",
@@ -172,7 +175,10 @@ DETECTORS = {
     "23": dict(method="govuk_content_api", finder="s23",
                note="'Registered provider social housing stock and rents in England <y1> to <y2>' in the RSH collection; "
                     "stock is at 31 March of the second year"),
+    # reissue: the held May 2024 layer's lastEditDate is read too
+    # (reissue_s7), because a re-edit of that layer is not a newer vintage
     "7": dict(method="api_probe", finder="s7", loaded_const="2024-05",
+              reissue="s7",
               note="ArcGIS REST service list on the Open Geography Portal, "
                    "Local_Authority_Districts_*_BGC services; adopting a new "
                    "vintage is a deliberate decision, never a routine refresh"),
@@ -223,9 +229,11 @@ def title_period_s2(title):
 
 
 def title_period_s5(title):
-    """'English indices of deprivation 2019' -> 2019."""
+    """'English indices of deprivation 2025' -> IoD2025, the vintage key the
+    S5 loader stores (la_imd_2025.vintage), so that a later IoD year sorts
+    above it as text (a bare 2030 would sort below 'IoD2025')."""
     m = re.search(r"english indices of deprivation (\d{4})", title.lower())
-    return m.group(1) if m else None
+    return f"IoD{m.group(1)}" if m else None
 
 
 def title_period_s13(title):
@@ -470,6 +478,17 @@ def check_govuk_collection(row, det, reg):
                                  "is not comparable with what is loaded"))
         return row
     row["outcome"] = "new_edition" if newest[0] > loaded else "no_change"
+    if det.get("reissue") == "s5":
+        page = [x for x in dated if x[0] == loaded]
+        table, col = REISSUE_HELD["s5"]
+
+        def run():
+            if len(page) != 1:
+                raise ValueError(f"{len(page)} release page(s) in the "
+                                 f"collection for the held {loaded}")
+            return reissue_s5(page[0][2], loaded,
+                              held_sources(table, col, loaded))
+        apply_reissue(row, run)
     return row
 
 
@@ -748,6 +767,144 @@ FINDERS = {"s15": find_s15, "s24": find_s24, "s7": find_s7, "s1b": find_s1b, "s3
            "s21": find_s21, "s22": find_s22, "s23": find_s23}
 
 
+# --- Reissue checks for the single-vintage reference tables (S5, S7) --------
+# The period comparison above asks only "is there a newer vintage". A reissue
+# of the vintage already held (File 10 v3 on the same IoD2025 page; a re-edit
+# of the May 2024 layer) is not newer, so it would report no_change. These
+# read the publisher's rank for the held vintage and compare it with the rank
+# the loader recorded (the tip edition's and the ledger's source_file, which
+# the loaders write). Nothing is downloaded and nothing is loaded: a mismatch
+# is reported as 'reissue possible', and the loader's own preview decides.
+
+GOVUK_CONTENT = "https://www.gov.uk/api/content"
+REISSUE_HELD = {"s5": ("la_imd_2025_editions", "vintage"),
+                "s7": ("la_boundaries_editions", "source_date")}
+
+
+def held_sources(editions_table, period_col, period):
+    """[(source_file, checked_at)] for one held period: the tip edition's
+    source_file (checked_at None) and every ledger row's (the ledger is
+    <editions_table>_file_checks). Read-only; the transaction is rolled
+    back."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            f'SELECT DISTINCT source_file, NULL::timestamptz '
+            f'FROM "{editions_table}" WHERE "{period_col}"::text = %s '
+            f'AND edition = (SELECT MAX(edition) FROM "{editions_table}" '
+            f'WHERE "{period_col}"::text = %s)', (period, period))
+        rows = list(cur.fetchall())
+        cur.execute(
+            f'SELECT source_file, checked_at FROM "{editions_table}_file_checks" '
+            f'WHERE "{period_col}"::text = %s', (period,))
+        rows += list(cur.fetchall())
+        return rows
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def _held_rank(held, release_rank):
+    ranks = [release_rank(s) for s, _ in held]
+    ranks = [r for r in ranks if r is not None]
+    return max(ranks) if ranks else None
+
+
+def reissue_s5(release_path, vintage, held):
+    """(findings, desc) for the held IoD vintage's release page. A finding
+    (a reissue is possible) is: the page's File 10 attachment URL is not a
+    URL the ledger records for the vintage (the held v2's URL is recorded;
+    another URL is another file), or the page carries a change note dated
+    after the last ledger check (the v2 reissue was announced by such a
+    note). A file loaded only with --file records a local path,
+    not the URL, so it reads as 'reissue possible' until a page load (which
+    records the URL) has been run: the conservative side. ValueError when it
+    cannot be asked: no File 10 attachment, or nothing held for the
+    vintage."""
+    import s5_imd_editions as s5
+    if not held:
+        raise ValueError(f"no edition or ledger row holds {vintage}")
+    _, body = fetch(GOVUK_CONTENT + release_path)
+    page = json.loads(body)
+    att = s5.file10_attachment(page)
+    ledger = [(s5.parse_ledger_source(s), at) for s, at in held
+              if at is not None]
+    urls = {p[0] for p, _ in ledger if p}
+    checks = [at for _, at in ledger]
+    held_rank = _held_rank(held, s5.release_rank)
+    findings = []
+    url = s5._abs_url(att["url"])
+    name = url.rsplit("/", 1)[-1]
+    if url not in urls:
+        findings.append(
+            f"the {vintage} page's File 10 attachment ({name}) is not a file "
+            f"the ledger records for {vintage} (held tip "
+            f"{s5.rank_text(held_rank)})")
+    last = max(checks).date().isoformat() if checks else None
+    notes = s5.change_history(page)
+    later = sorted((d, n) for d, n in notes if last and d > last)
+    if later:
+        d, n = later[-1]
+        findings.append(
+            f"the {vintage} page has {len(later)} change note(s) dated after "
+            f"the last file check ({last}), newest {d}: '{n[:90]}'")
+    newest_note = max((d for d, _ in notes), default=None)
+    desc = (f"{vintage} File 10 attachment {name}; held "
+            f"{s5.rank_text(held_rank)}; last file check {last}; newest "
+            f"page note {newest_note}")
+    return findings, desc
+
+
+def reissue_s7(held):
+    """(findings, desc) for the held May 2024 BGC layer: a finding when its
+    editingInfo.lastEditDate (the loader's rank, read by its own
+    layer_identity) is not the newest lastEditDate recorded for the held
+    vintage. ValueError when it cannot be asked."""
+    import s7_boundaries_editions as s7
+    if not held:
+        raise ValueError(f"no edition or ledger row holds {s7.LIVE_PERIOD}")
+    _, body = fetch(s7.layer_url(s7.service_of(s7.LIVE_VINTAGE)))
+    layer = s7.layer_identity(body, s7.LIVE_VINTAGE)
+    held_rank = _held_rank(held, s7.release_rank)
+    findings = []
+    if held_rank is None or layer["rank"] != held_rank:
+        findings.append(
+            f"the {s7.LIVE_VINTAGE} layer has {s7.rank_text(layer['rank'])}; "
+            f"the held {s7.LIVE_PERIOD} tip has {s7.rank_text(held_rank)}")
+    desc = (f"{s7.LIVE_VINTAGE} layer {s7.rank_text(layer['rank'])}; held "
+            f"{s7.rank_text(held_rank)}")
+    return findings, desc
+
+
+def apply_reissue(row, run):
+    """Run a reissue check (run() -> (findings, desc)) and fold it into the
+    row. A finding is a change: no_change becomes revision_detected, and
+    error_detail says 'reissue possible'. A check that cannot be made turns
+    no_change into check_failed (whether the held file is current is then
+    unestablished); a new_edition keeps its outcome either way."""
+    try:
+        findings, desc = run()
+    except Exception as e:
+        msg = f"reissue check not possible: {type(e).__name__}: {str(e)[:160]}"
+        row["notes"] += f"; {msg}"
+        if row["outcome"] == "no_change":
+            row.update(outcome="check_failed", error_detail=msg)
+        return row
+    if not findings:
+        row["notes"] += f"; reissue check clean ({desc})"
+        return row
+    row["notes"] += "; REISSUE POSSIBLE: " + "; ".join(findings)
+    if row["outcome"] == "no_change":
+        row["outcome"] = "revision_detected"
+    detail = ("reissue possible of the held vintage: " + "; ".join(findings)
+              + ". Run the loader's load preview to compare; nothing was "
+              "downloaded or loaded")
+    row["error_detail"] = (f"{row['error_detail']}; {detail}"
+                           if row.get("error_detail") else detail)
+    return row
+
+
 def check_finder(row, det, reg):
     """Compare the newest edition a finder sees with what the target table holds."""
     try:
@@ -777,6 +934,11 @@ def check_finder(row, det, reg):
                    error_detail="the target table holds no period to compare against")
         return row
     row["outcome"] = "new_edition" if period > str(loaded)[:len(period)] else "no_change"
+    if det.get("reissue") == "s7":
+        import s7_boundaries_editions as s7
+        table, col = REISSUE_HELD["s7"]
+        apply_reissue(row, lambda: reissue_s7(
+            held_sources(table, col, s7.LIVE_PERIOD)))
     return row
 
 

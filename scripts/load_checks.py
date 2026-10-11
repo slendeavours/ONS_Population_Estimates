@@ -96,13 +96,20 @@ def check_latest_equals_live(cur, spec: EditionSpec, periods=None) -> list:
     every data column (key, period, value and extra). This takes the s1b
     variant, the stricter one. Never halts: a missing or branched chain is a
     problem string.
+
+    A live_single_period spec compares the live period only: a given period
+    not in live (a vintage held as editions only) is skipped.
     """
     cur.execute(f"SELECT DISTINCT {spec.period_col} FROM "
                 f"public.{spec.live_table}")
     live_periods = sorted(r[0] for r in cur.fetchall())
     cols = ", ".join(spec.data_cols)
     bad = []
-    for p in (periods or live_periods):
+    todo = periods or live_periods
+    if getattr(spec, "live_single_period", False):
+        live_str = {str(x) for x in live_periods}
+        todo = [p for p in todo if str(p) in live_str]
+    for p in todo:
         try:
             ed = chain_tip(cur, spec, p)
         except (LookupError, ValueError) as e:

@@ -112,6 +112,9 @@ CHANGELOG.md                                Dated record of pipeline changes
   s13_lahs_source.md                        Source 13 (MHCLG LAHS housing register) register entry: discovery, definitions from the publisher's notes, zero rules, editions
   s12_financial_stress_source.md            Source 12 (MHCLG Exceptional Financial Support and S.114 notices) register entry: discovery, cell grammar, withdrawn-only rule, the evidenced register, editions
   s17_marac_source.md                       Source 17 (SafeLives Marac data by police force area) register entry: discovery, hand-download fallback, markers, zero rules, editions
+  s5_imd_source.md                          Source 5 (MHCLG English indices of deprivation 2025, File 10) register entry: columns, file identity without a cover sheet, ties and zeros, the v2 reissue, the vintage column
+  s3b_tenure_source.md                      Source 3b (ONS Census 2021 TS054 tenure, NOMIS) register entry: categories and aggregate codes, the 2023 geography type, the publisher's total, editions
+  s7_boundaries_source.md                   Source 7 (ONS LAD May 2024 BGC boundaries, the W1 spine) register entry: the shapes as published, the newer redrawn vintages, never rebuilt, editions
   geography_dimension.md                    la_geography / la_succession dimension tables
   S9_BUILD_SUMMARY.md                       S9 sources build summary
   S6_BUILD_SUMMARY.md                       S6 original build summary of 25 July 2026 (superseded)
@@ -144,6 +147,12 @@ CHANGELOG.md                                Dated record of pipeline changes
   s12_financial_stress_editions_verify.py   Source 12 editions gates (21), writes nothing
   s17_marac_editions.py                     Source 17 (SafeLives Marac data) editions loader - a W1 and map input
   s17_marac_editions_verify.py              Source 17 editions gates (20), writes nothing
+  s5_imd_editions.py                        Source 5 (IMD 2025 File 10) editions loader, one vintage in live - a W1 and map input
+  s5_imd_editions_verify.py                 Source 5 editions gates (17), writes nothing
+  s3b_tenure_editions.py                    Source 3b (Census 2021 TS054 tenure) editions loader, one census in live
+  s3b_tenure_editions_verify.py             Source 3b editions gates (17), writes nothing
+  s7_boundaries_editions.py                 Source 7 (LAD May 2024 BGC boundaries) editions loader, one vintage in live; never rebuilds the W1 spine - a W1 and map input
+  s7_boundaries_editions_verify.py          Source 7 editions gates (19), writes nothing
   manual_input.py                           Helper for hand-placed and curated source files (S12 register, S17 fallback): path roots, identity, register reader
   s14_lha_rates_build.py                    Source 14 (VOA/DWP LHA rates) ETL
   s15_hpi_editions.py                       Source 15 (Land Registry UK HPI) editions loader (old s15_hpi_build.py is in scripts/historical/)
