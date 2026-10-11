@@ -159,7 +159,11 @@ DATASET_FORM = {
     "3": ("old",
           "data/raw/s3_mye/mye25tablesew.xlsx (mid-2025, built on 2023 LA "
           "boundaries) carries E08000016/19 only (METHODOLOGY, S3; registry "
-          "known_gotchas)."),
+          "known_gotchas). Read 2026-10-11: mye24tablesew.xlsx (mid-2024, "
+          "edition 'Mid-2024: 2023 local authority boundaries') carries "
+          "E08000016/19 too, and neither file carries E08000038/39 in "
+          "MYE2 - Persons or MYE4 (every year mid-2011 onward); "
+          "scripts/s3_mye_editions.py halts on a file that does."),
     "3b": ("old",
            "NOMIS NM_2072_1 TYPE424 (local authorities: district / unitary "
            "(as of April 2023)) returns E08000016/19, read 2026-10-10 "
