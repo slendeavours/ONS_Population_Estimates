@@ -176,9 +176,15 @@ DATASET_FORM = {
           "s4_care_leaver_editions.py then stops and this is corrected "
           "deliberately (new or mixed)."),
     "5": ("old",
-          "File_10_-_IoD2025_Local_Authority_District_Summaries__lower-tier__"
-          "v2.xlsx and imd_2025_la_summary.csv (data/reference) carry "
-          "E08000016/19 only."),
+          "Read 2026-10-10: File 10 v2 (data/raw/s5_imd/File_10_-_IoD2025_"
+          "Local_Authority_District_Summaries__lower-tier__v2.xlsx, sha256 "
+          "6c38a2fd3998e0ca, the same bytes as the data/reference copy) "
+          "carries Barnsley and Sheffield as E08000016/19 on every sheet "
+          "and never E08000038/39 (its header names the codes 'Local "
+          "Authority District code (2024)'); imd_2025_la_summary.csv "
+          "(data/reference) agrees. scripts/s5_imd_editions.py halts on a "
+          "file that carries the new codes; this is then corrected "
+          "deliberately, with that file as evidence."),
     "6": ("mixed",
           "Read 2026-10-10 from the files in data/raw/s6_asylum: Asy_D11 "
           "(support-local-authority-datasets-jun-2026.xlsx, Data_Asy_D11) "
