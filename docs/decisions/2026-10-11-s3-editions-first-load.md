@@ -31,7 +31,7 @@ Each sha256 is written as two 32-hex halves (`first32` then `last32`; join them)
 
 - `before-state` is the loader's `rows_content_sha` for one year: `lad24cd`, `population` and `la_name`, `loaded_at`
   excluded. It equals edition 1's content hash.
-- `before-state-all` hashes every stored column of the whole table, `loaded_at` included, ordered by year then code.
+- `before-state-all` hashes `lad24cd|reference_year|population|la_name` for every row of the table, `loaded_at` excluded, as sorted lines. The restoration of `loaded_at` on 2025 is therefore checked by the separate `loaded_at`-set comparison, not by this hash.
 - `w1-read` is what W1 reads: `lad24cd|population` for 2025. It must be the same before and after, and it is.
 
 before-state la_population 2024 rows=296 sha256-first32=881e5eaabdf2d63c0658c23e0042503a sha256-last32=48d464fbcb2dc4253531e19aa1c7d182
@@ -62,7 +62,7 @@ guard that refuses any change outside the keys it names).
   prints the API date only. The 296 populations and names equal the workbook's MYE2 exactly.
 - **The accidental write of 2026-10-11 20:30 UTC.** While the old loaders were being retired, the new tests that prove each
   retired script exits at once were run before the guards existed, so `s3_mye_refresh.py` ran for real and re-upserted the
-  296 rows of 2025 with identical values. It wrote **no run-log row** (there is no id 500); the incident note is its record.
+  296 rows of 2025 with identical values. It wrote **no run-log row** (there is no id 500); the incident note is its record, and gives the likely cause: the old script logged status `'complete'`, which the `pipeline_run_log` CHECK now refuses, after the upserts had committed.
   `loaded_at` of 2025 was set back to its surveyed value in the repair.
 - The old script is now a guard that exits 2 at its first statement. It was never run or imported again.
 

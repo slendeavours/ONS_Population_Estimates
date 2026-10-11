@@ -12,7 +12,18 @@ so each test started the old script itself:
   and `la_brma_mapping` (296 rows). Run-log row 499.
 - `scripts/s3_mye_refresh.py` re-upserted the 296 rows of 2025 in
   `la_population`. The values written were the same as those held. It wrote
-  no run-log row (there is no row 500).
+  no run-log row (there is no row 500). Likely cause (not proved: the failed
+  statement left no trace): the old script inserted its run-log row with status
+  `'complete'`, and `pipeline_run_log` now has
+  `CHECK (status = 'success') NOT VALID`
+  (`pipeline_run_log_status_new_writes_chk`), which refuses every new row with
+  another status. The script had already committed its upsert (twice: the load,
+  then its idempotency re-load), so the failed INSERT came after the writes and
+  used up id 500. Checked read-only on 2026-10-12: the INSERT in
+  `git show de39a43^:scripts/s3_mye_refresh.py` (line 297) writes `'complete'`,
+  the constraint exists and no rule on the table changes that. The script's
+  `MIGRATION` DDL (a no-op `SET NOT NULL`) also ran. The id gap is not a
+  rolled-back test transaction.
 - `scripts/s14_lha_rates_build_v2.py` ran `DROP TABLE ... CASCADE` on
   `la_brma_mapping` and `brma_lha_rates` and rebuilt both. Run-log row 501.
 
@@ -120,8 +131,21 @@ script's write has no run-log row, and this note is its record.
 longer do harm.** "Failing first" is right for code under test. It is wrong
 for a test whose subject is a live loader, because the red run is a real
 run. Write the guard first, or move the scripts aside for the first red run,
-or run the subprocess against a broken environment from the start (the
-committed tests now use an invalid `PG_HOST` and a broken `PYTHONPATH`).
+or run the subprocess against a broken environment from the start. The
+committed tests now do the last of these for every test that executes a retired
+script (`scripts/tests/retired_sandbox.py`, used by all ten retired-script test
+files, 2026-10-12). Each test copies the script alone into a fresh temporary
+directory and runs it there with `python -E -s`, so `scripts/`, `_db` and the
+repo `.env` are not reachable. The child environment is built from nothing:
+`PATH` and `SystemRoot`, dummy `PG_USER` and `PG_PASSWORD`, and
+`PG_HOST` and `PG_HOST_OVERRIDE` set to `invalid.invalid` with `PG_PORT=1`. If
+a guard is ever lost, the script fails at its first import or connection and
+the test goes red without reaching the database. The first repair (2026-10-11)
+had made only two of seven S3/S14 tests safe (they used an invalid host; the
+other three still inherited the real environment, and the broken `PYTHONPATH`
+protected nothing because a script run directly has its own directory on its
+path). A static test also checks that each of the three S3/S14 files has,
+after its docstring, only `import sys` and the guard.
 
 And again, from the 2026-08-21 notes: **a `DROP ... CASCADE` takes derived
 objects with it silently.** Gates 18 and 19 caught both effects at once, so

@@ -2,29 +2,21 @@
 when run directly (scripts/ is then not on sys.path) and with a broken
 environment."""
 
-import os
-import subprocess
 import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from retired_sandbox import run_retired  # noqa: E402
 
 HIST = Path(__file__).resolve().parents[1] / "historical"
 NAMES = ["s6_asylum_build.py", "s6_asylum_verify.py"]
 
 
 class RetiredS6(unittest.TestCase):
-    def _run(self, name, env=None):
-        return subprocess.run([sys.executable, str(HIST / name)],
-                              capture_output=True, text=True, cwd=HIST,
-                              timeout=60, env=env)
-
-    def _broken_env(self):
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(HIST / "nonexistent")
-        for k in ("PGHOST", "PG_PASSWORD", "PGPASSWORD", "DATABASE_URL",
-                  "PG_PORT", "PG_DATABASE", "PG_USER"):
-            env.pop(k, None)
-        return env
+    def _run(self, name):
+        # always the scrubbed sandbox (retired_sandbox.py)
+        return run_retired(HIST / name)
 
     def test_run_directly_prints_retired_and_exits_nonzero(self):
         for name in NAMES:
@@ -39,26 +31,21 @@ class RetiredS6(unittest.TestCase):
                 self.assertNotIn("Traceback", r.stderr)
 
     def test_retired_when_pandas_and_psycopg2_cannot_be_imported(self):
-        import tempfile
-        with tempfile.TemporaryDirectory() as d:
-            for mod in ("pandas", "psycopg2", "requests", "dotenv"):
-                Path(d, mod + ".py").write_text(
-                    "raise ImportError('broken on purpose')" + chr(10))
-            env = self._broken_env()
-            env["PYTHONPATH"] = d
-            for name in NAMES:
-                with self.subTest(name):
-                    r = self._run(name, env)
-                    self.assertNotEqual(r.returncode, 0)
-                    self.assertIn("RETIRED", r.stderr)
-                    self.assertIn("s6_asylum_editions", r.stderr)
-                    self.assertNotIn("broken on purpose", r.stderr)
-                    self.assertNotIn("Traceback", r.stderr)
+        for name in NAMES:
+            with self.subTest(name):
+                r = run_retired(HIST / name,
+                                stub_modules=("pandas", "psycopg2", "requests",
+                                              "dotenv"))
+                self.assertNotEqual(r.returncode, 0)
+                self.assertIn("RETIRED", r.stderr)
+                self.assertIn("s6_asylum_editions", r.stderr)
+                self.assertNotIn("broken on purpose", r.stderr)
+                self.assertNotIn("Traceback", r.stderr)
 
     def test_retired_even_with_broken_environment(self):
         for name in NAMES:
             with self.subTest(name):
-                r = self._run(name, self._broken_env())
+                r = self._run(name)
                 self.assertNotEqual(r.returncode, 0)
                 self.assertIn("RETIRED", r.stderr)
                 self.assertIn("s6_asylum_editions", r.stderr)

@@ -2,11 +2,12 @@
 when run directly (scripts/ is then not on sys.path) and with a broken
 environment."""
 
-import os
-import subprocess
 import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from retired_sandbox import run_retired  # noqa: E402
 
 HIST = Path(__file__).resolve().parents[1] / "historical"
 NAMES = ["s22_ctb_discover.py", "s22_ctb_empties_build.py",
@@ -14,18 +15,9 @@ NAMES = ["s22_ctb_discover.py", "s22_ctb_empties_build.py",
 
 
 class RetiredS22(unittest.TestCase):
-    def _run(self, name, env=None):
-        return subprocess.run([sys.executable, str(HIST / name)],
-                              capture_output=True, text=True, cwd=HIST,
-                              timeout=60, env=env)
-
-    def _broken_env(self):
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(HIST / "nonexistent")
-        for k in ("PGHOST", "PG_PASSWORD", "PGPASSWORD", "DATABASE_URL",
-                  "PG_PORT", "PG_DATABASE", "PG_USER"):
-            env.pop(k, None)
-        return env
+    def _run(self, name):
+        # always the scrubbed sandbox (retired_sandbox.py)
+        return run_retired(HIST / name)
 
     def test_run_directly_prints_retired_and_exits_nonzero(self):
         for name in NAMES:
@@ -42,7 +34,7 @@ class RetiredS22(unittest.TestCase):
     def test_retired_even_with_broken_environment(self):
         for name in NAMES:
             with self.subTest(name):
-                r = self._run(name, self._broken_env())
+                r = self._run(name)
                 self.assertNotEqual(r.returncode, 0)
                 self.assertIn("RETIRED", r.stderr)
                 self.assertIn("s22_ctb_editions.py", r.stderr)

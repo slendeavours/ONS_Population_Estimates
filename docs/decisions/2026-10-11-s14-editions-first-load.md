@@ -124,7 +124,9 @@ EPSG:27700) joined to the centroids of `la_boundaries` (May 2024, 296 rows). `ch
   Kernow West (`nearest_fallback`).
 - 18 VOA names go through a committed exact table (`scripts/s14_brma_names.json`, 18 "X & Y" to "X and Y" pairs, each checked
   to be a BRMA of the DWP file), never a regex. Run-log 53's note says 17 names were reconciled; the table holds 18, read
-  from the layer and the CSV on 2026-10-11. I did not establish why 17 was recorded.
+  from the layer and the CSV on 2026-10-11. Both are right: 17 of the 18 aliased BRMAs appear in the crosswalk (no authority
+  centroid falls in "Richmond and Hambleton"), and those 17 cover exactly the 37 rows that were normalised (re-checked
+  read-only 2026-10-12).
 - The rebuild reproduces `brma_name` and `la_name` for 296 of 296 authorities. The only difference from live is
   `mapping_method`: held `'NaN'` on 295 rows against rebuilt `centroid_spatial_join`. The `'NaN'` is a pandas NaN written into
   a text column by v2.
@@ -174,11 +176,15 @@ From `ONS_Population_Estimates`:
 
 1. `python scripts/s14_lha_editions.py load` (a preview; the database is not written) reads the GOV.UK collection "Universal
    Credit Local Housing Allowance rates", finds the newest "<yyyy> to <yyyy>" year page and its one England monthly-rates
-   attachment, downloads it to `data/raw/s14_lha` and previews. Read the whole preview. Expect a new period 2027-28, no change
-   to 2026-27. The discovery step warns if no 2027-28 page exists after 28 February 2027.
+   attachment, downloads it to `data/raw/s14_lha` and previews. Read the whole preview. Expect a new period 2027-28 (a file states one
+   year, so a held year is compared only if the file is a reissue of it). The discovery step warns if no 2027-28 page exists after 28 February 2027.
 2. The crosswalk is checked against the new year's names: **a BRMA name missing from the new year's rates is REJECTED and
    no flag releases it** (it would leave authorities with no rate in the W1 join). That needs a deliberate decision, with the
-   evidence, and probably a new BRMA vintage. The rates part can be loaded alone with `--only rates`.
+   evidence, and probably a new BRMA vintage. The rates part can be loaded alone with `--only rates`. The same stop applies to a
+   reissue of the newest year (since 2026-10-12): `--accept-key-changes` cannot release it, and `refresh-latest` rolls back if the
+   newest live year would lack a mapped name.
+   **Also update `v_la_rate_triangulation`**, which hard-codes `financial_year = '2026-27'`: after 2027-28 loads it would keep
+   comparing the rate card with 2026-27 LHA. Change the year in its definition as part of the 2027-28 load (not changed 2026-10-12).
 3. `load --commit`, then `refresh-latest` (preview, `--commit`), `status`, and `python scripts/s14_lha_editions_verify.py`
    (exit 0) and `python scripts/verify_source_registry.py`. **Run `refresh-latest` before W1:** it copies the edition's
    `loaded_at` onto the live rows. Both tables (`brma_lha_rates` and `la_brma_mapping`) are W1

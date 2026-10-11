@@ -622,6 +622,45 @@ class Rates(Fixture):
             self.assertIn("Kernow West", text)
             self.assertEqual(editions(cur, "2027-28"), [])
 
+    def test_a_reissue_of_the_newest_year_dropping_a_crosswalk_name_is_a_join_stop(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)
+            rates = bump(RATES, "Ashford")
+            rates.pop("Kernow West")
+            self.publish(rates=rates,
+                         history=[{"note": "x", "public_timestamp": TS}])
+            rc, text, _ = self.run_main(cur, ["load", "--only", "rates",
+                                              "--acknowledge", FY,
+                                              "--accept-reissue", FY,
+                                              "--accept-key-changes", FY,
+                                              "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn(m.JOIN, text)
+            self.assertIn("Kernow West", text)
+            self.assertIn("--accept-key-changes included", text)
+            self.assertEqual(editions(cur), [(1, None, N)])
+
+    def test_refresh_latest_refuses_to_leave_a_crosswalk_name_without_a_rate(self):
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)
+            cur.execute("SELECT column_name FROM information_schema.columns "
+                        "WHERE table_schema = 'public' AND table_name = "
+                        "'zz_s14_rates_editions' ORDER BY ordinal_position")
+            cols = [r[0] for r in cur.fetchall()]
+            sel = ", ".join("2" if c == "edition" else
+                            "1" if c == "supersedes" else c for c in cols)
+            cur.execute(f"INSERT INTO public.zz_s14_rates_editions "
+                        f"({', '.join(cols)}) SELECT {sel} FROM "
+                        "public.zz_s14_rates_editions WHERE edition = 1 AND "
+                        "brma_name <> 'Kernow West'")
+            rc, text, _ = self.run_main(cur, ["refresh-latest",
+                                              "--accept-key-changes", FY,
+                                              "--commit"])
+            self.assertNotEqual(rc, 0, text)
+            self.assertIn(m.JOIN, text)
+            self.assertIn("Kernow West", text)
+            self.assertEqual(count(cur, "zz_s14_rates_live"), N)
+
     def test_an_acknowledgement_must_name_a_compared_period(self):
         with rolled_back(self.conn) as cur:
             self.publish()

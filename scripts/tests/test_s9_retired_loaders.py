@@ -1,11 +1,12 @@
 """The retired S9 scripts (scripts/historical/) stop at once, also when run
 directly (scripts/ is then not on sys.path) and with a broken environment."""
 
-import os
-import subprocess
 import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from retired_sandbox import run_retired  # noqa: E402
 
 HIST = Path(__file__).resolve().parents[1] / "historical"
 NEW = {
@@ -17,10 +18,9 @@ NEW = {
 
 
 class RetiredS9(unittest.TestCase):
-    def _run(self, name, env=None):
-        return subprocess.run([sys.executable, str(HIST / name)],
-                              capture_output=True, text=True, cwd=HIST,
-                              timeout=60, env=env)
+    def _run(self, name):
+        # always the scrubbed sandbox (retired_sandbox.py)
+        return run_retired(HIST / name)
 
     def test_run_directly_prints_retired_and_exits_nonzero(self):
         for name, new in NEW.items():
@@ -49,13 +49,9 @@ class RetiredS9(unittest.TestCase):
         self.assertNotIn("ignored the year-end", err)
 
     def test_retired_even_with_broken_environment(self):
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(HIST / "nonexistent")
-        for k in ("PGHOST", "PGPASSWORD", "DATABASE_URL"):
-            env.pop(k, None)
         for name in NEW:
             with self.subTest(script=name):
-                r = self._run(name, env)
+                r = self._run(name)
                 self.assertNotEqual(r.returncode, 0)
                 self.assertIn("RETIRED", r.stderr)
                 self.assertNotIn("Traceback", r.stderr)

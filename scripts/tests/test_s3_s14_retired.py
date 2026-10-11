@@ -1,17 +1,27 @@
-"""The three retired S3/S14 scripts stop at once, also when run directly
-(scripts/ is then the script directory) and with a broken environment (an
-invalid database host, a broken PYTHONPATH), without opening a connection.
+"""The three retired S3/S14 scripts stop at once, also when run directly and
+with a broken environment, without opening a connection.
 s14_lha_rates_build_v2.py is top-level code, so its guard also runs when it is
-imported."""
+imported.
 
-import os
+Every test that executes one of the scripts runs a copy of it in the scrubbed
+sandbox of retired_sandbox.py: alone in a temporary directory (no _db, no repo
+.env anywhere on its path), python -E -s, an environment built from nothing
+(PATH and SystemRoot, dummy credentials, host invalid.invalid, port 1). If a
+guard were ever lost, the script would fail at its first import or connection,
+not repeat the 2026-10-11 incident against the real database.
+"""
+
+import ast
 import re
-import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from retired_sandbox import run_retired, scrubbed_env  # noqa: E402
+
 GUARD = "sys.exit(2)"
 NEW_LOADER = {
     "s3_mye_refresh.py": "s3_mye_editions.py",
@@ -21,21 +31,41 @@ NEW_LOADER = {
 NAMES = list(NEW_LOADER)
 
 
-class RetiredS3S14(unittest.TestCase):
-    def _run(self, name, env=None, args=None):
-        cmd = [sys.executable] + (args or [str(SCRIPTS / name)])
-        return subprocess.run(cmd, capture_output=True, text=True,
-                              cwd=SCRIPTS, timeout=60, env=env)
+class Sandbox(unittest.TestCase):
+    def test_sandbox_cannot_see_repo_env_or_db_module(self):
+        import subprocess
+        probe = chr(10).join([
+            "import os",
+            "try:",
+            "    import _db",
+            "    print('DB-MODULE-FOUND')",
+            "except ImportError:",
+            "    print('no _db')",
+            "print(sorted(os.environ))",
+            "print(os.environ.get('PG_HOST_OVERRIDE'), os.environ.get('PG_PORT'),",
+            "      os.environ.get('PG_USER'))",
+        ]) + chr(10)
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "probe.py"
+            f.write_text(probe)
+            r = subprocess.run([sys.executable, "-E", "-s", str(f)],
+                               capture_output=True, text=True, cwd=d,
+                               timeout=60, env=scrubbed_env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("no _db", r.stdout)
+        self.assertNotIn("DB-MODULE-FOUND", r.stdout)
+        self.assertIn("invalid.invalid 1 dummy_user", r.stdout)
+        self.assertNotIn(str(SCRIPTS), r.stdout)
+        keys = set(scrubbed_env())
+        self.assertLessEqual(keys, {"PATH", "SystemRoot", "PG_HOST",
+                                    "PG_HOST_OVERRIDE", "PG_PORT",
+                                    "PG_DATABASE", "PG_USER", "PG_PASSWORD",
+                                    "PYTHONDONTWRITEBYTECODE"})
 
-    def _broken_env(self):
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(SCRIPTS / "nonexistent")
-        for k in ("PGHOST", "PG_PASSWORD", "PGPASSWORD", "DATABASE_URL",
-                  "PG_PORT", "PG_DATABASE", "PG_USER", "DB_HOST"):
-            env.pop(k, None)
-        env["PG_HOST"] = "invalid.invalid"
-        env["PG_HOST_OVERRIDE"] = "invalid.invalid"
-        return env
+
+class RetiredS3S14(unittest.TestCase):
+    def _run(self, name, import_module=False):
+        return run_retired(SCRIPTS / name, import_module=import_module)
 
     def _assert_retired(self, name, r):
         self.assertEqual(r.returncode, 2, r.stderr)
@@ -52,23 +82,17 @@ class RetiredS3S14(unittest.TestCase):
             with self.subTest(name):
                 self._assert_retired(name, self._run(name))
 
-    def test_retired_even_with_broken_environment(self):
+    def test_retired_in_the_scrubbed_environment(self):
         for name in NAMES:
             with self.subTest(name):
-                self._assert_retired(name, self._run(name, self._broken_env()))
+                self._assert_retired(name, self._run(name))
 
     def test_v2_import_still_raises(self):
-        r = self._run("s14_lha_rates_build_v2.py",
-                      args=["-c", "import s14_lha_rates_build_v2"])
+        r = self._run("s14_lha_rates_build_v2.py", import_module=True)
         self.assertEqual(r.returncode, 2, r.stderr)
         self.assertIn("RETIRED", r.stderr)
         self.assertIn("scripts/s14_lha_editions.py", r.stderr)
         self.assertNotIn("Traceback", r.stderr.replace("SystemExit", ""))
-        r = self._run("s14_lha_rates_build_v2.py",
-                      env=self._broken_env(),
-                      args=["-c", "import s14_lha_rates_build_v2"])
-        self.assertEqual(r.returncode, 2, r.stderr)
-        self.assertIn("RETIRED", r.stderr)
 
     def test_wording_names_what_each_script_did(self):
         want = {
@@ -88,6 +112,32 @@ class RetiredS3S14(unittest.TestCase):
             for b in bits:
                 with self.subTest(name=name, bit=b):
                     self.assertIn(b, r.stderr)
+
+    def test_only_import_sys_and_the_guard_come_first(self):
+        """After the docstring: 'import sys', then only the message assignment,
+        the print to stderr and sys.exit(2). No other import, no other call."""
+        for name in NAMES:
+            tree = ast.parse((SCRIPTS / name).read_text(encoding="utf-8"))
+            body = tree.body
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                body = body[1:]
+            with self.subTest(name):
+                self.assertIsInstance(body[0], ast.Import)
+                self.assertEqual([a.name for a in body[0].names], ["sys"])
+                self.assertEqual(len(body), 4, ast.dump(tree)[:300])
+                self.assertIsInstance(body[1], ast.Assign)
+                self.assertIsInstance(body[1].value, ast.Constant)
+                for node in (body[2], body[3]):
+                    self.assertIsInstance(node, ast.Expr)
+                    self.assertIsInstance(node.value, ast.Call)
+                self.assertEqual(ast.unparse(body[2]),
+                                 "print(_RETIRED, file=sys.stderr)")
+                self.assertEqual(ast.unparse(body[3]), "sys.exit(2)")
+                imports = [n for n in ast.walk(tree)
+                           if isinstance(n, (ast.Import, ast.ImportFrom))]
+                self.assertEqual(len(imports), 1)
 
     def test_guard_is_first_statement_and_only_sys_is_imported_before_it(self):
         for name in NAMES:

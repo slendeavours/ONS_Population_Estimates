@@ -93,7 +93,9 @@ row, exit 1; a committed run writes a run-log row, partial runs included):
         KEY CHANGES (--accept-key-changes YEAR); a crosswalk name with no
         rate row in a new latest year is JOIN (no flag releases it)
     rates reissue: any value changed needs --acknowledge YEAR; a BRMA set
-        differing from the tip is KEY CHANGES (--accept-key-changes YEAR)
+        differing from the tip is KEY CHANGES (--accept-key-changes YEAR),
+        but a reissue of the newest year that drops a BRMA the crosswalk
+        uses is JOIN (no flag releases it); refresh-latest refuses the same
     crosswalk: any change against the held edition needs --acknowledge
         VINTAGE (a change equal to a named correction in MAPPING_CORRECTIONS
         is labelled with its name); an authority set differing from the tip
@@ -102,9 +104,9 @@ row, exit 1; a committed run writes a run-log row, partial runs included):
 
 W1 input: a new year's live rows take loaded_at = now(); a revision reaches
 live only through refresh-latest, which copies the edition's loaded_at, so
-run refresh-latest in the same session before W1 (all three tables are W1
-inputs). The live source column is written from the edition's source_text
-(refresh column, not compared).
+run refresh-latest in the same session before W1 (both tables,
+brma_lha_rates and la_brma_mapping, are W1 inputs). The live source column is
+written from the edition's source_text (refresh column, not compared).
 
 Subcommands (every writing command previews by default; --commit and
 --simulate are mutually exclusive; --simulate runs the --commit path and
@@ -1761,6 +1763,13 @@ def cmd_refresh_latest(args) -> int:
                 msgs.append(f"{spec.live_table}: {res['rows']} live rows "
                             "refreshed in "
                             f"{sorted(pe._p(x) for x in res['updated'])}")
+        with conn.cursor() as cur:
+            gone = live_join_gone(cur)
+        if gone:
+            halt(f"{JOIN}: after refresh-latest the newest live rate year has "
+                 f"no row for crosswalk BRMA name(s) {gone}; W1 would leave "
+                 "their authorities without rates (no flag releases this, "
+                 "--accept-key-changes included); rolled back")
         pe.finish(conn, args, "; ".join(msgs) + "; before/after guard passed")
         return 0
     except BaseException:
@@ -2056,6 +2065,10 @@ def _prepare_rates(args, cur, writing) -> Plan:
         if fy in revised:
             tip = _tip_records(cur, spec, fy, tips, has_ed)
             found = period_problems(recs, tip, None, kind="revised")
+            if fy == held[-1]:
+                # a reissue of the newest year: --accept-key-changes must not
+                # release a BRMA the crosswalk uses
+                join_stop(plan, cur, fy, recs)
             if cmp in ("equal", "unknown") and _differs(
                     recs, tip, RATE_KEY, RATE_VALUES):
                 plan.reissue[fy] = (
@@ -2071,15 +2084,7 @@ def _prepare_rates(args, cur, writing) -> Plan:
                     if earlier else None)
             found = period_problems(recs, None, prev, kind="new")
             if not held or fy > held[-1]:
-                _, mnames = _mapping_names(cur)
-                gone = sorted(mnames - {r[RATE_KEY] for r in recs})
-                if gone:
-                    plan.hard[fy] = [f"{JOIN}: crosswalk BRMA name(s) with no "
-                                     f"rate row in {fy}: {gone}; as the "
-                                     "newest year W1 would leave their "
-                                     "authorities without rates (no flag "
-                                     "releases this; resolve the names "
-                                     "first)"]
+                join_stop(plan, cur, fy, recs)
         plan.keys[fy] = [x for x in found if x.startswith(KEYS)]
         plan.soft[fy] = [x for x in found if not x.startswith(KEYS)]
         notes = [note]
@@ -2088,6 +2093,28 @@ def _prepare_rates(args, cur, writing) -> Plan:
                          "file_name": src["file_name"]}
     plan.nothing = not plan.periods
     return plan
+
+
+def join_stop(plan, cur, fy, recs) -> None:
+    """JOIN stop: a crosswalk BRMA name with no rate row in the newest year
+    (a new newest year, or a reissue of it). No flag releases it."""
+    _, mnames = _mapping_names(cur)
+    gone = sorted(mnames - {r[RATE_KEY] for r in recs})
+    if gone:
+        plan.hard[fy] = [f"{JOIN}: crosswalk BRMA name(s) with no "
+                         f"rate row in {fy}: {gone}; as the "
+                         "newest year W1 would leave their "
+                         "authorities without rates (no flag "
+                         "releases this, --accept-key-changes "
+                         "included; resolve the names first)"]
+
+
+def live_join_gone(cur) -> list:
+    """Crosswalk BRMA names (live) with no row in the newest live rate year."""
+    spec = profile("rates").spec
+    _, names = latest_rate_names(cur, spec, True)
+    _, mnames = _mapping_names(cur)
+    return sorted(mnames - names)
 
 
 def _mapping_names(cur) -> tuple:
