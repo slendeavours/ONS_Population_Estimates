@@ -118,7 +118,7 @@ periods.
     python scripts/s24_rsh_register_editions.py load
         [--only register|judgements] [--file PATH [--title-date YYYY-MM-DD]
         [--no-page]] [--recheck PERIOD] [--allow-older-file]
-        [--acknowledge PERIOD ...] [--accept-reissue PERIOD ...]
+        [--acknowledge [PART:]PERIOD ...] [--accept-reissue [PART:]PERIOD ...]
         [--correction NAME] [--commit | --simulate]
         # files are downloaded to data/raw/s24_rsh/ (also in a preview; a
         # preview writes nothing to the database). A period breaking a stop
@@ -2030,6 +2030,23 @@ def _period_arg(text) -> str:
                                          f"{text!r}") from None
 
 
+def _ack_arg(text) -> str:
+    """--acknowledge / --accept-reissue value: PERIOD (every unit of the run
+    with that date; refused when units of two parts share it) or
+    register:PERIOD / judgements:PERIOD (that part's unit only)."""
+    part, sep, rest = str(text).partition(":")
+    if not sep:
+        return _period_arg(text)
+    if part not in ("register", "judgements"):
+        raise argparse.ArgumentTypeError(
+            f"not PERIOD, register:PERIOD or judgements:PERIOD: {text!r}")
+    return f"{part}:{_period_arg(rest)}"
+
+
+def _matches(tokens, u) -> bool:
+    return u.period in tokens or f"{u.part}:{u.period}" in tokens
+
+
 def _tables(cur, name, writing) -> tuple:
     """(prof, spec, has_ed, tips, checked, stranded) of one table."""
     prof = profile(name)
@@ -2242,7 +2259,12 @@ def _older_halt(skipped, ident) -> None:
         halt(f"older file: {', '.join(f'{p} ({r})' for p, r in sorted(skipped.items()))}"
              f"; the file is {rank_text(ident['rank'])}; storing it would "
              "record an older file. If this is deliberate, re-run with "
-             "--allow-older-file (stored as history, logged)")
+             "--allow-older-file (logged), which does two different things: "
+             "a judgements period NOT yet held is stored as edition 1 only "
+             "(history; live is unchanged), but a period ALREADY held gets "
+             "this file as its NEXT edition, the new tip, and a later "
+             "refresh-latest would then copy its rows into live, rolling "
+             "live back (it also needs --acknowledge for any changed row)")
 
 
 def _prepare_register(args, cur, writing, today) -> tuple:
@@ -2315,14 +2337,18 @@ def _file_unit(part, p, revised, ident, sha, src, by_name, prepared, ranks,
     infos, soft, reissue, notes = {}, [], None, []
     t = ranks.get(p)
     older = (f"--allow-older-file given; {p}'s tip comes from a file "
-             f"{rank_text(t)}, this file is {rank_text(ident['rank'])}"
+             f"{rank_text(t)}, this file is {rank_text(ident['rank'])}; it is "
+             "stored as the NEXT edition (the new tip) of the period, so a "
+             "later refresh-latest would copy its rows into live and roll "
+             "live back"
              if revised and t is not None and t > ident["rank"] else "")
     if older:
         notes.append(older)
         print(f"NOTE: {older}")
     elif not revised and part == "judgements" and ranks and p < max(ranks):
         older = (f"--allow-older-file given; {p} is older than the newest "
-                 f"held edition {max(ranks)}; stored as history")
+                 f"held edition {max(ranks)}; stored as edition 1 only "
+                 "(history; live is unchanged)")
         notes.append(older)
         print(f"NOTE: {older}")
     has_ed = True
@@ -2487,9 +2513,29 @@ def _prepare_judgements(args, cur, writing, today) -> tuple:
                           {"judgements": jrecs, "notices": nrecs}, prepared,
                           ranks, lsrc, how, cur)
         if not nrecs:
-            unit.hard.append("the file has no enforcement notices; an empty "
-                             "edition cannot be stored (the live notices "
-                             "would stay those of an older edition)")
+            unit.hard.append(
+                f"the judgements file {path.name} has no enforcement "
+                "notices. The file is kept, not lost: it was downloaded to "
+                f"{RAW_DIR} (or is the --file you gave, at {path}), so do "
+                "not delete it. It stops here because an empty notices "
+                "edition cannot be stored by the current rule, and live "
+                "would stay on the last issue that had notices: the "
+                "judgements in this issue (including any downgrade) do not "
+                "reach live or the editions. There is no flag that releases "
+                "this. Ask Scott: the rule can be changed deliberately, with "
+                "evidence (docs/decisions/README.md, open item). The page "
+                "offers the latest file only, so a missed issue cannot be "
+                "fetched later")
+        newer = [x for x in prepared["judgements"][3] if x > p]
+        if (prepared["judgements"][1].live_newest_period_only
+                and prepared["judgements"][2] and newer
+                and not _live_periods(cur, prepared["judgements"][1])):
+            unit.hard.append(
+                f"{prepared['judgements'][1].live_table} is empty and the "
+                f"editions hold a newer issue {newer}; loading {p} would put "
+                "an older issue into live while a newer one is held. Load "
+                f"the newest issue ({newer[-1]}) instead, or restore live "
+                "from the editions; nothing stored")
         for n in PARTS["judgements"]:
             live = _live_periods(cur, prepared[n][1])
             if (len(live) > 1 and p not in live and p > live[-1]):
@@ -2541,24 +2587,35 @@ def _execute(units, args, conn, cur, writing, skipped_notes) -> int:
     started = datetime.now(timezone.utc)
     acks = set(args.acknowledge or ())
     reissues = set(args.accept_reissue or ())
-    considered = {u.period for u in units}
+    considered = ({u.period for u in units}
+                  | {f"{u.part}:{u.period}" for u in units})
     stray = sorted((acks | reissues) - considered)
     if stray:
         halt(f"--acknowledge/--accept-reissue {', '.join(stray)}: not periods "
-             f"this run compares or stores ({', '.join(sorted(considered)) or 'none'}); "
-             "nothing stored")
+             "this run compares or stores "
+             f"({', '.join(sorted({f'{u.part}:{u.period}' for u in units})) or 'none'}"
+             "); nothing stored")
+    for tok in sorted((acks | reissues) & {u.period for u in units}):
+        parts = sorted({u.part for u in units if u.period == tok})
+        if len(parts) > 1:
+            halt(f"--acknowledge/--accept-reissue {tok}: this run has a "
+                 f"{' and a '.join(parts)} unit with that date, and a bare "
+                 "date would release both. Name the part: "
+                 + " or ".join(f"{x}:{tok}" for x in parts) + "; nothing "
+                 "stored")
     problems = {}
     for u in units:
         bad = list(u.hard)
-        if u.soft and u.period in acks:
+        if u.soft and _matches(acks, u):
             u.notes.append(f"ACKNOWLEDGED {u.period}: " + "; ".join(u.soft))
             print(f"  {u.label}: ACKNOWLEDGED (--acknowledge): "
                   + "; ".join(u.soft))
         elif u.soft:
-            bad += [f"{x}; read the preview, then --acknowledge {u.period}"
+            bad += [f"{x}; read the preview, then --acknowledge "
+                    f"{u.part}:{u.period}"
                     for x in u.soft]
         if u.reissue:
-            if u.period in reissues:
+            if _matches(reissues, u):
                 u.notes.append(f"--accept-reissue {u.period}: {u.reissue}")
                 print(f"  {u.label}: ACCEPTED REISSUE: {u.reissue}")
             else:
@@ -3125,14 +3182,19 @@ def main(argv=None) -> int:
                    help="read this held period again although the file is in "
                    "the ledger")
     p.add_argument("--allow-older-file", action="store_true",
-                   help="store a file older than the held one (logged; an "
-                   "older judgements edition is stored as history)")
-    p.add_argument("--acknowledge", action="append", type=_period_arg,
-                   metavar="PERIOD",
+                   help="store a file older than the held one (logged). A "
+                   "judgements period not yet held is stored as edition 1 "
+                   "only (history). A period already held gets the file as "
+                   "its NEXT edition, the new tip, and refresh-latest would "
+                   "then roll live back to it")
+    p.add_argument("--acknowledge", action="append", type=_ack_arg,
+                   metavar="[PART:]PERIOD",
                    help="store this period although a stop condition fired "
-                   "(repeatable; logged)")
-    p.add_argument("--accept-reissue", action="append", type=_period_arg,
-                   metavar="PERIOD",
+                   "(repeatable; logged). PART is register or judgements: "
+                   "register:2026-09-17. A bare date is accepted when only "
+                   "one part of the run has it; refused when both do")
+    p.add_argument("--accept-reissue", action="append", type=_ack_arg,
+                   metavar="[PART:]PERIOD",
                    help="store this period although a file with the same "
                    "date and docProps time but other content is held "
                    "(repeatable; logged)")

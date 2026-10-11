@@ -8,7 +8,8 @@ writes through the plan ("do the work, the spec is audit not approval").
 
 **What the map sees.** Nothing. S24 is entity-level with no geography, is not wired into `staging_la_signals`, and W1, the export and
 the map read none of its three tables. W1 and `refresh_map.py` were not run (Scott deferred W1 and the map until every source is
-done). The only live value that changed is `notes` on the 1,578 rows of the 17 August register (text 'None' to NULL, below).
+done). The only live *value* that changed is `notes` on the 1,578 rows of the 17 August register (text 'None' to NULL, below). Step 5 also removed 15 left-over
+12 August rows from live `rsh_regulatory_judgements`, and the refresh rewrote `loaded_at` on the 1,578 August register rows.
 
 ## Decided by Scott (2026-10-11)
 
@@ -101,8 +102,9 @@ Everything below ran from the repo with the loader, each step as a preview, then
      build recorded no reason. The real reasons arrive as edition 2.
 3. `load --file ... --no-page --acknowledge PERIOD` for the 12 August and 30 September judgements files (run-log 486 and 487):
    **edition 2** of each judgements period and of each notices period. Same values, `null_reasons` filled. The page path skips
-   the held files (their URL and sha256 are in the ledger), and the 12 August date is no longer in the page's change history, so
-   `--file --no-page` is used.
+   the held files (their URL and sha256 are in the ledger). The 12 August date is still in the page's change history (the saved page lists
+   "Latest Regulatory Judgements and Enforcement Notices table added" on 2026-08-12), so `--file` without `--no-page` would also have worked;
+   `--file --no-page` was used (corrected 2026-10-11 after the final review; the earlier wording said the date was gone).
 4. `load --only register --file <17 September file> --title-date 2026-09-17 --no-page --correction s24-aug-notes-none-2026-10
    --acknowledge 2026-08-17` (run-log 488): the 17 September file is `unchanged`; the named correction stores **edition 2 of the
    17 August register**: 1,578 `notes` cells 'None' become NULL, each with the reason `stored_text_none_not_from_file`.
@@ -140,7 +142,10 @@ From `ONS_Population_Estimates`:
   then `--commit`. A new register date is a new period. The next snapshot is expected about 17 to 21 October 2026. A held date
   reissued with other content stops unless `--accept-reissue PERIOD`; a changed row needs `--acknowledge PERIOD`.
 - **On each judgements issue:** the same `load`. A new judgements file must carry enforcement notices (a file with none is
-  REJECTED).
+  REJECTED, and nothing releases it: the file is kept in `data/raw/s24_rsh/`, the live judgements stay on the last issue that had
+  notices, and the issue is not stored; **OPEN item for Scott**, [README](README.md) item 8; the page offers the latest file only, so
+  a missed issue cannot be fetched later). Where a register and a judgements issue share a date, name the part:
+  `--acknowledge register:DATE` or `judgements:DATE` (a bare date still works when only one part of the run has it).
 - **A reissue of a held judgements period:** `load`, then `refresh-latest` (preview, `--simulate`, `--commit`; a key change
   needs `--accept-key-changes PERIOD`).
 - Then `status` (clean) and `python scripts/s24_rsh_register_editions_verify.py` (exit 0). The four held workbooks in

@@ -160,6 +160,18 @@ def live_missing_periods(cur, profile: Profile) -> list:
     return [_p(r[0]) for r in cur.fetchall()]
 
 
+def newer_editions_periods(cur, profile: Profile, period: str) -> list:
+    """live_newest_period_only: editions periods newer than `period`
+    (ascending strings). [] for every other spec, without a query."""
+    spec = profile.spec
+    if not spec.live_newest_period_only:
+        return []
+    cur.execute(f"SELECT DISTINCT {spec.period_col} FROM "
+                f"public.{spec.editions_table} WHERE {spec.period_col} > %s "
+                f"ORDER BY 1", (period,))
+    return [_p(r[0]) for r in cur.fetchall()]
+
+
 def live_holds_other(cur, profile: Profile, period: str) -> bool:
     """live_single_period: live holds a period other than `period` (so
     `period` is not the live vintage and must stay out of live). False for
@@ -384,6 +396,12 @@ def apply_period(cur, profile: Profile, period: str, records: list, *,
             halt(f"{period}: live holds {other}; a live_newest_period_only "
                  "table never takes a second period into live, and load "
                  "does not promote an editions-only period")
+        newer = newer_editions_periods(cur, profile, period)
+        if newer:
+            halt(f"{period}: live is empty but the editions hold a newer "
+                 f"period {newer}; a live_newest_period_only table never "
+                 "takes an older period into live while a newer one is "
+                 "held. Load the newest period instead")
         _live_into(cur, profile, period, records,
                    core.chain_tip(cur, spec, period), insert)
         return kind
@@ -579,13 +597,18 @@ def status(cur, profile: Profile) -> dict:
         # they stay live_missing (load inserts the first vintage)
         held = [_p(x) for x in st["held_not_live"]]
         missing = [m for m in missing if m not in held]
-    history = []
+    history, behind = [], []
     if spec.live_newest_period_only and st["periods"]:
         # live holds the newest period: editions periods absent from it are
         # history (information, ok unaffected), not live_missing; with live
-        # empty they stay live_missing (load inserts the period)
+        # empty they stay live_missing (load inserts the period). An editions
+        # period NEWER than the live one is not history: live is behind
+        # (a fault, ok false)
         history = [_p(x) for x in st["history"]]
-        missing = [m for m in missing if m not in history]
+        live_now = max(_p(x) for x in core.live_period_counts(cur, spec))
+        behind = [h for h in history if h > live_now]
+        history = [h for h in history if h not in behind]
+        missing = [m for m in missing if m not in history and m not in behind]
     out = {"new_periods": [_p(x) for x in st["new_periods"]],
            "drift_periods": [_p(x) for x in st["drift"]],
            "pending_refresh": [_p(x) for x in st["pending_refresh"]],
@@ -593,11 +616,12 @@ def status(cur, profile: Profile) -> dict:
            "bad_counts": {_p(k): v for k, v in st["bad_counts"].items()},
            "live_missing": missing,
            "periods": st["periods"],
-           "ok": st["ok"] and not missing}
+           "ok": st["ok"] and not missing and not behind}
     if spec.live_single_period:
         out["held_not_live"] = held
     if spec.live_newest_period_only:
         out["history"] = history
+        out["live_behind"] = behind
     return out
 
 
@@ -613,6 +637,10 @@ def format_status(profile: Profile, st: dict, extra_lines=()) -> str:
     lines += [f"  held, not live: {v} (a different vintage, stored as "
               "editions only; information, not a fault)"
               for v in st.get("held_not_live") or []]
+    lines += [f"  live is behind: {v} is held in editions but is newer than "
+              "the live period, so it is not live (a fault, not history; "
+              "check how live came to hold an older period)"
+              for v in st.get("live_behind") or []]
     lines += [f"  history: {v} (not the live period, stored as editions "
               "only; information, not a fault)"
               for v in st.get("history") or []]

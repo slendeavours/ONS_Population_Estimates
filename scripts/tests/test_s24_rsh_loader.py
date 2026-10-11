@@ -576,6 +576,184 @@ class LoadJudgements(Fixture):
             self.assertIn("refresh-latest", text)
             self.assertEqual(editions(cur, "judgements", "2026-10-07"), [])
 
+    def test_a_file_with_no_notices_is_rejected_and_the_message_says_it_is_kept(self):
+        with rolled_back(self.conn) as cur:
+            self.judgements("20260812", jrows=JROWS[:4])
+            self.ok(cur, ["load", "--only", "judgements", "--commit"])
+            path = self.judgements("20260930", nrows=[])
+            rc, text, logged = self.run_main(
+                cur, ["load", "--only", "judgements", "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("REJECTED", text)
+            self.assertIn("has no enforcement notices", text)
+            self.assertIn("The file is kept, not lost", text)
+            self.assertIn(path.name, text)
+            self.assertIn("Ask Scott", text)
+            self.assertIn("no flag", text)
+            self.assertTrue(path.is_file())
+            self.assertEqual(editions(cur, "judgements", J_SEP), [])
+            self.assertEqual(live_periods(cur, "judgements"),
+                             [(J_AUG, 4)])
+            # the stop is not released by an acknowledgement either
+            rc, text, _ = self.run_main(
+                cur, ["load", "--only", "judgements", "--commit",
+                      "--acknowledge", J_SEP])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("has no enforcement notices", text)
+            self.assertEqual(editions(cur, "judgements", J_SEP), [])
+
+    def _load_aug_and_sep(self, cur):
+        self.judgements("20260812", jrows=JROWS[:4])
+        self.ok(cur, ["load", "--only", "judgements", "--commit"])
+        self.judgements("20260930")
+        self.ok(cur, ["load", "--only", "judgements", "--commit"])
+
+    def test_an_older_issue_is_not_loaded_into_an_empty_live_while_a_newer_is_held(self):
+        with rolled_back(self.conn) as cur:
+            self._load_aug_and_sep(cur)
+            cur.execute("DELETE FROM public.zz_s24_jud_live")
+            cur.execute("DELETE FROM public.zz_s24_not_live")
+            old = self.judgements("20260812", jrows=JROWS[:4])
+            rc, text, logged = self.run_main(
+                cur, ["load", "--only", "judgements", "--file", old,
+                      "--no-page", "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("is empty and the editions hold a newer issue",
+                          text)
+            self.assertIn(J_SEP, text)
+            self.assertEqual(live_periods(cur, "judgements"), [])
+            self.assertEqual(live_periods(cur, "notices"), [])
+
+    def test_the_engine_refuses_an_older_live_missing_insert(self):
+        with rolled_back(self.conn) as cur:
+            self._load_aug_and_sep(cur)
+            cur.execute("DELETE FROM public.zz_s24_jud_live")
+            prof = m.profile("judgements")
+            self.assertEqual(
+                pe.newer_editions_periods(cur, prof, J_AUG), [J_SEP])
+            self.assertEqual(
+                pe.newer_editions_periods(cur, prof, J_SEP), [])
+            recs = m.records(cur, ZZ["judgements"], J_AUG, 1)
+            with self.assertRaises(SystemExit) as ctx:
+                pe.apply_period(cur, prof, J_AUG, recs,
+                                fetched_on=date(2026, 10, 11))
+            self.assertIn("newer period", str(ctx.exception.code))
+            self.assertEqual(live_periods(cur, "judgements"), [])
+
+    def test_status_calls_a_newer_held_issue_a_fault_not_history(self):
+        with rolled_back(self.conn) as cur:
+            self._load_aug_and_sep(cur)
+            st = pe.status(cur, m.profile("judgements"))
+            self.assertTrue(st["ok"], st)
+            self.assertEqual((st["history"], st["live_behind"]),
+                             ([J_AUG], []))
+            cols = ", ".join(("registration_number", "publication_date",
+                              "edition_date") + m.JUDGEMENT_VALUES)
+            cur.execute("DELETE FROM public.zz_s24_jud_live")
+            cur.execute(f"INSERT INTO public.zz_s24_jud_live ({cols}, "
+                        "source_url, source_file, release_page_url) SELECT "
+                        f"{cols}, file_source_url, file_name, "
+                        "file_release_page_url FROM "
+                        "public.zz_s24_jud_editions WHERE edition_date = %s",
+                        (J_AUG,))
+            st = pe.status(cur, m.profile("judgements"))
+            self.assertFalse(st["ok"], st)
+            self.assertEqual((st["history"], st["live_behind"]),
+                             ([], [J_SEP]))
+            text = pe.format_status(m.profile("judgements"), st)
+            self.assertIn("live is behind", text)
+            self.assertNotIn("history:", text)
+
+    def test_the_older_file_message_says_what_a_held_period_does(self):
+        with rolled_back(self.conn) as cur:
+            self.judgements("20260930")
+            self.ok(cur, ["load", "--only", "judgements", "--commit"])
+            self.judgements("20260812", jrows=JROWS[:4])
+            rc, text, _ = self.run_main(
+                cur, ["load", "--only", "judgements", "--commit"])
+            self.assertEqual(rc, "halt", text)
+            self.assertIn("NEXT edition", text)
+            self.assertIn("rolling live back", text)
+            self.assertNotIn("stored as history", text)
+
+    def test_a_reissue_of_a_held_period_with_allow_older_says_it_is_the_tip(self):
+        with rolled_back(self.conn) as cur:
+            self.judgements("20260930", modified=datetime(2026, 9, 30, 12))
+            self.ok(cur, ["load", "--only", "judgements", "--commit"])
+            rows = list(JROWS)
+            rows[0] = jrow(c="C3")
+            self.judgements("20260930", jrows=rows,
+                            modified=datetime(2026, 9, 30, 11))
+            rc, text, _ = self.run_main(
+                cur, ["load", "--only", "judgements", "--allow-older-file"])
+            self.assertIn("NEXT edition", text)
+            self.assertIn("roll live back", text)
+            self.assertNotIn("stored as history", text)
+
+
+class AcknowledgeParts(Fixture):
+
+    def _both_stopping(self, cur):
+        many = [(f"P{i}", f"{9000 + i}", datetime(2001, 1, 1), "Profit",
+                 "Company", None) for i in range(40)]
+        self.register("17 August 2026", rows=many,
+                      modified=datetime(2026, 8, 17, 10))
+        self.judgements("20260812")
+        self.ok(cur, ["load", "--commit"])
+        self.register()                          # 4 rows: 40 removed
+        self.judgements("20260917", jrows=JROWS[:4])   # 4 of 6 rows
+
+    def test_a_bare_date_shared_by_two_parts_is_refused(self):
+        with rolled_back(self.conn) as cur:
+            self._both_stopping(cur)
+            rc, text, _ = self.run_main(cur, ["load", "--commit"])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("register 2026-09-17: REJECTED", text)
+            self.assertIn("judgements 2026-09-17: REJECTED", text)
+            self.assertIn("--acknowledge register:2026-09-17", text)
+            rc, text, logged = self.run_main(
+                cur, ["load", "--commit", "--acknowledge", SEP])
+            self.assertEqual(rc, "halt", text)
+            self.assertIn("register:2026-09-17", text)
+            self.assertIn("judgements:2026-09-17", text)
+            self.assertEqual(editions(cur, "register", SEP), [])
+            self.assertEqual(editions(cur, "judgements", SEP), [])
+            logged.assert_not_called()
+
+    def test_a_qualified_date_releases_one_part_only(self):
+        with rolled_back(self.conn) as cur:
+            self._both_stopping(cur)
+            rc, text, _ = self.run_main(
+                cur, ["load", "--commit", "--acknowledge",
+                      f"register:{SEP}"])
+            self.assertEqual(rc, 1, text)          # judgements still stops
+            self.assertIn("register 2026-09-17: ACKNOWLEDGED", text)
+            self.assertIn("judgements 2026-09-17: REJECTED", text)
+            self.assertEqual(editions(cur, "register", SEP), [(1, None, 4)])
+            self.assertEqual(editions(cur, "judgements", SEP), [])
+
+    def test_a_part_not_in_the_run_is_stray_and_a_bad_part_is_refused(self):
+        with rolled_back(self.conn) as cur:
+            self._both_stopping(cur)
+            rc, text, _ = self.run_main(
+                cur, ["load", "--only", "register", "--commit",
+                      "--acknowledge", f"judgements:{SEP}"])
+            self.assertEqual(rc, "halt", text)
+            self.assertIn("not periods this run compares", text)
+            self.assertEqual(editions(cur, "register", SEP), [])
+            with quiet(), contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit):
+                m.main(["load", "--acknowledge", f"notices:{SEP}"])
+
+    def test_the_bare_form_still_works_for_a_single_part_run(self):
+        with rolled_back(self.conn) as cur:
+            self._both_stopping(cur)
+            rc, text, _ = self.run_main(
+                cur, ["load", "--only", "register", "--commit",
+                      "--acknowledge", SEP])
+            self.assertEqual(rc, 0, text)
+            self.assertEqual(editions(cur, "register", SEP), [(1, None, 4)])
+
 
 class Fetch(unittest.TestCase):
     """fetch() itself with a stand-in session (no network)."""

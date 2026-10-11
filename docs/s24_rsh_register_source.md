@@ -116,7 +116,7 @@ paraphrased; nothing is added from outside it.
   G1 to G4, V1 to V4 and C1 to C4. An asterisk marks a grade for a landlord designated on the register as for-profit (for example C2*).
 - For large private registered providers RSH "usually" reflects its view of the Rent Standard and Value for Money Standard within the
   governance and viability gradings and in some circumstances publishes a separate statement on rents.
-- Interim judgements are issued after mergers or significant restructures; a grade that is a regrade (V1 to V2 or the reverse) is not
+- Interim judgements may be issued after mergers or significant restructures (the guidance says RSH "may issue" one); a grade that is a regrade (V1 to V2 or the reverse) is not
   called an upgrade or downgrade. Each grade is the view at a point in time.
 
 The guidance does not define the `-` marker in the judgements table, the Rent column's `Y`, or what a blank means. What each stored
@@ -217,7 +217,7 @@ python scripts/s24_rsh_register_editions_verify.py          # 21 gates, exit 0, 
 ```
 
 A new register date is a new period; a new judgements issue is a new period and replaces the live judgements and notices. A judgements
-file must carry enforcement notices (a file with none is rejected). `--file PATH [--title-date YYYY-MM-DD] [--no-page]` takes a file
+file must carry enforcement notices (a file with none is rejected; see "What halts a load" below). `--file PATH [--title-date YYYY-MM-DD] [--no-page]` takes a file
 you hold, `--only register|judgements` limits a run, `restore-edition TABLE PERIOD N` brings an earlier edition back as the next one.
 `python scripts/check_sources.py 24` reads the newest register title against the newest held snapshot; nothing runs the load for you.
 
@@ -225,14 +225,16 @@ you hold, `--only register|judgements` limits a run, `restore-edition TABLE PERI
 
 - **An identity or header failure** (title, sheet, header, modified date, change history): the file or the page changed. Read it,
   then fix the loader in a small commit with the evidence.
-- **An older file** than the one held: skipped; a run of only older files halts. `--allow-older-file` overrides.
-- **A reissue of a held period** with different content: stop. `--accept-reissue PERIOD`, and a changed row needs `--acknowledge PERIOD`.
+- **An older file** than the one held: skipped; a run of only older files halts. `--allow-older-file` overrides, and it does two different things: a judgements period not yet held is stored as edition 1 only (history, live unchanged); a period already held gets the file as its next edition, the new tip, and a later `refresh-latest` would copy its rows into live and roll it back.
+- **A judgements file with no enforcement notices:** REJECTED, no release flag, exit 1. This is a known limitation, deliberately not changed. The file is kept in `data/raw/s24_rsh/` (do not delete it); live judgements and notices stay on the last issue that had notices, so the judgements and downgrades in the rejected issue do not arrive, and every later `load` meets the same rejection until the rule is changed. The page offers the latest file only, so a missed issue cannot be fetched later. Ask Scott: the rule can be changed deliberately, with evidence (open item 8 in `docs/decisions/README.md`). A sheet with no header at all halts earlier as an identity failure, with the same effect.
+- **An empty live judgements table with a newer issue held:** loading an older issue stops (nothing stored); load the newest issue. `status` reports an editions issue newer than the live one as a fault (`live is behind`), not history.
+- **A reissue of a held period** with different content: stop. `--accept-reissue PERIOD`, and a changed row needs `--acknowledge PERIOD`. Where a register and a judgements issue share a date, name the part (`register:2026-11-18`, `judgements:2026-11-18`); a bare date is accepted when only one part of the run has it and refused when both do.
 - **A stop condition** (rejected, nothing stored, exit 1): a register with fewer than 95% of the previous snapshot's providers or more
   than 30 providers added or removed; a judgements issue with fewer than 90% of the previous issue's rows. Calibrated on the held data
   (24 July to 17 August +4/-5; 17 August to 17 September +1/-2). Read the cause, then `--acknowledge PERIOD`.
 - **A grade or date outside the allowed forms:** the cell is named; read the cell before deciding.
-- **A new judgements issue while live still holds old rows**, or a register reissue that adds or removes a provider: `refresh-latest`
-  halts and names the flag it needs (`--accept-key-changes PERIOD`).
+- **A new judgements issue while live still holds old rows:** `refresh-latest` halts and names the flag it needs (`--accept-key-changes PERIOD`).
+- **A register reissue that adds or removes a provider:** it can be stored, but `refresh-latest` halts and `--accept-key-changes` is refused for the register (the register spec does not opt in to key changes). There is no flag for it; the register's live rows are changed only by a code change decided with evidence.
 - **Gate 13 after a reissue of 2026-09-17:** by design it fails until the gate is reviewed.
 
 ## Retired
