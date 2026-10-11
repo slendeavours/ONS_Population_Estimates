@@ -160,11 +160,15 @@ DATASET_FORM = {
           "data/raw/s3_mye/mye25tablesew.xlsx (mid-2025, built on 2023 LA "
           "boundaries) carries E08000016/19 only (METHODOLOGY, S3; registry "
           "known_gotchas)."),
-    "3b": ("unverified",
-           "Census 2021 TS054 via NOMIS: la_tenure_2021 holds E08000016/19 "
-           "and no recode is recorded, but no source file is on disk. At "
-           "the next load, record the codes NOMIS returns for Barnsley and "
-           "Sheffield."),
+    "3b": ("old",
+           "NOMIS NM_2072_1 TYPE424 (local authorities: district / unitary "
+           "(as of April 2023)) returns E08000016/19, read 2026-10-10 "
+           "(data/raw/s3b_tenure/NM_2072_1_TYPE424_2026-10-10.csv: "
+           "E08000016 Barnsley and E08000019 Sheffield, never "
+           "E08000038/39); la_tenure_2021 holds the same codes. scripts/"
+           "s3b_tenure_editions.py halts on a reply that carries the new "
+           "codes; this is then corrected deliberately, with that reply as "
+           "evidence."),
     "4": ("old",
           "The five DfE care leaver LA files in data/raw/s4_cla (read "
           "2026-10-09: 17-21 accommodation of the 2023, 2024 and 2025 "
