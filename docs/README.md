@@ -51,11 +51,11 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | 9b | MHSDS MHS26 | CRFD delayed discharge days — combined MH+LD/autism (direct LA level) | yes | no |
 | 10 | DLUHC Rough Sleeping Snapshot | People sleeping rough on the autumn single-night snapshot per LA (snapshot year and the year before) | yes | yes |
 | 11 | CQC Care directory with filters | Registered care locations with supported living, personal care and care home flags (supply side) | yes | yes |
-| 12 | MHCLG EFS / published S.114 notices | EFS support flag, S.114 notice flag | yes | no |
+| 12 | MHCLG EFS / published S.114 notices | Exceptional Financial Support per LA and financial year, from each year's own GOV.UK page (amount, status; a withdrawn request is a row with no amount; `hra_only` marks Housing Revenue Account support); S.114 notices, a curated register with evidence for each notice; EFS support flag, S.114 notice flag (W1: any row) | yes | no |
 | 13 | DLUHC LAHS | Households on the housing register (waiting list) per LA, summed from predecessors for reorganised authorities; Households on the register with reasonable preference; Whether register criteria changed since last year (cc2a, Localism Act 2011) | yes | yes |
 | 14 | VOA/DWP LHA rates | LHA weekly rates (SAR, 1–4 bed) by BRMA, mapped to LAs | yes | yes |
 | 15 | Land Registry UK HPI | Average house prices per LA (all property types), annual % change | no | yes |
-| 17 | SafeLives MARAC data | MARAC cases, rate per 10k | yes | yes |
+| 17 | SafeLives MARAC data | Cases discussed at MARACs per police force area and year ending March; Cases per 10,000 adult females (SafeLives' published figure); Number of MARACs, recommended cases, repeat cases, children in household and housing referrals | yes | yes |
 | 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | no | no |
 | 19 | DWP Stat-Xplore PIP | PIP total claimants and enhanced daily living per LA (demand proxy for supported living) | yes | no |
 | 20 | Commercial rate card (private) | Withheld — commercial in confidence. Held in `exempt_pipeline` only and never exported to this repository, the signals JSON or the map | no | no |
@@ -110,6 +110,8 @@ CHANGELOG.md                                Dated record of pipeline changes
   s6_source_anomalies.md                    S6 source anomalies as last written by the old verify module (historical; no longer regenerated)
   s10_rough_sleeping_source.md              Source 10 (MHCLG rough sleeping snapshot) register entry: discovery, definitions from the publisher's notes, markers, editions
   s13_lahs_source.md                        Source 13 (MHCLG LAHS housing register) register entry: discovery, definitions from the publisher's notes, zero rules, editions
+  s12_financial_stress_source.md            Source 12 (MHCLG Exceptional Financial Support and S.114 notices) register entry: discovery, cell grammar, withdrawn-only rule, the evidenced register, editions
+  s17_marac_source.md                       Source 17 (SafeLives Marac data by police force area) register entry: discovery, hand-download fallback, markers, zero rules, editions
   geography_dimension.md                    la_geography / la_succession dimension tables
   S9_BUILD_SUMMARY.md                       S9 sources build summary
   S6_BUILD_SUMMARY.md                       S6 original build summary of 25 July 2026 (superseded)
@@ -138,6 +140,11 @@ CHANGELOG.md                                Dated record of pipeline changes
   s10_rough_sleeping_editions_verify.py     Source 10 editions gates (21), writes nothing
   s13_lahs_editions.py                      Source 13 (MHCLG LAHS housing register) editions loader - a W1 and map input
   s13_lahs_editions_verify.py               Source 13 editions gates (24), writes nothing
+  s12_financial_stress_editions.py          Source 12 (MHCLG Exceptional Financial Support and S.114 notices) editions loader, two tables - a W1 and map input (two flags)
+  s12_financial_stress_editions_verify.py   Source 12 editions gates (21), writes nothing
+  s17_marac_editions.py                     Source 17 (SafeLives Marac data) editions loader - a W1 and map input
+  s17_marac_editions_verify.py              Source 17 editions gates (20), writes nothing
+  manual_input.py                           Helper for hand-placed and curated source files (S12 register, S17 fallback): path roots, identity, register reader
   s14_lha_rates_build.py                    Source 14 (VOA/DWP LHA rates) ETL
   s15_hpi_editions.py                       Source 15 (Land Registry UK HPI) editions loader (old s15_hpi_build.py is in scripts/historical/)
   /verify/                                  Source reconciliation against publication (2026-08 assurance)

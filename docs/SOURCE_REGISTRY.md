@@ -138,8 +138,10 @@ The two left at C:
 
 | Source | Why it stays manual |
 | --- | --- |
-| S12 MHCLG EFS / S.114 | The EFS half resolves through the GOV.UK content API. The S.114 half cannot: notices are issued by individual authorities with no central register. Automating only the detectable half would report the source as checked while the manual half went unwatched. |
-| S17 SafeLives | A third-party charity publishing to its own site, no API, no stable file-URL pattern. The 6–9 month lag makes frequent checking pointless anyway. |
+| S12 MHCLG EFS / S.114 | The EFS half is loaded since 2026-10-10 by `scripts/s12_financial_stress_editions.py` from the GOV.UK content API. The S.114 half stays a curated, evidenced register: notices are issued by individual authorities with no central register, so there is nothing to watch. Reporting the source as automated would hide the half that is a hand step. |
+| S17 SafeLives | A third-party charity publishing to its own site with no API. Since 2026-10-10 `scripts/s17_marac_editions.py` reads the data page and downloads the workbooks with a plain request, with a hand-download fallback if SafeLives refuses it (a Cloudflare 403 was seen with a browser-like request). |
+
+Both stay `manual` until two consecutive releases have been taken without a hand step.
 
 `completeness_note` records which of "established" and "checked, not
 established" applies to every row, so a future reader can tell a finding from
@@ -281,8 +283,8 @@ Detection uses the per-period `source` column the target table already
 records, where it has one. That column says which file each loaded period
 actually came from, so a republished file is visible from the link list alone
 — the `-Revised` suffix on the DRD filenames is the whole signal, and nothing
-is downloaded. Thirteen sources are currently flagged as revising
-(`revises_back_series` true): S1, S1b, S2, S4, S6, S8b, S9a, S9b, S13, S15, S18, S22 and S23.
+is downloaded. Fourteen sources are currently flagged as revising
+(`revises_back_series` true): S1, S1b, S2, S4, S6, S8b, S9a, S9b, S12, S13, S15, S18, S22 and S23.
 
 S18 is no longer immune by accident: every edition republishes the full back
 series, but since 2026-10-01 the loader does not overwrite held rows. A revision
@@ -361,6 +363,23 @@ collections (its GOV.UK content API detectors for 10 and 13; neither sees an
 in-place revision of a file). W1 and map inputs. Records:
 `docs/decisions/2026-10-10-s10-editions-first-load.md` and
 `docs/decisions/2026-10-10-s13-editions-first-load.md`.
+
+S12 (Exceptional Financial Support and the S.114 register) and S17 (SafeLives
+Marac data) are on the same engine since 2026-10-10, each with an editions table
+and a file-check ledger; the live tables `la_efs_support`, `la_s114_notices` and
+`marac_cases` are their latest-edition layers. S12 is flagged as revising: the
+year pages restate earlier decisions and 13 held amounts differ from the pages.
+S17 is not flagged (`revises_back_series` false): each workbook is one year and
+no revision has been seen; a reissued file would be stored as the next edition.
+The registry rows carry the loader, the source note, the gotchas, the caveats and
+the verification record, and neither names an n8n workflow (both were retired on
+2026-10-10). `acquisition_method` stays `manual`: the S.114 register is
+compiled by hand, and SafeLives may refuse a plain request. `check_sources.py`
+detects a newer EFS year page and a new year label on the SafeLives page; it
+cannot see a change inside a held EFS page or a reissued workbook. W1 and map
+inputs (S12 as two flags). Records:
+`docs/decisions/2026-10-10-s12-editions-first-load.md` and
+`docs/decisions/2026-10-10-s17-editions-first-load.md`.
 
 S11 (the CQC register) is on the same engine since 2026-10-09 but is
 snapshots, not revisions: each monthly file is a dated copy of the register

@@ -16,26 +16,26 @@ The top of this list is the documentation debt.
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
 | `hss_lens` | 20 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 20 | an explicit dual-lens note in the source documentation |
-| `verification_checks` | 15 | the source's verification suite and its documented check count |
-| `n8n_workflow_name` | 14 | the n8n workflow that runs the source, where one does |
+| `n8n_workflow_name` | 16 | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | 14 | a source documentation file — the single largest gap for undocumented sources |
+| `verification_checks` | 13 | the source's verification suite and its documented check count |
+| `source_doc_path` | 12 | a source documentation file — the single largest gap for undocumented sources |
 | `detected_period_type` | 11 | — |
-| `join_path` | 11 | the build script's geography resolution step |
-| `revises_back_series` | 11 | — |
+| `join_path` | 10 | the build script's geography resolution step |
 | `api_endpoint` | 9 | the build script or node documentation, where acquisition is an API |
-| `build_script_path` | 9 | the build script, if it is in the published tree |
-| `revision_note` | 9 | — |
+| `revises_back_series` | 9 | — |
 | `publication_window` | 8 | the publisher's stated release window |
-| `series_name` | 7 | the publisher's dataset or table title, as named in a source documentation file |
-| `known_gotchas` | 6 | a source documentation file — acquisition traps are only known once written down |
+| `build_script_path` | 7 | the build script, if it is in the published tree |
+| `revision_note` | 7 | — |
 | `caveats` | 5 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
+| `series_name` | 5 | the publisher's dataset or table title, as named in a source documentation file |
+| `known_gotchas` | 4 | a source documentation file — acquisition traps are only known once written down |
 | `landing_page_url` | 4 | the publisher's landing page, recorded in a source or node documentation file |
 | `cadence_months` | 3 | the publisher's stated cadence, where it is regular enough to express in months |
 | `latest_period_loaded` | 3 | the check job, or the source documentation's 'month loaded' field |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 
-Total: 289 null fields across 26 published sources.
+Total: 276 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -321,26 +321,19 @@ Total: 289 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `series_name` | the publisher's dataset or table title, as named in a source documentation file |
 | `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
-| `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `cadence_months` | the publisher's stated cadence, where it is regular enough to express in months |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
-| `build_script_path` | the build script, if it is in the published tree |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** Mechanics established 2026-08-14, and tier C is now evidenced rather than assumed. The EFS half resolves through the GOV.UK content API and could be detected. The S.114 half cannot: notices are issued and published by individual local authorities with no central register, so no endpoint exists to watch. Automating only the detectable half would report the source as checked while the manual half went unwatched, which is worse than reporting it manual. Split the source if the EFS half is ever worth automating on its own.
+**Note.** Mechanics established 2026-08-14 and revised 2026-10-10. The EFS half is now automated: scripts/s12_financial_stress_editions.py reads the collection and each year's page through the GOV.UK content API, and check_sources reads the collection for a newer year. The S.114 half stays a curated, evidenced register (data/reference/la_s114_notices.csv, read through scripts/manual_input.py): notices are issued and published by individual local authorities with no central register, so no endpoint exists to watch, and a new notice is added by hand with its evidence. acquisition_method stays manual because that half is a hand step and the EFS load is run by hand; it is to be reconsidered once two consecutive releases have been taken without a hand step. Reporting the source as automated while the register went unwatched would be worse than reporting it manual. Held (2026-10-11): la_efs_support, 111 rows for 49 authorities over 2020-21 to 2026-27, and la_s114_notices, 14 notices for 10 authorities, the latest-edition layers of la_efs_support_editions and la_s114_notices_editions (two or three editions per year) with file-check ledgers. W1 and the map read only whether an authority has any row in either table.
 
 ### S13
 
@@ -396,24 +389,18 @@ Total: 289 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `series_name` | the publisher's dataset or table title, as named in a source documentation file |
 | `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
-| `known_gotchas` | a source documentation file — acquisition traps are only known once written down |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `build_script_path` | the build script, if it is in the published tree |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** Mechanics established 2026-08-14, and tier C is now evidenced. SafeLives is a third-party charity publishing to its own site with no API and no stable file-URL pattern. The page responds, so detection by page fingerprint is possible, but ingestion stays manual and the 6-9 month publication lag makes frequent checking pointless.
+**Note.** Mechanics established 2026-08-14 and revised 2026-10-10. SafeLives is a third-party charity publishing to its own site with no API; the data page links one workbook for each year, and scripts/s17_marac_editions.py reads the page and downloads the workbooks with a plain request. If SafeLives refuses the request (a Cloudflare 403 was seen with a browser-like User-Agent in the survey of 2026-10-10), the loader halts and the file is downloaded by hand and loaded with --file. acquisition_method stays manual until two consecutive releases have been taken without a hand step. Held (2026-10-10): marac_cases, 312 rows (eight years 2018-19 to 2025-26 for 39 English police force areas), the latest-edition layer of marac_cases_editions (two editions per year) with a file-check ledger. W1 and the map read cases_discussed and cases_per_10k_adult_females at the newest financial_year.
 
 ### S18
 
