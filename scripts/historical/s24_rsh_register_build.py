@@ -40,10 +40,35 @@ answerable from the table itself by comparing two snapshot dates - which is
 the whole reason it is stored as snapshots rather than as a current-state
 table that would overwrite the evidence.
 
-Usage:
+Retired on 2026-10-11: replaced by scripts/s24_rsh_register_editions.py (see
+the RETIRED message below). The "de-registration is inferred" section above
+was wrong: the register page links yearly "Registrations and
+de-registrations" pages with dated entries (not loaded by this source).
+
+Usage (historical; the script now stops at once):
     python scripts/s24_rsh_register_build.py --discover
     python scripts/s24_rsh_register_build.py --load
 """
+import sys
+
+_RETIRED = (
+    'RETIRED: use scripts/s24_rsh_register_editions.py. The old S24 build (s24_rsh_register_build.py and '
+    's24_rsh_register_verify.py) was committed on 2026-08-14 (ad8e349, 22:47 London time) and its load '
+    'ran twice: run-log id 96 (2026-08-14 21:26 UTC, 21 minutes before that commit; 1,889 rows: the '
+    '24 July register, the 12 August judgements and 2 enforcement notices) and id 101 (2026-10-01 '
+    '21:59 UTC; 1,890 rows: the 17 September register, the 30 September judgements and 2 notices). '
+    'The 17 August register was loaded on 2026-08-20 by code that is not in the repo, with no run-log row. '
+    'This is the build: --load upserted all three tables with INSERT ... ON CONFLICT DO UPDATE, setting '
+    'loaded_at, and wrote when run, with no preview and no --commit. The judgements key is the registration '
+    'number and publication date and the upsert overwrote edition_date, so run 101 re-tagged 293 of the 308 '
+    'August judgements to the 30 September edition and left 15 August rows in the table. A same-named raw '
+    'download was kept whatever its content. Its text() turned "-", an empty cell and the text "None" into '
+    'one NULL with no reason, so "not applicable", "not assessed yet" and "blank" could not be told apart. '
+    'Use scripts/s24_rsh_register_editions.py (load, refresh-latest, status) instead.'
+)
+if __name__ == "__main__":
+    print(_RETIRED, file=sys.stderr)
+    sys.exit(2)
 import argparse
 import datetime as dt
 import json

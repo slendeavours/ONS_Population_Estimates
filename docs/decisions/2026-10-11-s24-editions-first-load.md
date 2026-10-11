@@ -162,3 +162,14 @@ brings back the 'None' notes text. Editions are append-only, so nothing is lost.
   plan task 5 (the registry text and `docs/s24_rsh_register_source.md`). Loading those pages is later work, not in scope.
 - `status` before the migration printed "ROW COUNT ... expected 1579" for the August and September register periods. That was a
   pre-migration check and cleared once the editions existed.
+
+## Follow-up done (2026-10-11, plan task 5)
+
+- The old `scripts/s24_rsh_register_build.py` and `scripts/s24_rsh_register_verify.py` were moved to `scripts/historical/` with
+  RETIRED guards (exit 2 before any import; `scripts/tests/test_s24_retired.py` runs them as subprocesses with a broken
+  environment). Nothing live references them.
+- The registry caveat and `docs/s24_rsh_register_source.md` no longer say a de-registration has no published date: RSH publishes
+  dated registrations and de-registrations on yearly pages linked from the register page, checked against
+  `data/raw/s24_rsh/dereg_2026.json`. The pages are still not loaded.
+- The registry row 24 (loader, verification, gotchas, caveats, completeness, revision note) was rewritten and the registry verify
+  passes; the node docs carry a line saying they describe the retired build.

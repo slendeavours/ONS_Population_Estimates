@@ -137,7 +137,11 @@ DETECTORS = {
     "24": dict(method="govuk_content_api", finder="s24",
                loaded_sql="SELECT MAX(snapshot_date)::text FROM rsh_registered_providers",
                note="'List of registered providers' attachment titles on the RSH "
-                    "register page (GOV.UK content API); snapshot date is in the title"),
+                    "register page (GOV.UK content API); snapshot date is in the title. "
+                    "Loaded side: the live register table keeps every snapshot (editions "
+                    "in rsh_registered_providers_editions), so MAX(snapshot_date) is the "
+                    "newest held list. The judgements table (rsh_regulatory_judgements, "
+                    "newest issue only) is not checked here"),
     # la_boundaries does not record its own vintage, so the loaded side is
     # stated here: LAD May 2024 BGC (registry known_gotchas for S7). A newer
     # vintage is reported, never adopted: changing vintage re-bases every join.

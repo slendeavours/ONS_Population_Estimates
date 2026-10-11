@@ -1,5 +1,7 @@
 # S24 Node 2: Create the Three Entity Tables
 
+> **Superseded 2026-10-11.** The old S24 scripts this note describes (`s24_rsh_register_build.py`, `s24_rsh_register_verify.py`) loaded the register and judgements twice (run-log ids 96 and 101) and are retired to `scripts/historical/`, where they stop with a RETIRED message. S24 is now loaded by `scripts/s24_rsh_register_editions.py`, which reads each file's identity from the file and the publisher's page and keeps the register per snapshot and the judgements and notices per published edition, with the reason for every NULL (`rsh_registered_providers_editions`, `rsh_regulatory_judgements_editions`, `rsh_enforcement_notices_editions`). The source note is `docs/s24_rsh_register_source.md`. The text below is left as written and describes the old method.
+
 - **Type:** Postgres DDL (additive only)
 - **Purpose:** Create the register snapshot, judgements and enforcement notice tables. Entity-level throughout — no geography column exists on any of them, deliberately.
 - **Credential:** `PG_USER` / `PG_PASSWORD` via `scripts/_db.py`.

@@ -986,6 +986,25 @@ Run from `ONS_Population_Estimates`. A preview downloads the publisher's file or
 
 **Never run the old workflows.** "Indices of Deprivation (S5)", "Census 2021 TS054 Tenure (S3b)" and "LA Boundaries (S7)" are retired (their Code nodes throw; the S7 workflow's `la_code_lookup` DELETE and INSERT nodes stop too). The S3b one re-based four unitary authorities wrongly and the S7 one replaced `la_code_lookup`'s non-current rows with its own list.
 
+## S24 RSH register, regulatory judgements and enforcement notices: each month, and on each judgements issue
+
+`rsh_registered_providers` holds one period for each monthly register list (the date is in the attachment title) and every period is live. `rsh_regulatory_judgements` and `rsh_enforcement_notices` hold one period for each published issue of the judgements table (the date is the file name's `yyyymmdd` prefix), and the live tables show the newest issue only; older issues stay in the editions tables (`rsh_*_editions`) as history. Each editions table has a file-check ledger. The Regulator of Social Housing publishes the register "around the middle of each month" (the held lists are 24 July, 17 August and 17 September 2026) and a new judgements table every one to three weeks; the next register is expected about 17 to 21 October 2026. Record: [S24](decisions/2026-10-11-s24-editions-first-load.md). Source note: [s24_rsh_register_source.md](s24_rsh_register_source.md).
+
+Run from `ONS_Population_Estimates`. `check_sources.py 24` compares the newest register title on the GOV.UK page with `MAX(snapshot_date)` of the live register table (the live table keeps every snapshot, so that is the newest held list); it does not look at the judgements. Nothing runs the load for you.
+
+1. Each month, and when the judgements page changes: `python scripts/s24_rsh_register_editions.py load` (preview). It reads both pages, downloads the files to `data/raw/s24_rsh/` (also in a preview; the database is not written), reads each file's identity and prints what is new, reissued, unchanged or skipped as older. Read the whole preview. `--only register|judgements` limits it; `--file PATH [--title-date YYYY-MM-DD] [--no-page]` takes a file you hold.
+2. `load --simulate`, then `load --commit`. A new register date is stored as edition 1 of a new period. A new judgements issue is stored as edition 1 of a new period, together with its enforcement notices (a file with none is rejected), and replaces the live judgements and notices.
+3. A reissue of a held period: the same `load`; a changed row needs `--acknowledge PERIOD` and a reissued date with other content needs `--accept-reissue PERIOD`. Then `refresh-latest` (preview, `--simulate`, `--commit`); a change in the set of providers needs `--accept-key-changes PERIOD`.
+4. `status` should say OK and `python scripts/s24_rsh_register_editions_verify.py` should pass all 21 gates.
+5. A period is REJECTED (nothing stored, exit 1) on an identity, header, grade or date failure; for a register with fewer than 95% of the previous snapshot's providers or more than 30 added or removed; for a judgements issue with fewer than 90% of the previous issue's rows. An older file than the one held is skipped, and a run of only older files halts (`--allow-older-file` overrides).
+6. **Judgements are kept as RSH issued them.** A register or judgements file for a date you already hold is never overwritten: it is a new edition. Do not edit the live tables by hand.
+7. S24 is not a W1 or map input (it has no geography), so `refresh_map.py` is not needed.
+8. Keep the four held workbooks in `data/raw/s24_rsh/` (git-ignored): verify gates 5, 6, 7, 13 and 17 find them by sha256. They carry a hidden sheet; never commit them.
+
+To go back for a period: `restore-edition TABLE PERIOD N` (preview by default) stores edition N's rows as the next edition, then `refresh-latest --commit`. Nothing is deleted from the editions.
+
+**Never run the old scripts.** `scripts/historical/s24_rsh_register_build.py` and `s24_rsh_register_verify.py` now stop with a RETIRED message. The build upserted all three tables in place with `INSERT ... ON CONFLICT ... DO UPDATE`, wrote when run with no preview, and its load ran twice (run-log ids 96, 14 August 2026, and 101, 1 October 2026).
+
 ## What is still manual
 
 - **Spotting a new RO4 release.** Nothing detects it; see the RO4 section.
@@ -998,6 +1017,7 @@ Run from `ONS_Population_Estimates`. A preview downloads the publisher's file or
 - **Running the S4 November load.** `check_sources.py 4` detects a new release but nothing runs `s4_care_leaver_editions.py load` for you; see the S4 section.
 - **Running the S22 November load and the Table 615 updates.** `check_sources.py 22` detects a new Council Taxbase release, nothing detects a new Table 615 file, and nothing runs `s22_ctb_editions.py load` or `load-615` for you; see the S22 section.
 - **Running the S23 autumn load.** `check_sources.py 23` detects a newer release but nothing runs `s23_rsh_stock_editions.py load` for you; see the S23 section.
+- **Running the S24 monthly and judgements loads.** `check_sources.py 24` detects a newer register list but not a new judgements issue, and nothing runs `s24_rsh_register_editions.py load` for you; see the S24 section.
 - **Running the S6 quarterly load.** `check_sources.py 6` detects a newer release but nothing runs `s6_asylum_editions.py load` for you; see the S6 section.
 - **Running the S10 winter load.** `check_sources.py 10` detects a newer release but nothing runs `s10_rough_sleeping_editions.py load` for you; see the S10 section.
 - **Running the S13 winter load and spotting a revision.** `check_sources.py 13` detects a newer return year but nothing detects an in-place revision of the open data file or runs `s13_lahs_editions.py load` for you; see the S13 section.

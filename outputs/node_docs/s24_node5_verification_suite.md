@@ -1,5 +1,7 @@
 # S24 Node 5: Verification Suite
 
+> **Superseded 2026-10-11.** The old S24 scripts this note describes (`s24_rsh_register_build.py`, `s24_rsh_register_verify.py`) loaded the register and judgements twice (run-log ids 96 and 101) and are retired to `scripts/historical/`, where they stop with a RETIRED message. S24 is now loaded by `scripts/s24_rsh_register_editions.py`, which reads each file's identity from the file and the publisher's page and keeps the register per snapshot and the judgements and notices per published edition, with the reason for every NULL (`rsh_registered_providers_editions`, `rsh_regulatory_judgements_editions`, `rsh_enforcement_notices_editions`). The source note is `docs/s24_rsh_register_source.md`. The text below is left as written and describes the old method.
+
 - **Type:** Code (read-only, seven hard gates)
 - **Purpose:** Prove the load against the source files, and enforce the no-geography design decision so it cannot be undone by accident.
 - **Credential:** `PG_READONLY_USER` / `PG_READONLY_PASSWORD` where configured, otherwise `PG_USER` with the session forced read-only.

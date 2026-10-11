@@ -1,5 +1,7 @@
 # S24 Node 1: Resolve the Register and Judgements Publications
 
+> **Superseded 2026-10-11.** The old S24 scripts this note describes (`s24_rsh_register_build.py`, `s24_rsh_register_verify.py`) loaded the register and judgements twice (run-log ids 96 and 101) and are retired to `scripts/historical/`, where they stop with a RETIRED message. S24 is now loaded by `scripts/s24_rsh_register_editions.py`, which reads each file's identity from the file and the publisher's page and keeps the register per snapshot and the judgements and notices per published edition, with the reason for every NULL (`rsh_registered_providers_editions`, `rsh_regulatory_judgements_editions`, `rsh_enforcement_notices_editions`). The source note is `docs/s24_rsh_register_source.md`. The text below is left as written and describes the old method.
+
 - **Type:** HTTP GET (GOV.UK Content API) + download
 - **Purpose:** Resolve two separate publications — the monthly register snapshot and the regulatory judgements table — and take each one's date from the publisher rather than from the run date.
 - **Credential:** None (public).

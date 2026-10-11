@@ -17,11 +17,11 @@ The top of this list is the documentation debt.
 | `hss_lens` | 20 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 20 | an explicit dual-lens note in the source documentation |
 | `n8n_workflow_name` | 17 | the n8n workflow that runs the source, where one does |
-| `node_docs_path` | 14 | the per-node documentation under docs/nodes/ |
+| `node_docs_path` | 15 | the per-node documentation under docs/nodes/ |
 | `detected_period_type` | 11 | — |
-| `verification_checks` | 10 | the source's verification suite and its documented check count |
 | `api_endpoint` | 9 | the build script or node documentation, where acquisition is an API |
 | `source_doc_path` | 9 | a source documentation file — the single largest gap for undocumented sources |
+| `verification_checks` | 9 | the source's verification suite and its documented check count |
 | `publication_window` | 8 | the publisher's stated release window |
 | `join_path` | 7 | the build script's geography resolution step |
 | `revises_back_series` | 6 | — |
@@ -462,10 +462,10 @@ Total: 251 null fields across 26 published sources.
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
 | `join_path` | the build script's geography resolution step |
 | `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
-| `verification_checks` | the source's verification suite and its documented check count |
+| `node_docs_path` | the per-node documentation under docs/nodes/ |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
 
-**Note.** Register snapshot 24 July 2026: 1,579 providers (1,260 non-profit, 232 local authority, 87 profit). Judgements edition 12 August 2026: 308 judgements, 2 enforcement notices. Discovery established that regulatory judgements ARE published in a machine-readable table, not only as individual documents, so the gradings table was built rather than recorded as a limitation. Additional tables: rsh_regulatory_judgements, rsh_enforcement_notices. Held for risk management rather than analysis: the income route runs through a registered provider partner, and a downgrade, an enforcement notice or a de-registration is a material event.
+**Note.** Register snapshots held: 24 July 2026 (1,579 providers), 17 August (1,578) and 17 September (1,577); at 17 September 232 local authority, 1,253 non-profit and 92 profit. The live register table holds every snapshot. Judgements and enforcement notices: the 12 August 2026 issue (308 judgements, 2 notices) and the 30 September issue (311 judgements for 308 providers, 2 notices) are held as editions; the live tables hold the newest issue only (30 September). The page's change history lists issues of 18 August, 26 August and 9 September that were never loaded and cannot be obtained. The 17 August register file is not obtainable (its media URL serves the September file): its rows are kept as held, edition 1, with the text 'None' in notes, and edition 2 makes those 1,578 cells NULL. Judgements editions 2 carry null_reasons for every NULL. Entity-level, no LA geography, not a W1 or map input. Held for risk management rather than analysis: the income route runs through a registered provider partner, and a downgrade, an enforcement notice or a de-registration is a material event. The yearly registrations and de-registrations pages and the archived 2012 to March 2024 judgements table are not loaded.
 
 ## `pipeline_run_log.source_code` rows left null
 

@@ -1,11 +1,11 @@
 """Tests that the real-table gates of s24_rsh_register_editions_verify fail on
 an empty, drifted, planted or unmigrated state. The gate bodies (real_*) take
 specs, so they are called here against the throwaway zz_s24_* tables (created
-inside a transaction that is always rolled back); no real table is touched,
-and the S24 editions tables are never created. Every test ends in a rollback
-(also on an exception), and tearDownClass reads the database on a separate
-read-only connection and fails if a zz_s24 table, function or trigger was
-left committed."""
+inside a transaction that is always rolled back); no real table is written
+(test_the_gates_leave_the_real_tables_as_they_were compares their row
+counts). Every test ends in a rollback (also on an exception), and
+tearDownClass reads the database on a separate read-only connection and fails
+if a zz_s24 table, function or trigger was left committed."""
 import contextlib
 import dataclasses
 import io
@@ -34,12 +34,21 @@ class VerifyGates(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.conn = get_conn()
+        # a second, read-only view of committed state: what other sessions
+        # see, taken before any scenario runs
+        cls.conn2 = get_conn()
+        cls.conn2.set_session(readonly=True)
+        cls.raw_second = cls.conn2.cursor()
+        cls.real_before = cls.real_state(cls.raw_second)
 
     @classmethod
     def tearDownClass(cls):
         try:
             cls.conn.rollback()
             cls.conn.close()
+            cls.raw_second.close()
+            cls.conn2.rollback()
+            cls.conn2.close()
         finally:
             left = [t for t in v.leftovers() if "zz_s24" in t]
             if left:
@@ -110,10 +119,37 @@ class VerifyGates(unittest.TestCase):
         self.assertIn("GATE 98 y: FAIL", text)
         self.assertNotIn("pending", text)
 
-    def test_the_real_editions_tables_do_not_exist_and_the_gates_say_so(self):
-        # exists() reads the REAL names; before the migration it is False
-        # and every real-table gate prints the pending line
-        self.assertEqual(v.exists(self.cur), pe_exists(self.cur))
+    def test_the_gates_leave_the_real_tables_as_they_were(self):
+        """The real tables (live, editions, ledger) hold the same rows after
+        the throwaway scenarios as before them; only the zz_s24 copies were
+        touched. The real editions tables exist since the first load of
+        2026-10-11."""
+        self.assertTrue(v.exists(self.cur))
+        self.assertTrue(pe_exists(self.cur))
+        for name, s in ZZ.items():
+            self.assertNotEqual(s.editions_table, v.REAL[name].editions_table)
+            self.assertTrue(s.editions_table.startswith("zz_s24_"))
+            self.assertTrue(s.live_table.startswith("zz_s24_"))
+        self.completed()
+        self.assertEqual(self.real_state(self.raw), type(self).real_before)
+        self.assertEqual(self.real_state(self.raw_second),
+                         type(self).real_before)
+
+    @staticmethod
+    def real_state(cur):
+        """Row counts of the nine real relations, None where one does not
+        exist. A cursor on a separate connection sees only committed
+        state."""
+        state = {}
+        for s in v.REAL.values():
+            for name in (s.live_table, s.editions_table, v.ledger_name(s)):
+                cur.execute("SELECT to_regclass(%s)", (f"public.{name}",))
+                if cur.fetchone()[0] is None:
+                    state[name] = None
+                    continue
+                cur.execute(f"SELECT count(*) FROM public.{name}")
+                state[name] = cur.fetchone()[0]
+        return state
 
     def test_an_unmigrated_state_fails_with_a_clear_message(self):
         gone = {n: dataclasses.replace(s, editions_table="zz_s24_not_there")
@@ -374,17 +410,30 @@ class VerifyGates(unittest.TestCase):
         self.assertIn("migrate-legacy not run", detail)
 
     def test_print_note_lines_reads_the_real_tables_only(self):
+        """One before-state and one before-state-all line per period the live
+        tables hold now (read-only; after the 2026-10-11 migration: three
+        register snapshots, the 30 September judgements and notices)."""
+        periods = 0
+        for s in v.REAL.values():
+            self.raw_second.execute(
+                f"SELECT count(DISTINCT {s.period_col}) "
+                f"FROM public.{s.live_table}")
+            periods += self.raw_second.fetchone()[0]
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             v.print_note_lines()
         lines = out.getvalue().splitlines()
-        self.assertEqual(len(lines), 12)
+        self.assertEqual(len(lines), 2 * periods)
         self.assertEqual(len([x for x in lines
-                              if x.startswith("before-state ")]), 6)
+                              if x.startswith("before-state ")]), periods)
+        self.assertEqual(len([x for x in lines
+                              if x.startswith("before-state-all ")]), periods)
         for ln in lines:
             self.assertIsNone(re.search(r"[0-9a-fA-F]{40,}", ln), ln)
-        self.assertIn("rsh_registered_providers 2026-09-17 rows=1577", out.getvalue())
-        self.assertIn("rsh_regulatory_judgements 2026-08-12 rows=15", out.getvalue())
+        self.assertIn("rsh_registered_providers 2026-09-17 rows=1577",
+                      out.getvalue())
+        self.assertIn("rsh_regulatory_judgements 2026-09-30 rows=311",
+                      out.getvalue())
 
     def test_the_migration_proof_reruns_from_a_directory_and_catches_changes(self):
         self.e.migrated()

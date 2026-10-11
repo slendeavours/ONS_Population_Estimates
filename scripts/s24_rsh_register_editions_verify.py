@@ -3,9 +3,9 @@ judgements and enforcement notices) editions tables.
 
 Mirrors scripts/s23_rsh_stock_editions_verify.py and
 s12_financial_stress_editions_verify.py (several specs). It replaces the old
-scripts/s24_rsh_register_verify.py, whose gate 5 compared the '-' markers of
-one file with the NULL grades of the whole mixed table (the defect this build
-ends); that script stays untouched until the retirement task.
+scripts/historical/s24_rsh_register_verify.py (retired 2026-10-11; it stops
+with a RETIRED message), whose gate 5 compared the '-' markers of one file
+with the NULL grades of the whole mixed table (the defect this build ends).
 Prints `GATE n name: PASS|FAIL`; exits 1 on any FAIL. It writes nothing, not
 even a run-log row. The real-table gates read rsh_registered_providers,
 rsh_regulatory_judgements, rsh_enforcement_notices, their three editions

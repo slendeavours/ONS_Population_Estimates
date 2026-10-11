@@ -2367,32 +2367,71 @@ SOURCES = [
         api_endpoint="https://www.gov.uk/api/content",
         auth_required=False,
         known_gotchas=(
-            "Two separate publications, resolved from two pages: the monthly "
-            "register snapshot and the regulatory judgements and notices "
-            "table. "
-            "The register page carries only the current month and there is no "
-            "archive, so history exists only because this table stores one row "
-            "per provider per snapshot. A load that overwrote a current-state "
-            "table would destroy the only record of what changed. "
-            "The snapshot date comes from the attachment title, not from the "
-            "run date - the file is published mid-month and a later run must "
-            "still record the publisher's date. "
-            "Some grade dates arrive as raw Excel serials rather than typed "
-            "dates. "
-            "The register workbook carries a hidden sheet holding a stray "
-            "account token from the publisher's tooling; it is not read and "
-            "nothing from it is stored, and the raw file is not committed."),
+            "Two publications on two pages: the monthly register (one .xlsx "
+            "titled 'List of registered providers - <d Month yyyy>', plus an "
+            "accessible HTML version) and the regulatory judgements and "
+            "enforcement notices table (one .xlsx titled 'Regulatory "
+            "Judgements and Enforcement Notices Table', file name starting "
+            "with its issue date, two sheets). The register page carries only "
+            "the current month's file, so earlier snapshots exist only where "
+            "this pipeline kept them. "
+            "A media URL can later serve another file: the URL recorded for "
+            "the 17 August 2026 register now serves the 17 September file, so "
+            "identity is read from the attachment title and the workbook, "
+            "never from a URL, and the August file cannot be obtained. "
+            "The snapshot date is the date in the attachment title, not the "
+            "run date; a judgements issue's date is its file name prefix, "
+            "which must be a date in the page's change history. "
+            "The register workbook carries a hidden sheet (very hidden) "
+            "holding a stray account token from the publisher's tooling; it "
+            "is never opened, read, printed or stored, and the raw files in "
+            "data/raw/s24_rsh are not committed. "
+            "A '-' in the judgements table is not one thing and the file does "
+            "not define it. The loader stores NULL with a reason in "
+            "null_reasons (editions tables): governance and viability '-' on "
+            "a local authority row are not_applicable_local_authority (206 "
+            "cells, 30 September 2026; the guidance says a local authority "
+            "grade is its consumer-standards view; the reading was accepted "
+            "by Scott on 2026-10-11); a consumer '-' whose change text starts "
+            "'Not assessed yet' is not_assessed_yet (66); every other grade "
+            "'-' (305 rent cells, 27 cells on nine private providers) is "
+            "marked_dash_no_reason, flagged as unexplained, nothing guessed. "
+            "Some date cells are raw Excel serials. A registration number is "
+            "not a stable identity (L4331 appears under two landlord names). "
+            "The 17 August 2026 register was loaded by code not in the repo "
+            "with the text 'None' in every notes cell; it is NULL in edition "
+            "2 (decided by Scott, 2026-10-11)."),
         cadence="monthly", cadence_months=1, expected_lag_days=0,
         publication_window="Around the middle of each month",
         target_table="rsh_registered_providers", geography_level="entity",
-        build_script_path="scripts/s24_rsh_register_build.py",
+        build_script_path="scripts/s24_rsh_register_editions.py",
         source_doc_path="docs/s24_rsh_register_source.md",
-        node_docs_path="docs/nodes/s24_node1_resolve_publications.md",
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s24_rsh_register_editions_verify.py",
+            "checks": 21,
+            "first_load": "2026-10-11",
+            "migration_proof": ("migrate-legacy: edition 1 as held for every "
+                                "period (5,357 rows), proved against the held "
+                                "files on every stored column, 0 differences; "
+                                "the 17 August register is kept as held (its "
+                                "file cannot be obtained); the new parse "
+                                "gives the same values as the old"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an identity, header, grade or date failure or an "
+                     "older file, and rejects a register that loses more than "
+                     "5% of providers or changes more than 30, or a "
+                     "judgements issue with under 90% of the previous rows"),
+            "retired": ("the old seven-gate suite (s24_rsh_register_verify.py) "
+                        "is retired; its gate 5 compared one file's '-' "
+                        "markers with a table that mixed two issues. The "
+                        "run-log rows 96 and 101 keep status success")},
         metrics=["Registered provider count by designation and corporate form",
                  "Consumer, governance, viability and rent gradings per "
                  "provider with grade dates",
                  "Enforcement notices",
-                 "Month-on-month registrations and de-registrations"],
+                 "Providers on the register at each snapshot (so those added "
+                 "or removed between snapshots)"],
         caveats=[
             "No geography. RSH does not publish provider addresses or contact "
             "details, so this source cannot be apportioned to a local "
@@ -2400,37 +2439,72 @@ SOURCES = [
             "and deliberately not a map layer, and the verification suite "
             "fails if either appears. A provider's registered office is not "
             "where its stock is.",
-            "De-registration is an absence, not an event. The snapshot lists "
-            "current providers only, so a de-registration is detected by "
-            "comparing two snapshot dates and has no published date of its "
-            "own.",
+            "RSH does publish dated registrations and de-registrations: the "
+            "register page links yearly 'Registrations and de-registrations' "
+            "pages (2021 to 2026; 'De-registrations' for 2016 to 2020) with "
+            "the provider, registered number and date. They are not loaded "
+            "here. Comparing two held snapshots shows who left between two "
+            "dates; the yearly page gives the date. (An earlier version of "
+            "this row said a de-registration has no published date. That was "
+            "wrong.)",
             "A registration number can be reused or transferred: L4331 appears "
             "in the judgements table under two different landlord names. The "
             "publisher's 'Name and Reg Code Change Details' column is stored "
             "verbatim rather than resolved.",
-            "Judgements cover only providers that have been assessed - 308 of "
-            "1,579 registered providers. Absence of a judgement is not a "
-            "clean bill of health.",
-            "Local authority providers receive consumer gradings only, so "
-            "governance and viability are legitimately null for them."],
+            "Judgements cover only providers that have been assessed: 308 "
+            "providers in the 30 September 2026 table against 1,577 on the "
+            "17 September register. The guidance says grades go to large "
+            "landlords and RSH does not issue grades to small ones. Absence "
+            "of a judgement is not a clean bill of health.",
+            "For a local authority landlord the guidance says a regulatory "
+            "judgement can cover the consumer standards and the Rent "
+            "Standard, and its grade is the view of the consumer standards; "
+            "governance and viability are '-' on all 103 local authority "
+            "rows in the 30 September table, stored NULL as not applicable "
+            "(206 cells).",
+            "332 grade cells in the 30 September table are '-' with no "
+            "reason in the file or the guidance (305 rent, 27 on nine private "
+            "providers) and are stored NULL as marked_dash_no_reason.",
+            "An asterisk on a grade (for example C2*) marks a landlord "
+            "designated on the register as for-profit (the guidance's words); "
+            "it is stored as published."],
         completeness_note=(
-            "Register snapshot 24 July 2026: 1,579 providers (1,260 "
-            "non-profit, 232 local authority, 87 profit). Judgements edition "
-            "12 August 2026: 308 judgements, 2 enforcement notices. "
-            "Discovery established that regulatory judgements ARE published in "
-            "a machine-readable table, not only as individual documents, so "
-            "the gradings table was built rather than recorded as a "
-            "limitation. Additional tables: rsh_regulatory_judgements, "
-            "rsh_enforcement_notices. "
+            "Register snapshots held: 24 July 2026 (1,579 providers), "
+            "17 August (1,578) and 17 September (1,577); at 17 September 232 "
+            "local authority, 1,253 non-profit and 92 profit. The live "
+            "register table holds every snapshot. Judgements and enforcement "
+            "notices: the 12 August 2026 issue (308 judgements, 2 notices) "
+            "and the 30 September issue (311 judgements for 308 providers, "
+            "2 notices) are held as editions; the live tables hold the "
+            "newest issue only (30 September). The page's change history "
+            "lists issues of 18 August, 26 August and 9 September that were "
+            "never loaded and cannot be obtained. The 17 August register "
+            "file is not obtainable (its media URL serves the September "
+            "file): its rows are kept as held, edition 1, with the text "
+            "'None' in notes, and edition 2 makes those 1,578 cells NULL. "
+            "Judgements editions 2 carry null_reasons for every NULL. "
+            "Entity-level, no LA geography, not a W1 or map input. "
             "Held for risk management rather than analysis: the income route "
             "runs through a registered provider partner, and a downgrade, an "
-            "enforcement notice or a de-registration is a material event."),
-        latest_period_loaded="2026-07-24",
+            "enforcement notice or a de-registration is a material event. "
+            "The yearly registrations and de-registrations pages and the "
+            "archived 2012 to March 2024 judgements table are not loaded."),
+        latest_period_loaded="2026-09-17",
         revises_back_series=False,
         revision_note=(
-            "The register is a snapshot, not a series, so there is no back "
-            "series to revise. Each month is a new snapshot stored alongside "
-            "the previous ones rather than replacing them."),
+            "The register is a snapshot series, not a revised series: each "
+            "monthly list is its own period, kept alongside the others, and "
+            "no reissue of a held register date has been seen. The judgements "
+            "table is reissued every one to three weeks; each issue is its "
+            "own period (edition date), the rolling judgements are kept per "
+            "edition, and the live judgements and notices tables show the "
+            "newest issue only. A reissue of a held period is stored as the "
+            "next edition and reaches the live tables only through "
+            "refresh-latest --commit. The old build upserted all three "
+            "tables in place (run-log 96 and 101) and re-tagged 293 of the "
+            "308 August judgements to the 30 September issue, leaving 15 "
+            "August rows. Record: "
+            "docs/decisions/2026-10-11-s24-editions-first-load.md."),
         detected_period_type="publication_date",
         # The RP partner and the competitor set are both on this register and a
         # downgrade is a material event for the income route (HSS); for UCWS
@@ -3000,14 +3074,17 @@ def backfill_run_log_source_code(cur, register_codes):
 # scripts/s12_financial_stress_editions.py and scripts/s17_marac_editions.py).
 # S5: its n8n loader workflow was retired on 2026-10-10 (the loader is
 # scripts/s5_imd_editions.py); its row said Workflow 1, which only reads the
-# table. S3b and S7 never named a workflow in the registry.
+# table. S3b and S7 never named a workflow in the registry. S24: its node
+# docs describe the retired build (docs/nodes/s24_node1..6), so the registry
+# no longer points at them as the source's documentation.
 CLEAR_FIELDS = {"4": ("n8n_workflow_name",),
                 "5": ("n8n_workflow_name",),
                 "10": ("n8n_workflow_name",),
                 "12": ("n8n_workflow_name",),
                 "13": ("n8n_workflow_name",),
                 "17": ("n8n_workflow_name",),
-                "22": ("n8n_workflow_name",)}
+                "22": ("n8n_workflow_name",),
+                "24": ("node_docs_path",)}
 
 
 def upsert_sources(cur, pks, register):

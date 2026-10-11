@@ -400,6 +400,21 @@ vertex count had no support and is replaced: they are the publisher's
 generalised (BGC) boundaries as published. Records:
 `docs/decisions/2026-10-10-reference-trio-editions-first-load.md`.
 
+S24 (the RSH register of registered providers, regulatory judgements and
+enforcement notices) is on the same engine since 2026-10-11. The register is a
+snapshot series (each monthly list is its own period, all live); the
+judgements and notices are reissued every one to three weeks and each
+published issue is its own period, with the live tables holding the newest
+issue only (`EditionSpec.live_newest_period_only`). Every NULL carries its
+reason in `null_reasons` (editions tables). The register page carries only the
+current month's file, and a media URL can later serve another file (the August
+2026 URL now serves the September file), so identity is read from the
+attachment title and the workbook. RSH publishes dated registrations and
+de-registrations on yearly pages (not loaded). `check_sources.py` (`find_s24`)
+compares the newest register title with the live table's newest
+`snapshot_date`. Not a W1 or map input. Record:
+`docs/decisions/2026-10-11-s24-editions-first-load.md`.
+
 S11 (the CQC register) is on the same engine since 2026-10-09 but is
 snapshots, not revisions: each monthly file is a dated copy of the register
 (the period is the as-at date on the file's README sheet), stored as its own
