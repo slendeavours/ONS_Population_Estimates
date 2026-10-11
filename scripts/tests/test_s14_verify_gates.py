@@ -2,10 +2,11 @@
 empty, drifted or unmigrated state and pass on a seeded complete one. The gate
 bodies (real_*) take specs, so they are called here against the throwaway
 zz_s14_* tables (created inside a transaction that is always rolled back); no
-real table is touched, and the S14 editions tables are never created. Every
-test ends in a rollback (also on an exception), and tearDownClass reads the
-database on a separate read-only connection and fails if a zz_s14 table, view
-or function was left committed. No retired script is imported or run (the AST
+real table is written (test_the_gates_leave_the_real_tables_as_they_were
+compares their row counts on a separate connection). Every test ends in a
+rollback (also on an exception), and tearDownClass reads the database on a
+separate read-only connection and fails if a zz_s14 table, view or function
+was left committed. No retired script is imported or run (the AST
 check of the verify script is itself tested here, with planted probes)."""
 import ast
 import contextlib
@@ -37,12 +38,37 @@ class VerifyGates(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.conn = get_conn()
+        # a second, read-only view of committed state: what other sessions
+        # see, taken before any scenario runs
+        cls.conn2 = get_conn()
+        cls.conn2.set_session(readonly=True)
+        cls.raw_second = cls.conn2.cursor()
+        cls.real_before = cls.real_state(cls.raw_second)
+
+    @classmethod
+    def real_state(cls, cur):
+        """Row counts of the six real relations (two live tables, two
+        editions tables, two ledgers), None where one does not exist. A
+        cursor on a separate connection sees only committed state."""
+        state = {}
+        for s in (v.REAL_R, v.REAL_M):
+            for name in (s.live_table, s.editions_table, v.ledger_name(s)):
+                cur.execute("SELECT to_regclass(%s)", (f"public.{name}",))
+                if cur.fetchone()[0] is None:
+                    state[name] = None
+                    continue
+                cur.execute(f"SELECT count(*) FROM public.{name}")
+                state[name] = cur.fetchone()[0]
+        return state
 
     @classmethod
     def tearDownClass(cls):
         try:
             cls.conn.rollback()
             cls.conn.close()
+            cls.raw_second.close()
+            cls.conn2.rollback()
+            cls.conn2.close()
         finally:
             left = [t for t in v.leftovers() if t.startswith("zz_s14")]
             if left:
@@ -101,6 +127,20 @@ class VerifyGates(unittest.TestCase):
         self.assertIn("no live periods", detail)
         ok, detail = v.real_brma_sets(self.cur, ZR, ZM, N)
         self.assertFalse(ok)
+
+    def test_the_gates_leave_the_real_tables_as_they_were(self):
+        """The real tables hold the same rows after the throwaway scenarios
+        as before them; only the zz_s14 copies were touched. The real
+        editions tables exist since the first load of 2026-10-11."""
+        self.assertTrue(v.exists(self.cur))
+        for real, zz in ((v.REAL_R, ZR), (v.REAL_M, ZM)):
+            self.assertNotEqual(zz.editions_table, real.editions_table)
+            self.assertTrue(zz.editions_table.startswith("zz_s14_"))
+            self.assertTrue(zz.live_table.startswith("zz_s14_"))
+        self.e.seed(self.cur)
+        self.assertEqual(self.real_state(self.raw_second),
+                         type(self).real_before)
+        self.assertEqual(self.real_state(self.raw), type(self).real_before)
 
     def test_an_unmigrated_state_fails_with_a_clear_message(self):
         gr = dataclasses.replace(ZR, editions_table="zz_s14_not_there")

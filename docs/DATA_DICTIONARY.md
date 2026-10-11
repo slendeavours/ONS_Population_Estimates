@@ -10,7 +10,7 @@ All columns available in `la_boundaries.geojson` (GeoJSON properties) and `stagi
 |---|---|---|---|
 | `lad24cd` | text | E06xxxxx – E09xxxxx | ONS Local Authority District code (2024 boundaries). Primary join key. |
 | `la_name` | text | — | Official LA name (from ONS boundary data or pipeline lookup) |
-| `population` | integer | ~8,000 – 1,100,000 | Mid-year population estimate (ONS MYE 2024) |
+| `population` | integer | ~2,000 – 1,200,000 | Mid-year population estimate (ONS), the latest `reference_year` in `la_population` (mid-2025 in the current data) |
 
 ---
 
@@ -334,9 +334,24 @@ Source: ONS Open Geography Portal, "Local Authority Districts (May 2024) Boundar
 
 ---
 
+## Population (S3)
+
+Source: ONS mid-year population estimates for England and Wales, the workbook `mye<yy>tablesew.xlsx` of the annual release. Table `la_population`, key `(lad24cd, reference_year)`, 296 English authorities for each of 2024 and 2025 (592 rows); the latest-edition layer of `la_population_editions`. W1 reads `population` at the newest `reference_year`. Source note: [s3_mye_source.md](s3_mye_source.md).
+
+| Column | Type | Description |
+|---|---|---|
+| `reference_year` | integer | The mid-year: 2025 is the estimate for mid-2025 (the workbook Cover reads "June 2025") |
+| `population` | integer | The estimated resident population (people who usually live in the area; unrounded, not accurate to that level of detail, per the publisher's note 1). A positive whole number: no blank, zero or marker has ever been published for an English authority |
+| `la_name` | varchar(100) | The workbook's authority name. The four 2024 names held in edition 1 are in the NOMIS form without a comma ("Bristol City of"); edition 2 and the live 2024 rows use the workbook's ("Bristol, City of") |
+| `loaded_at` | timestamptz | When the live row was written. The 295 refreshed 2024 rows carry the edition's time (2026-10-11 22:29:07 UTC); the others carry their original load |
+
+`la_population_editions` is append-only (update, delete and truncate are blocked by trigger). Key `(lad24cd, reference_year, edition)`: `edition` 1 is the first load, `supersedes` names the edition it replaces, and `release_label` ("Mid-2025: 2023 local authority boundaries"), `published_date` (the Cover's date), `source_file` and `source_sha256` record the workbook. 2024 has two editions: 1 is the July 2025 workbook's figures (England 58,620,101) and 2 the July 2026 workbook's revision (58,607,170, -12,931; 295 authorities changed); 2025 has one (58,834,812). `la_population_editions_file_checks` records every file read by (file, sha256, outcome).
+
+---
+
 ## LHA Rates
 
-Source: DWP Universal Credit Local Housing Allowance rates (FY 2026-27, frozen at April 2024 levels), published monthly per Broad Rental Market Area (BRMA). Weekly conversion: `weekly = monthly × 12 ÷ 52`, rounded to 2 dp. BRMA-to-LA mapping built via centroid spatial join against the VOA BRMA boundary layer (May 2020) — each LA is assigned the BRMA containing its centroid.
+Source: DWP Universal Credit Local Housing Allowance rates (FY 2026-27; the monthly values are the same as in the 2024-25 and 2025-26 files), published monthly per Broad Rental Market Area (BRMA). **The weekly values are derived, not published**: `weekly = monthly × 12 ÷ 52`, as an exact decimal rounded half-up to 2 dp, and they have not been compared with the VOA's own weekly figures. The BRMA-to-LA mapping is derived by the pipeline (centroid spatial join against the VOA BRMA boundary layer applicable May 2020: each LA is assigned the BRMA containing its centroid; one authority takes the nearest). Source note: [s14_lha_source.md](s14_lha_source.md).
 
 | Column | Type | Range | Description |
 |---|---|---|---|
@@ -346,6 +361,24 @@ Source: DWP Universal Credit Local Housing Allowance rates (FY 2026-27, frozen a
 | `lha_2bed_weekly` | numeric(8,2) | ~110 – 440 | 2-bedroom LHA rate, £/week |
 | `lha_3bed_weekly` | numeric(8,2) | ~130 – 520 | 3-bedroom LHA rate, £/week |
 | `lha_4bed_weekly` | numeric(8,2) | ~170 – 720 | 4-bedroom LHA rate, £/week |
+
+### LHA tables (S14)
+
+`brma_lha_rates` (key `(brma_name, financial_year)`, 152 BRMAs for `2026-27`) and `la_brma_mapping` (key `lad24cd`, 296 English authorities) are the latest-edition layers of `brma_lha_rates_editions` and `la_brma_mapping_editions` (each with a `_file_checks` ledger). All are W1 inputs; the first load changed no value W1 reads.
+
+| Column | Type | Description |
+|---|---|---|
+| `brma_lha_rates.brma_name` | varchar | The DWP file's spelling ("Hull and East Riding"); no "&" |
+| `brma_lha_rates.financial_year` | varchar | `yyyy-yy`, read from the CSV header (2026-27) |
+| `sar_monthly`, `one_bed_monthly` ... `four_bed_monthly` | numeric(8,2) | The monthly rates as published |
+| `sar_weekly`, `one_bed_weekly` ... `four_bed_weekly` | numeric(8,2) | **Derived**: monthly × 12 ÷ 52, half-up to 2 dp. Not source values |
+| `brma_lha_rates.source`, `loaded_at` | text, timestamptz | Provenance. `source` has two held variants (151 rows, and Ashford's, which says the row was restored on 2026-08-20); not compared. The editions table keeps it as `source_text` |
+| `la_brma_mapping.brma_name` | varchar | The BRMA containing the authority's centroid; every value is a BRMA of the latest rate year |
+| `la_brma_mapping.brma_secondary` | varchar | Not used; NULL on all 296 |
+| `la_brma_mapping.mapping_method` | text | `centroid_spatial_join` (295 authorities) or `nearest_fallback` (E06000053 Isles of Scilly, which has no polygon at its centroid). Edition 1 holds the text `NaN` on 295 rows as loaded; edition 2 (named correction `s14-mapping-method-2026-10`) replaces it |
+| `la_brma_mapping.vintage` | text | Added 2026-10-11. `brma-2020-05_lad-2024-05`: the VOA layer applicable May 2020 with `la_boundaries` (LAD May 2024); a CHECK allows only that value in the live table |
+
+Both editions tables are append-only (update, delete and truncate are blocked). Rates: key `(brma_name, financial_year, edition)`, one edition (152 rows). Crosswalk: key `(lad24cd, vintage, edition)`, two editions of 296 rows.
 
 ---
 

@@ -126,32 +126,121 @@ SOURCES = [
             "populationandmigration/populationestimates/datasets/"
             "estimatesofthepopulationforenglandandwales/data"),
         acquisition_method="landing_page",
+        publication_window=(
+            "Late July. The workbooks' Covers give 9.30am on 30 July 2025 "
+            "(mid-2024) and 29 July 2026 (mid-2025); the 2026 Cover says the "
+            "next publication is scheduled for summer 2027"),
+        build_script_path="scripts/s3_mye_editions.py",
+        source_doc_path="docs/s3_mye_source.md",
+        join_path=(
+            "Codes resolve through scripts/geography.py (geography.resolve; "
+            "source 3 is declared 'old'). Both workbooks held carry Barnsley "
+            "and Sheffield as E08000016 and E08000019, the codes la_boundaries "
+            "(LAD May 2024) holds, so an E08000038 or E08000039 halts the "
+            "load. A code outside la_boundaries is UNEXPLAINED and stops it. "
+            "England is the codes E06, E07, E08 and E09; Welsh rows are read "
+            "and set aside."),
         known_gotchas=(
-            "No file URL is stored. The edition is resolved from the dataset "
-            "landing page at run time, which also re-confirms the publication "
-            "date independently of anything written in this repository. "
-            "Sheet 'MYE2 - Persons', header row 8, 'All ages' column. The "
-            "release covers 318 England-and-Wales local authorities; England "
-            "is filtered on the code prefix (E06/E07/E08/E09), never assumed "
-            "to be the whole file. Where a release states its boundary "
-            "vintage that is the predictor of which Barnsley and Sheffield "
-            "codes appear, not the publication date: the mid-2025 edition is "
-            "built on 2023 local authority boundaries and publishes "
-            "E08000016 and E08000019 despite postdating the recode."),
+            "The loader (scripts/s3_mye_editions.py) finds the newest "
+            "edition named 'Mid-<yyyy>: <yyyy> local authority boundaries' "
+            "from the dataset's /data listing and its one workbook "
+            "(mye<yy>tablesew.xlsx); no file URL is stored. A URI under the "
+            "dataset that names a newer mid-year but does not fit the "
+            "pattern halts the run; older irregular URIs are listed and "
+            "ignored. Identity is read from the workbook, never from the "
+            "name, link or the API: the Cover's title and its line 'originally "
+            "published at 9.30am <date>' (the rank), the Notes sheet, and the "
+            "titles and headers of MYE2 - Persons and MYE4, which must agree "
+            "on the mid-year. The API's releaseDate is the evening before the "
+            "Cover's date (2026-07-28T23:00Z for a Cover of 29 July 2026), so "
+            "it is printed and never used as the date. Traps. (1) The July "
+            "2026 workbook restates mid-2022 to mid-2024 (Notes 6 and 22) "
+            "and MYE4 carries the revised figures for every year back to "
+            "mid-2011, so a new file is read for its newest year and for "
+            "every held year it covers; a held year that changed is REJECTED "
+            "until named with --acknowledge. (2) MYE7 changes meaning between "
+            "years: in the July 2025 workbook it is the uncertainty table "
+            "(the revisions are in MYE8 and MYE9), in July 2026 it is the "
+            "revisions table. (3) The four 2024 names held in the NOMIS form "
+            "('Bristol City of') differ from the workbook's "
+            "('Bristol, City of'); edition 1 of 2024 keeps them as loaded. "
+            "(4) The release covers England and Wales: Welsh authorities and "
+            "the E10, E11, E12 and E92 aggregates are not loaded, and the "
+            "English authorities must sum to the England row in MYE2 and in "
+            "every MYE4 year read. (5) A cell must be a positive whole "
+            "number; a blank, text, zero or marker halts and is never read "
+            "as 0 (none appears in either workbook held). (6) ONS answered "
+            "HTTP 429 to repeated requests on 2026-10-11; the loader halts "
+            "before writing anything, so wait a few minutes and retry."),
         cadence="annual", cadence_months=12,
         target_table="la_population", geography_level="LAD24",
-        build_script_path="scripts/s3_mye_refresh.py",
-        n8n_workflow_name="Workflow 1",
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s3_mye_editions_verify.py",
+            "checks": 24,
+            "first_load": "2026-10-11",
+            "migration_proof": ("migrate-legacy: the loader's parser on the "
+                                "held mid-2024 and mid-2025 workbooks "
+                                "reproduced every held population (296 "
+                                "authorities each year), 0 differences; the "
+                                "four NOMIS-form 2024 names are named in the "
+                                "loader; the authorities sum to the England "
+                                "row in both workbooks (58,620,101 and "
+                                "58,834,812)"),
+            "gate": ("all gates must pass; the loader halts before any write "
+                     "on an identity, header, blank, text, zero, "
+                     "reconciliation or geography failure or an older file, "
+                     "and rejects a new year or a restated year that breaks "
+                     "a change-size threshold"),
+            "retired": ("the n8n workflow 'ONS Population Estimates (S3)' is "
+                        "retired (its Code node throws, 2026-10-11) and "
+                        "scripts/s3_mye_refresh.py now exits 2 at its first "
+                        "statement; the script ran for real by accident on "
+                        "2026-10-11 (values unchanged, loaded_at moved, "
+                        "repaired the same day)")},
+        revises_back_series=True,
+        revision_note=(
+            "Established. Each July release restates earlier years. The July "
+            "2026 workbook (mid-2025) revises mid-2022, mid-2023 and mid-2024 "
+            "for updated international migration (its Notes 6 and 22; MYE7). "
+            "For mid-2024, 295 of 296 English authorities differ from the "
+            "July 2025 workbook held (E07000203 is the one that does not): "
+            "England 58,620,101 to 58,607,170, -12,931; the largest move is "
+            "Westminster +5,698 (+2.71%). Stored as edition 2 of 2024 in "
+            "la_population_editions (2026-10-11) and refreshed into the live "
+            "2024 rows; edition 1 keeps the July 2025 figures. The July 2025 "
+            "workbook likewise revised mid-2022 and mid-2023 (its Note 6; "
+            "MYE8 and MYE9), years this table does not hold. The loader "
+            "compares every held year in a new file with the held edition and "
+            "stops on any change unless the year is named with --acknowledge; "
+            "the live table moves to a revision only through "
+            "refresh-latest --commit. Record: docs/decisions/2026-10-11-s3-"
+            "editions-first-load.md."),
         caveats=[
             "la_population is multi-year. Its key was widened from (lad24cd) "
             "to (lad24cd, reference_year) and prior vintages are retained, so "
             "every join must pin the vintage or the join fans out.",
+            "The estimates are published unrounded and the publisher says "
+            "they should not be taken to be accurate to the level of detail "
+            "provided (Notes sheet, note 1); MYE0 gives research-based "
+            "confidence intervals, which are not loaded.",
+            "The estimated resident population is those who usually live in "
+            "an area, whatever their nationality; arriving international "
+            "migrants count if they stay at least a year, emigrants are "
+            "excluded if they stay away at least a year, armed forces "
+            "stationed outside the UK are excluded, and students are taken to "
+            "be usually resident at their term-time address (note 3).",
+            "A figure can be revised in the next July release: the July 2026 "
+            "revision lowered England's mid-2024 population by 12,931 and "
+            "raised Westminster's by 5,698 (+2.71%). Quote the edition.",
             "E10/E11 counties, E12 regions and the E92 country row are "
-            "excluded as aggregates that would double count."],
+            "excluded as aggregates that would double count; Welsh "
+            "authorities are not loaded."],
         completeness_note=(
-            "Refreshed to mid-2025 on 2026-08-13. 592 rows, 296 per year, "
-            "England total 58,834,812 reconciling exactly to the publisher's "
-            "own England row."),
+            "Mid-2024 and mid-2025. 592 rows, 296 per year. Mid-2025 England "
+            "total 58,834,812, mid-2024 58,607,170 (July 2026 revision; "
+            "edition 1 holds 58,620,101), each reconciling exactly to the "
+            "publisher's own England row in the July 2026 workbook."),
         latest_period_loaded="Mid-2025: 2023 local authority boundaries",
         refresh_tier="B", status="active",
         publish_github=True, publish_map=True,
@@ -1487,34 +1576,140 @@ SOURCES = [
         source_name="VOA/DWP LHA rates",
         publisher="VOA/DWP",
         series_name="Universal Credit Local Housing Allowance rates, England",
-        acquisition_method="manual",
+        landing_page_url=(
+            "https://www.gov.uk/government/collections/"
+            "universal-credit-local-housing-allowance-rates"),
+        api_endpoint=(
+            "https://www.gov.uk/api/content/government/collections/"
+            "universal-credit-local-housing-allowance-rates"),
+        acquisition_method="landing_page",
+        build_script_path="scripts/s14_lha_editions.py",
+        source_doc_path="docs/s14_lha_source.md",
         known_gotchas=(
-            "The documented acquisition is an HTTP GET against a per-edition "
-            "GOV.UK assets URL written into the node — for 2026-27, "
-            "https://assets.publishing.service.gov.uk/media/"
-            "69d654a2e1430e837a86f64a/england-rates-2026-to-2027.csv. Assets "
-            "URLs change every edition, so the URL is replaced by hand rather "
-            "than discovered. The file has no separate title row: treating "
-            "row 1 as headers silently drops the first BRMA (Ashford)."),
+            "The loader (scripts/s14_lha_editions.py) reads the GOV.UK "
+            "collection 'Universal Credit Local Housing Allowance rates', "
+            "takes the newest page titled '... rates: <yyyy> to <yyyy>' and "
+            "its one attachment titled 'England: Universal Credit Local "
+            "Housing Allowance monthly rates <yyyy> to <yyyy>'; none or "
+            "several matches halt, listing what was seen. The assets URL "
+            "changes every edition (2026-27: .../media/"
+            "69d654a2e1430e837a86f64a/england-rates-2026-to-2027.csv), so it "
+            "is discovered, never stored. Traps. (1) The year in the file's "
+            "header can be wrong: the 2026-27 page's change history says it "
+            "was reissued on 8 April 2026 to correct the header from '2024 "
+            "to 2025 SAR' to '2026 to 2027', and the page's own text still "
+            "says 'from 2025 to 2026'. The loader reads the year from the CSV "
+            "header, checks it against the page, and halts on a mismatch "
+            "unless --accept-header-year names it. (2) The layout changes "
+            "between years: the 2026-27 file has its header on row 1 and no "
+            "title row; the 2024-25 and 2025-26 files have a title row "
+            "(',Monthly UC LHA rates 24/25') and the header on row 2. "
+            "Reading row 1 as the header silently dropped the first BRMA "
+            "(Ashford) in the old build; the loader halts on the older "
+            "layout. (3) The VOA boundary layer and the older files spell 18 "
+            "BRMAs 'X & Y' where the 2026-27 file says 'X and Y'; the names "
+            "go through a committed exact table "
+            "(scripts/s14_brma_names.json), never a pattern, and an '&' "
+            "name in a rates file halts. (4) The CSV is cp1252: the pound "
+            "sign is byte 0xA3, amounts such as \"£1,097.80\" are quoted "
+            "with thousands separators. (5) The page also carries Scotland "
+            "and Wales files; only England is loaded. (6) The weekly "
+            "columns are derived (see caveats). The rates are W1 inputs: "
+            "run refresh-latest before W1."),
         cadence="annual", cadence_months=12,
-        publication_window="late January",
+        publication_window=(
+            "Late January to early February. The pages' first-published "
+            "dates are 31 January 2024 (2024-25), 3 February 2025 (2025-26) "
+            "and 30 January 2026 (2026-27)"),
         target_table="brma_lha_rates", geography_level="BRMA",
-        join_path=("la_brma_mapping, a lad24cd to brma_name crosswalk built "
-                   "from BRMA boundary polygons."),
-        node_docs_path="docs/nodes/s14_node1..s14_node7",
-        n8n_workflow_name="Workflow 1",
-        caveats=["Rates are frozen at April 2024 levels and published as "
-                 "monthly values per bedroom category; the build converts to "
-                 "weekly as monthly * 12 / 52.",
-                 "152 BRMAs, England only — Scotland, Wales and Northern "
-                 "Ireland are excluded."],
-        build_script_path="scripts/s14_lha_rates_build.py",
+        join_path=(
+            "la_brma_mapping, a lad24cd to brma_name crosswalk that the "
+            "pipeline derives (it is not published): each authority's "
+            "la_boundaries centroid (LAD May 2024) is placed in the polygon "
+            "of the VOA 'English BRMA(LHA) Layer' (applicable May 2020) that "
+            "contains it (mapping_method centroid_spatial_join, 295 "
+            "authorities), else the nearest polygon (nearest_fallback, "
+            "E06000053 Isles of Scilly). Every mapped brma_name must be a "
+            "BRMA of the latest rate year, or W1's LHA join leaves an "
+            "authority without rates (decision note 2026-08-21); "
+            "verify_source_registry gate 18 and gate 6 of the S14 verify "
+            "script test it."),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s14_lha_editions_verify.py",
+            "checks": 25,
+            "first_load": "2026-10-11",
+            "migration_proof": ("migrate-legacy: rates edition 1 'as loaded' "
+                                "proved against england-rates-2026-to-2027."
+                                "csv (760 monthly values as published and "
+                                "760 weekly as derived, 0 differences); "
+                                "crosswalk edition 1 proved by rebuilding it "
+                                "read-only from GML.zip and la_boundaries "
+                                "(brma_name and la_name reproduced for 296 "
+                                "of 296 authorities; mapping_method held as "
+                                "the text 'NaN' on 295 rows, kept in edition "
+                                "1 and corrected in edition 2)"),
+            "gate": ("all gates must pass; gate 6 re-runs W1's LHA join and "
+                     "needs 0 of 296 authorities unmatched; the loader halts "
+                     "before any write on a blank, text, zero or negative "
+                     "rate, a header-year mismatch, an older layout, an "
+                     "'&' name, a changed BRMA set or an older file, and "
+                     "rejects a BRMA moving over 25% or a median over 10% "
+                     "in a new year"),
+            "retired": ("both old scripts (s14_lha_rates_build.py, "
+                        "s14_lha_rates_build_v2.py) now exit 2 at their "
+                        "first statement and the n8n workflows "
+                        "'LHA Rates + List of Rents (S14)' and 'VOA/DWP LHA "
+                        "Rates (S14)' are retired (2026-10-11). Run-log rows "
+                        "499 and 501 are the accidental runs of 2026-10-11 "
+                        "(repaired the same day); 52, 53 and 97 are the "
+                        "earlier builds")},
+        revises_back_series=True,
+        revision_note=(
+            "Established, but only within a year. A year's England file has "
+            "been reissued in place: the 2024-25 page's change history lists "
+            "an updated English file on 31 January 2024 and a revised one on "
+            "20 May 2024, and the 2026-27 page lists a header correction on "
+            "8 April 2026 (first published 30 January 2026). The first issue "
+            "of 2026-27 is not held, so whether any value changed in that "
+            "reissue is not known. No later year has restated an earlier "
+            "one: the 2024-25 (revised), 2025-26 and 2026-27 England files "
+            "hold the same monthly values on all 152 BRMAs. A reissue of a "
+            "held year is stored as the next edition "
+            "(brma_lha_rates_editions) and reaches the live table only "
+            "through refresh-latest --commit. Record: docs/decisions/"
+            "2026-10-11-s14-editions-first-load.md."),
+        caveats=[
+            "The five weekly columns that W1 reads are derived, not "
+            "published: DWP's file gives monthly amounts only, and the "
+            "loader computes monthly x 12 / 52 as an exact decimal rounded "
+            "half-up to 2 places. They have not been compared with the VOA's "
+            "own weekly figures. Any quoted weekly rate should say it is "
+            "derived.",
+            "The rates have not moved for three years: the 2024-25 "
+            "(revised), 2025-26 and 2026-27 England files hold identical "
+            "monthly values for all 152 BRMAs (760 values, compared on "
+            "2026-10-11). The files give no reason, and the 2025-26 file's "
+            "title row still reads 24/25.",
+            "152 BRMAs, England only; the page's Scotland and Wales files "
+            "are not loaded.",
+            "la_brma_mapping is a derived table, not a publication. An "
+            "authority takes the one BRMA containing its centroid, so an "
+            "authority that spans more than one BRMA is not split "
+            "(brma_secondary is not used), and the Isles of Scilly takes the "
+            "nearest polygon. The layer is the one VOA published as "
+            "applicable May 2020; this repository has not checked whether "
+            "BRMAs have changed since.",
+            "The table holds one vintage of the crosswalk "
+            "(brma-2020-05_lad-2024-05). Another BRMA layer or LAD vintage "
+            "is stored as editions only and adopting it is a deliberate "
+            "decision."],
         completeness_note=(
-            "The build script moved into scripts/ with the 2026-08-20 root "
-            "tidy and is recorded here now; it was previously null because the "
-            "script sat loose at the repository root. refresh_tier is C "
-            "because the edition URL is supplied by hand, not because the "
-            "source is unimportant."),
+            "2026-27: 152 BRMAs, 760 monthly values as published and 760 "
+            "weekly values derived. Crosswalk: 296 of 296 English "
+            "authorities, 295 by centroid and one nearest fallback; the "
+            "W1 join leaves 0 unmatched. Earlier years' files are held only "
+            "as evidence that the rates are unchanged; they are not loaded."),
         latest_period_loaded="2026-27",
         refresh_tier="C", status="active",
         publish_github=True, publish_map=True,
@@ -3076,12 +3271,18 @@ def backfill_run_log_source_code(cur, register_codes):
 # scripts/s5_imd_editions.py); its row said Workflow 1, which only reads the
 # table. S3b and S7 never named a workflow in the registry. S24: its node
 # docs describe the retired build (docs/nodes/s24_node1..6), so the registry
-# no longer points at them as the source's documentation.
-CLEAR_FIELDS = {"4": ("n8n_workflow_name",),
+# no longer points at them as the source's documentation. S3 and S14: their
+# n8n workflows were retired on 2026-10-11 (the loaders are
+# scripts/s3_mye_editions.py and scripts/s14_lha_editions.py); the rows said
+# Workflow 1, which only reads the tables. S14's node docs
+# (docs/nodes/s14_node1..7) describe the retired build.
+CLEAR_FIELDS = {"3": ("n8n_workflow_name",),
+                "4": ("n8n_workflow_name",),
                 "5": ("n8n_workflow_name",),
                 "10": ("n8n_workflow_name",),
                 "12": ("n8n_workflow_name",),
                 "13": ("n8n_workflow_name",),
+                "14": ("n8n_workflow_name", "node_docs_path"),
                 "17": ("n8n_workflow_name",),
                 "22": ("n8n_workflow_name",),
                 "24": ("node_docs_path",)}

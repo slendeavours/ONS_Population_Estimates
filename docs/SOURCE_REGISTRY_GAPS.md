@@ -16,25 +16,25 @@ The top of this list is the documentation debt.
 | `expected_lag_days` | 20 | the publisher's stated publication lag, in days |
 | `hss_lens` | 20 | an explicit dual-lens note in the source documentation |
 | `ucws_lens` | 20 | an explicit dual-lens note in the source documentation |
-| `n8n_workflow_name` | 17 | the n8n workflow that runs the source, where one does |
-| `node_docs_path` | 15 | the per-node documentation under docs/nodes/ |
+| `n8n_workflow_name` | 19 | the n8n workflow that runs the source, where one does |
+| `node_docs_path` | 16 | the per-node documentation under docs/nodes/ |
 | `detected_period_type` | 11 | — |
-| `api_endpoint` | 9 | the build script or node documentation, where acquisition is an API |
-| `source_doc_path` | 9 | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | 9 | the source's verification suite and its documented check count |
-| `publication_window` | 8 | the publisher's stated release window |
-| `join_path` | 7 | the build script's geography resolution step |
-| `revises_back_series` | 6 | — |
+| `api_endpoint` | 8 | the build script or node documentation, where acquisition is an API |
+| `publication_window` | 7 | the publisher's stated release window |
+| `source_doc_path` | 7 | a source documentation file — the single largest gap for undocumented sources |
+| `verification_checks` | 7 | the source's verification suite and its documented check count |
+| `join_path` | 6 | the build script's geography resolution step |
 | `build_script_path` | 4 | the build script, if it is in the published tree |
 | `caveats` | 4 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
-| `landing_page_url` | 4 | the publisher's landing page, recorded in a source or node documentation file |
-| `revision_note` | 4 | — |
+| `revises_back_series` | 4 | — |
 | `cadence_months` | 3 | the publisher's stated cadence, where it is regular enough to express in months |
+| `landing_page_url` | 3 | the publisher's landing page, recorded in a source or node documentation file |
 | `series_name` | 3 | the publisher's dataset or table title, as named in a source documentation file |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 | `known_gotchas` | 2 | a source documentation file — acquisition traps are only known once written down |
+| `revision_note` | 2 | — |
 
-Total: 251 null fields across 26 published sources.
+Total: 242 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -98,20 +98,15 @@ Total: 251 null fields across 26 published sources.
 | --- | --- |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
-| `publication_window` | the publisher's stated release window |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** Refreshed to mid-2025 on 2026-08-13. 592 rows, 296 per year, England total 58,834,812 reconciling exactly to the publisher's own England row.
+**Note.** Mid-2024 and mid-2025. 592 rows, 296 per year. Mid-2025 England total 58,834,812, mid-2024 58,607,170 (July 2026 revision; edition 1 holds 58,620,101), each reconciling exactly to the publisher's own England row in the July 2026 workbook.
 
 ### S3b
 
@@ -328,21 +323,17 @@ Total: 251 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `landing_page_url` | the publisher's landing page, recorded in a source or node documentation file |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
+| `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
+| `node_docs_path` | the per-node documentation under docs/nodes/ |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** The build script moved into scripts/ with the 2026-08-20 root tidy and is recorded here now; it was previously null because the script sat loose at the repository root. refresh_tier is C because the edition URL is supplied by hand, not because the source is unimportant.
+**Note.** 2026-27: 152 BRMAs, 760 monthly values as published and 760 weekly values derived. Crosswalk: 296 of 296 English authorities, 295 by centroid and one nearest fallback; the W1 join leaves 0 unmatched. Earlier years' files are held only as evidence that the rates are unchanged; they are not loaded.
 
 ### S15
 

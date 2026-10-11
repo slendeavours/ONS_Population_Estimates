@@ -153,6 +153,11 @@ def rolled_back(conn, *, ddl=True):
                     "public.brma_lha_rates INCLUDING ALL)")
         cur.execute("CREATE TABLE public.zz_s14_map_live (LIKE "
                     "public.la_brma_mapping INCLUDING ALL)")
+        # the real table has carried the additive vintage column since the
+        # first load of 2026-10-11 (the CHECK goes with the column); the
+        # throwaway copy starts in the shape the loader's ddl has to alter
+        cur.execute("ALTER TABLE public.zz_s14_map_live "
+                    "DROP COLUMN IF EXISTS vintage")
         with specs():
             if ddl:
                 m.create_all(cur)

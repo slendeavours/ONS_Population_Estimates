@@ -39,7 +39,7 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | 1 | DLUHC H-CLIC | TA households (current + prev year), trend label | yes | yes |
 | 1b | MHCLG statutory homelessness Table A3 | Households owed a duty by support need — 24 published categories, plus the no/unknown/one/two/three-or-more household breakdown and the support-needs count, per LA per quarter | no | no |
 | 2 | MHCLG RO4 | Homelessness expenditure (B&B, nightly, total) | yes | yes |
-| 3 | ONS Mid-Year Estimates | Population by LA (mid-2025, 2023 LA boundaries edition; mid-2024 retained) | yes | no |
+| 3 | ONS Mid-Year Estimates | Population by LA (mid-2025, 2023 LA boundaries edition; mid-2024 retained, as revised in July 2026) | yes | no |
 | 3b | Census 2021 TS054 | Tenure | no | no |
 | 4 | DfE Children Looked After (SSDA903) | Care leavers in supported accommodation (published DfE category); Care leavers in supported accommodation (wider pipeline aggregate) | yes | yes |
 | 5 | MHCLG IMD | Index of Multiple Deprivation | yes | yes |
@@ -53,7 +53,7 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | 11 | CQC Care directory with filters | Registered care locations with supported living, personal care and care home flags (supply side) | yes | yes |
 | 12 | MHCLG EFS / published S.114 notices | Exceptional Financial Support per LA and financial year, from each year's own GOV.UK page (amount, status; a withdrawn request is a row with no amount; `hra_only` marks Housing Revenue Account support); S.114 notices, a curated register with evidence for each notice; EFS support flag, S.114 notice flag (W1: any row) | yes | no |
 | 13 | DLUHC LAHS | Households on the housing register (waiting list) per LA, summed from predecessors for reorganised authorities; Households on the register with reasonable preference; Whether register criteria changed since last year (cc2a, Localism Act 2011) | yes | yes |
-| 14 | VOA/DWP LHA rates | LHA weekly rates (SAR, 1–4 bed) by BRMA, mapped to LAs | yes | yes |
+| 14 | VOA/DWP LHA rates | LHA rates (SAR, 1–4 bed) by BRMA (monthly as published, weekly derived as monthly × 12 ÷ 52), mapped to LAs through a derived crosswalk | yes | yes |
 | 15 | Land Registry UK HPI | Average house prices per LA (all property types), annual % change | no | yes |
 | 17 | SafeLives MARAC data | Cases discussed at MARACs per police force area and year ending March; Cases per 10,000 adult females (SafeLives' published figure); Number of MARACs, recommended cases, repeat cases, children in household and housing referrals | yes | yes |
 | 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | no | no |
@@ -113,6 +113,8 @@ CHANGELOG.md                                Dated record of pipeline changes
   s12_financial_stress_source.md            Source 12 (MHCLG Exceptional Financial Support and S.114 notices) register entry: discovery, cell grammar, withdrawn-only rule, the evidenced register, editions
   s17_marac_source.md                       Source 17 (SafeLives Marac data by police force area) register entry: discovery, hand-download fallback, markers, zero rules, editions
   s5_imd_source.md                          Source 5 (MHCLG English indices of deprivation 2025, File 10) register entry: columns, file identity without a cover sheet, ties and zeros, the v2 reissue, the vintage column
+  s3_mye_source.md                          Source 3 (ONS mid-year population estimates) register entry: discovery, identity from the Cover, reconciliation, July revisions as editions, stop limits
+  s14_lha_source.md                         Source 14 (DWP LHA rates and the BRMA crosswalk) register entry: discovery, header-year and layout traps, derived weekly rates, the crosswalk and its correction, editions
   s3b_tenure_source.md                      Source 3b (ONS Census 2021 TS054 tenure, NOMIS) register entry: categories and aggregate codes, the 2023 geography type, the publisher's total, editions
   s7_boundaries_source.md                   Source 7 (ONS LAD May 2024 BGC boundaries, the W1 spine) register entry: the shapes as published, the newer redrawn vintages, never rebuilt, editions
   geography_dimension.md                    la_geography / la_succession dimension tables
@@ -154,7 +156,11 @@ CHANGELOG.md                                Dated record of pipeline changes
   s7_boundaries_editions.py                 Source 7 (LAD May 2024 BGC boundaries) editions loader, one vintage in live; never rebuilds the W1 spine - a W1 and map input
   s7_boundaries_editions_verify.py          Source 7 editions gates (19), writes nothing
   manual_input.py                           Helper for hand-placed and curated source files (S12 register, S17 fallback): path roots, identity, register reader
-  s14_lha_rates_build.py                    Source 14 (VOA/DWP LHA rates) ETL
+  s3_mye_editions.py                        Source 3 (ONS mid-year population estimates) editions loader - a W1 and map input (old s3_mye_refresh.py is a RETIRED guard)
+  s3_mye_editions_verify.py                 Source 3 editions gates (24), writes nothing
+  s14_lha_editions.py                       Source 14 (DWP LHA rates and the BRMA crosswalk) editions loader, rates by year and the crosswalk as one vintage in live - a W1 input (old s14_lha_rates_build.py and _v2.py are RETIRED guards)
+  s14_brma_names.json                       Source 14 committed exact table of 18 VOA "X & Y" BRMA names
+  s14_lha_editions_verify.py                Source 14 editions gates (25), writes nothing
   s15_hpi_editions.py                       Source 15 (Land Registry UK HPI) editions loader (old s15_hpi_build.py is in scripts/historical/)
   /verify/                                  Source reconciliation against publication (2026-08 assurance)
 /sql/                                       Table definitions
