@@ -201,7 +201,15 @@ DATASET_FORM = {
           "each table's codes by period."),
     "7": ("old",
           "la_boundaries is LAD May 2024 and holds E08000016/19; this "
-          "source defines the canonical key."),
+          "source defines the canonical key. Read 2026-10-10: the May 2024 "
+          "BGC layer's England query (data/raw/s7_boundaries/LAD_MAY_2024_"
+          "UK_BGC_england_4326_2026-10-10.geojson, sha256 "
+          "7fd7632b1e00a2c0) carries E08000016/19 and never E08000038/39; "
+          "the Dec 2025 and May 2026 BGC layers (the attribute JSON beside "
+          "it) carry E08000038/39 instead, with no E08000016/19. "
+          "scripts/s7_boundaries_editions.py stores those vintages as "
+          "editions only; adopting one would move this declaration to "
+          "new, a deliberate decision."),
     "8": ("unverified",
           "Superseded by 8b; no loader runs. If it is revived, check the "
           "Stat-Xplore HB geography valueset for Barnsley and Sheffield."),
