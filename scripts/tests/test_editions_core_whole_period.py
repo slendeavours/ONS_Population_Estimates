@@ -234,7 +234,10 @@ OPTED_IN = {"s23_rsh_stock_editions.SPEC",
             "s6_asylum_editions.SPEC_UNALLOCATED",
             "s6_asylum_editions.SPEC_NON_ENGLAND",
             "s6_asylum_editions.SPEC_GROUPS",
-            "s13_lahs_editions.SPEC"}
+            "s13_lahs_editions.SPEC",
+            "s24_rsh_register_editions.REGISTER",
+            "s24_rsh_register_editions.JUDGEMENTS",
+            "s24_rsh_register_editions.NOTICES"}
 
 
 def real_specs(opted_in=True) -> dict:
@@ -267,6 +270,28 @@ class WholePeriodOptIn(unittest.TestCase):
         live_cols, _ = core._insert_cols(spec)
         self.assertFalse(set(spec.editions_only_cols) & set(live_cols))
         self.assertTrue(set(prov) <= set(live_cols))
+
+    def test_s24_opts_in_to_both(self):
+        """S24: live provenance from the editions-only file_* columns,
+        whole-period (one file a period); null_reasons is editions-only too
+        but not mapped, so refresh-latest uses refresh_spec, which leaves it
+        out of the key-change insert."""
+        import s24_rsh_register_editions as s24
+        specs = real_specs()
+        prov = ("source_url", "source_file", "release_page_url")
+        for name in ("REGISTER", "JUDGEMENTS", "NOTICES"):
+            with self.subTest(spec=name):
+                spec = specs[f"s24_rsh_register_editions.{name}"]
+                self.assertEqual(spec.whole_period_cols, prov)
+                self.assertEqual(spec.editions_only_cols,
+                                 ("file_source_url", "file_name",
+                                  "file_release_page_url"))
+                live_cols, _ = core._insert_cols(s24.refresh_spec(spec))
+                self.assertNotIn("null_reasons", live_cols)
+                self.assertFalse(set(spec.editions_only_cols)
+                                 & set(live_cols))
+                self.assertTrue(set(prov) <= set(live_cols))
+                self.assertNotIn("null_reasons", spec.compare_cols)
 
     def test_s13_opts_in_to_an_editions_only_source(self):
         """S13: live source from the editions-only live_source column (the
