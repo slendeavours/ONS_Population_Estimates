@@ -18,6 +18,7 @@ Read side and refresh:
     sync_new         edition 1 'as loaded' for live periods with no editions
     refresh_latest   copy the latest edition into live, hash-guarded
     period_hashes    per-period content hash of the live or editions table
+    refuse_non_live  live_single_period: halt on a named period not in live
 
 Extracted from s1_editions.py (create_schema, insert_edition, the chain
 validator in latest_edition, and the generic read/refresh pieces), compared
@@ -129,6 +130,18 @@ class EditionSpec:
     period from the latest edition, and afterwards checked uniform per
     period and equal to the edition's. A spec may use either or both; the
     set used is their union (whole_period_pairs).
+    live_single_period: opt-in (default False), for a one-vintage reference
+    table whose period is its vintage. The live table holds one period
+    only (two or more halt latest_map, so status, sync-new and
+    refresh-latest). An editions period absent from live is held_not_live
+    (latest_map's held_not_live, status's 'held_not_live'): information,
+    not a fault and not new; sync-new never inserts it, and refresh-latest
+    refreshes the live period only and halts when --accept-drift names any
+    other period. period_editions stores a different vintage as editions
+    only ('held-not-live'). A reissue of the live vintage is the next
+    edition and refreshes as usual. Refused with refresh_key_changes (a
+    one-vintage table never changes its key set by refresh). False keeps
+    every statement and result as before.
     """
     name: str
     live_table: str
@@ -148,6 +161,7 @@ class EditionSpec:
     refresh_source_whole_period: bool = False
     refresh_key_changes: bool = False
     whole_period_cols: tuple = ()
+    live_single_period: bool = False
 
     def __post_init__(self):
         for n in (self.name, self.live_table, self.editions_table,
@@ -207,6 +221,10 @@ class EditionSpec:
             if c not in mapped:
                 raise ValueError(f"{self.name}: whole_period_cols column {c} "
                                  "is not mapped in refresh_from")
+        if self.live_single_period and self.refresh_key_changes:
+            raise ValueError(f"{self.name}: live_single_period with "
+                             "refresh_key_changes is refused (a one-vintage "
+                             "table never changes its key set by refresh)")
 
     @property
     def whole_period_pairs(self) -> tuple:
@@ -474,18 +492,48 @@ def _own_savepoint(cur, name: str):
     cur.execute(f"RELEASE SAVEPOINT {name}")
 
 
+class LatestMap(tuple):
+    """latest_map's (tips, new_periods, chain_errors), unpacked as the plain
+    3-tuple it always was, plus held_not_live: the editions periods absent
+    from live, sorted (filled for a live_single_period spec only; [] for
+    every other spec, whose editions table is then not read for it)."""
+
+    def __new__(cls, tips, new, errors, held_not_live=()):
+        obj = super().__new__(cls, (tips, new, errors))
+        obj.held_not_live = list(held_not_live)
+        return obj
+
+
+def held_not_live_periods(cur, spec: EditionSpec) -> list:
+    """Editions periods with no live rows, sorted as the database returns
+    them (live_single_period: vintages held as editions only)."""
+    pc = spec.period_col
+    cur.execute(f"SELECT DISTINCT e.{pc} FROM public.{spec.editions_table} e "
+                f"WHERE NOT EXISTS (SELECT 1 FROM public.{spec.live_table} l "
+                f"WHERE l.{pc} = e.{pc}) ORDER BY 1")
+    return [r[0] for r in cur.fetchall()]
+
+
 def latest_map(cur, spec: EditionSpec) -> tuple:
     """(tips, new_periods, chain_errors) for the periods present in the live
     table. tips: {period: chain-tip edition}; new_periods: periods with no
     editions; chain_errors: {period: message} where the chain is not one
     linear chain (fork, cycle, two roots, ...). Halts on a NULL live period
-    (stricter than the originals, which would pass it on)."""
+    (stricter than the originals, which would pass it on).
+
+    Returned as a LatestMap; for a live_single_period spec its
+    held_not_live lists the editions periods absent from live (neither new
+    nor a fault), and two or more live periods halt."""
     pc = spec.period_col
     cur.execute(f"SELECT DISTINCT {pc} FROM public.{spec.live_table} "
                 "ORDER BY 1")
     periods = [r[0] for r in cur.fetchall()]
     if None in periods:
         halt(f"{spec.live_table}: rows with a NULL {pc}")
+    if spec.live_single_period and len(periods) > 1:
+        halt(f"{spec.live_table}: live holds {len(periods)} periods "
+             f"{[str(p) for p in periods]}; a live_single_period table holds "
+             "one vintage only")
     tips, new, errors = {}, [], {}
     for p in periods:
         try:
@@ -494,7 +542,26 @@ def latest_map(cur, spec: EditionSpec) -> tuple:
             new.append(p)
         except ValueError as e:
             errors[p] = str(e)
-    return tips, new, errors
+    held = (held_not_live_periods(cur, spec) if spec.live_single_period
+            else ())
+    return LatestMap(tips, new, errors, held)
+
+
+def refuse_non_live(cur, spec: EditionSpec, periods, what: str) -> None:
+    """live_single_period: halt, naming them, when any of `periods` (CLI
+    strings or database values) is not the live period. Nothing for any
+    other spec or when periods is empty."""
+    if not spec.live_single_period or not periods:
+        return
+    cur.execute(f"SELECT DISTINCT {spec.period_col} "
+                f"FROM public.{spec.live_table}")
+    live = sorted(str(r[0]) for r in cur.fetchall())
+    other = sorted({str(p) for p in periods} - set(live))
+    if other:
+        halt(f"{what} {other}: not the live period "
+             f"({', '.join(live) or 'live is empty'}); {spec.name} holds one "
+             "vintage in live and refreshes only that one (a held vintage is "
+             "stored as editions only and never refreshed into live)")
 
 
 def rows_differing(cur, spec: EditionSpec, period: str, edition: int) -> int:
@@ -575,8 +642,13 @@ def status(cur, spec: EditionSpec) -> dict:
                      linear chain (a fork, or any other broken chain; S1 called
                      this chain_errors)
     periods:         number of live periods
-    ok is true only when all five are empty."""
-    tips, new, errors = latest_map(cur, spec)
+    ok is true only when all five are empty.
+
+    live_single_period specs only, an extra key held_not_live: editions
+    periods absent from live (vintages held as editions only); information,
+    not a fault, so it does not affect ok. Other specs' dict is unchanged."""
+    lm = latest_map(cur, spec)
+    tips, new, errors = lm
     drift, pending = [], []
     for p, tip in tips.items():
         kind, _ = classify_period(cur, spec, p, tip)
@@ -602,9 +674,12 @@ def status(cur, spec: EditionSpec) -> dict:
         if n != counts.get(p) and p not in bad_counts:
             bad_counts[p] = (counts.get(p), n)
     ok = not (new or drift or pending or errors or bad_counts)
-    return {"new_periods": sorted(new), "pending_refresh": sorted(pending),
-            "drift": sorted(drift), "bad_counts": bad_counts,
-            "forked": errors, "periods": len(counts), "ok": ok}
+    out = {"new_periods": sorted(new), "pending_refresh": sorted(pending),
+           "drift": sorted(drift), "bad_counts": bad_counts,
+           "forked": errors, "periods": len(counts), "ok": ok}
+    if spec.live_single_period:
+        out["held_not_live"] = sorted(lm.held_not_live)
+    return out
 
 
 def rows_sha256(spec: EditionSpec, rows: list) -> str:
@@ -695,7 +770,9 @@ def sync_new(cur, spec: EditionSpec,
     savepoint). Returns the periods given an edition, sorted.
 
     Authorities are counted as distinct first-key values (S1b); S1 and RO4
-    counted rows, which is the same for a single key."""
+    counted rows, which is the same for a single key. Only live periods are
+    considered, so a live_single_period spec's held_not_live periods (in
+    the editions table, not in live) are never inserted."""
     tips, new, errors = latest_map(cur, spec)
     if errors:
         halt("sync-new: invalid edition chain " + "; ".join(
@@ -1096,10 +1173,18 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
     only. S1b's extra after-check on all live columns and S1's reproduction
     update stay in those loaders.
 
+    Single vintage (opt-in, spec.live_single_period): only the live period
+    is planned (as for every spec, only live periods are), and an
+    accept_drift or accept_key_changes period that is not the live period
+    halts first, naming it (refuse_non_live).
+
     Result: {'updated': {period: rows}, 'rows': n, 'drift_accepted': [...],
     'inserted': {period: rows}, 'deleted': {period: rows}} (inserted and
     deleted name only the periods with key changes applied).
     """
+    refuse_non_live(cur, spec, tuple(accept_drift), "--accept-drift")
+    refuse_non_live(cur, spec, tuple(accept_key_changes),
+                    "--accept-key-changes")
     plan, drift = _plan(cur, spec, accept_drift)
     if drift:
         halt("live differs from the latest edition and matches no stored "

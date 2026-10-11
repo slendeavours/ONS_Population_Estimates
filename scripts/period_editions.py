@@ -37,6 +37,9 @@ import load_checks  # noqa: E402
 from editions_core import halt  # noqa: E402
 
 LIVE_MISSING = "live-missing"
+# live_single_period: a new vintage stored as edition 1 only, because live
+# already holds a different vintage (never promoted to live by a load)
+HELD_NOT_LIVE = "held-not-live"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -153,6 +156,18 @@ def live_missing_periods(cur, profile: Profile) -> list:
     return [_p(r[0]) for r in cur.fetchall()]
 
 
+def live_holds_other(cur, profile: Profile, period: str) -> bool:
+    """live_single_period: live holds a period other than `period` (so
+    `period` is not the live vintage and must stay out of live). False for
+    every other spec, without a query."""
+    spec = profile.spec
+    if not spec.live_single_period:
+        return False
+    cur.execute(f"SELECT DISTINCT {spec.period_col} "
+                f"FROM public.{spec.live_table}")
+    return any(_p(r[0]) != _p(period) for r in cur.fetchall())
+
+
 def insert_live(cur, profile: Profile, period: str, records: list) -> None:
     """The period's live rows (loaded_at takes its default, now())."""
     from psycopg2.extras import execute_values
@@ -198,12 +213,18 @@ def compare_period(cur, profile: Profile, period: str, records: list,
     has more than one column) whose values differ (a
     key on one side only counts; NULL equals NULL, NULL differs from 0); up
     to three examples. Against the editions, an unchanged period with no
-    live rows is LIVE_MISSING: load inserts its live rows (no new edition)."""
+    live rows is LIVE_MISSING: load inserts its live rows (no new edition).
+
+    live_single_period, when live holds a different period: a new period is
+    HELD_NOT_LIVE (load stores edition 1 only), and an unchanged period
+    with no live rows stays 'unchanged' (a held vintage, never inserted)."""
     old, label = stored(cur, profile, period, against)
     new = {_key(profile, r): tuple(r[c] for c in profile.value_cols)
            for r in records}
     if not old:
-        return {"kind": "new", "changed": len(new), "examples": [],
+        kind = ("new" if not live_holds_other(cur, profile, period)
+                else HELD_NOT_LIVE)
+        return {"kind": kind, "changed": len(new), "examples": [],
                 "against": label}
     diff = [k for k in sorted(set(old) | set(new))
             if k not in old or k not in new or old[k] != new[k]]
@@ -211,7 +232,8 @@ def compare_period(cur, profile: Profile, period: str, records: list,
           f"{new.get(k, 'absent')}" for k in diff[:3]]
     kind = "revised" if diff else "unchanged"
     if (kind == "unchanged" and against == "editions"
-            and live_row_count(cur, profile, period) == 0):
+            and live_row_count(cur, profile, period) == 0
+            and not live_holds_other(cur, profile, period)):
         kind = LIVE_MISSING
     return {"kind": kind, "changed": len(diff), "examples": ex,
             "against": label}
@@ -219,7 +241,7 @@ def compare_period(cur, profile: Profile, period: str, records: list,
 
 def classify_period(cur, profile: Profile, period: str, records: list) -> str:
     """'new', 'unchanged', 'revised' or LIVE_MISSING against the period's
-    latest stored edition."""
+    latest stored edition (or HELD_NOT_LIVE, live_single_period only)."""
     return compare_period(cur, profile, period, records)["kind"]
 
 
@@ -251,7 +273,14 @@ def apply_period(cur, profile: Profile, period: str, records: list, *,
     edition records (default profile.default_source_file).
 
     classify(cur, profile, period, records) -> kind and insert(cur, profile,
-    period, records) default to classify_period and insert_live."""
+    period, records) default to classify_period and insert_live.
+
+    live_single_period (opt-in): a new period while live holds a different
+    one is stored as edition 1 WITHOUT live rows and HELD_NOT_LIVE is
+    returned (whether classify said 'new' or HELD_NOT_LIVE); into an empty
+    live table it is inserted as usual (the first vintage). LIVE_MISSING
+    while live holds a different period halts (it would put a second
+    vintage in live). A revision behaves as for every spec."""
     spec = profile.spec
     classify = classify or classify_period
     insert = insert or insert_live
@@ -261,12 +290,17 @@ def apply_period(cur, profile: Profile, period: str, records: list, *,
     if kind == "unchanged":
         return kind
     if kind == LIVE_MISSING:
+        if live_holds_other(cur, profile, period):
+            halt(f"{period}: live holds a different vintage; a "
+                 "live_single_period table never takes a second one into "
+                 "live")
         _live_into(cur, profile, period, records,
                    core.chain_tip(cur, spec, period), insert)
         return kind
     sha = (profile.content_sha256(records) if profile.content_sha256
            else core.rows_sha256(spec, records))
-    tip = None if kind == "new" else core.chain_tip(cur, spec, period)
+    tip = (None if kind in ("new", HELD_NOT_LIVE)
+           else core.chain_tip(cur, spec, period))
     ed = core.insert_edition(
         cur, spec, records, period,
         release_label=profile.release_label(fetched_on),
@@ -277,6 +311,8 @@ def apply_period(cur, profile: Profile, period: str, records: list, *,
         bad.append(f"{period}: edition {ed} is not the chain tip")
     if bad:
         halt(f"{period} edition {ed} failed its checks: " + "; ".join(bad))
+    if kind == "new" and live_holds_other(cur, profile, period):
+        kind = HELD_NOT_LIVE
     if kind == "new":
         _live_into(cur, profile, period, records, ed, insert)
     return kind
@@ -313,6 +349,8 @@ def load_periods(cur, profile: Profile, periods, fetch, fetched_on: date,
     conn = cur.connection
     tally = {"new": [0, 0], "unchanged": [0, 0], "revised": [0, 0],
              LIVE_MISSING: [0, 0]}
+    if profile.spec.live_single_period:
+        tally[HELD_NOT_LIVE] = [0, 0]
     if stats is not None:
         stats.update(periods=[], kinds={}, stored_rows=0, live_rows=0)
     for i, period in enumerate(periods):
@@ -352,18 +390,24 @@ def load_periods(cur, profile: Profile, periods, fetch, fetched_on: date,
         if stats is not None:
             stats["periods"].append(period)
             stats["kinds"][period] = kind
-            if kind in ("new", "revised"):
+            if kind in ("new", "revised", HELD_NOT_LIVE):
                 stats["stored_rows"] += len(records)
             if kind in ("new", LIVE_MISSING):
                 stats["live_rows"] += len(records)
         tally[kind][0] += 1
-        # a count of changed areas for the summary line, not a source value
-        tally[kind][1] += (cmp["changed"] if kind in ("new", "revised")
-                           else 0)  # not a source value
+        if kind in ("new", "revised", HELD_NOT_LIVE):
+            # a count of changed areas for the summary line, not a source
+            # value; other kinds add nothing to it
+            tally[kind][1] += cmp["changed"]
         n_live = f"{len(records):,}"
         if kind == "new":
             action = ("; stored edition 1 and inserted " if write else
                       "; would store edition 1 and insert ") + f"{n_live} live rows"
+        elif kind == HELD_NOT_LIVE:
+            action = (("; stored edition 1 only" if write
+                       else "; would store edition 1 only")
+                      + "; live holds a different vintage, not promoted "
+                      "(no live rows)")
         elif kind == LIVE_MISSING:
             action = ("; editions month missing from live: "
                       + ("inserted " if write else "would insert ")
@@ -429,14 +473,24 @@ def status(cur, profile: Profile) -> dict:
     spec = profile.spec
     st = core.status(cur, spec)
     missing = live_missing_periods(cur, profile)
-    return {"new_periods": [_p(x) for x in st["new_periods"]],
-            "drift_periods": [_p(x) for x in st["drift"]],
-            "pending_refresh": [_p(x) for x in st["pending_refresh"]],
-            "chain_errors": {_p(k): v for k, v in st["forked"].items()},
-            "bad_counts": {_p(k): v for k, v in st["bad_counts"].items()},
-            "live_missing": missing,
-            "periods": st["periods"],
-            "ok": st["ok"] and not missing}
+    held = []
+    if spec.live_single_period and st["periods"]:
+        # live holds its vintage: editions periods absent from it are held
+        # (information, ok unaffected), not live_missing; with live empty
+        # they stay live_missing (load inserts the first vintage)
+        held = [_p(x) for x in st["held_not_live"]]
+        missing = [m for m in missing if m not in held]
+    out = {"new_periods": [_p(x) for x in st["new_periods"]],
+           "drift_periods": [_p(x) for x in st["drift"]],
+           "pending_refresh": [_p(x) for x in st["pending_refresh"]],
+           "chain_errors": {_p(k): v for k, v in st["forked"].items()},
+           "bad_counts": {_p(k): v for k, v in st["bad_counts"].items()},
+           "live_missing": missing,
+           "periods": st["periods"],
+           "ok": st["ok"] and not missing}
+    if spec.live_single_period:
+        out["held_not_live"] = held
+    return out
 
 
 def format_status(profile: Profile, st: dict, extra_lines=()) -> str:
@@ -448,6 +502,9 @@ def format_status(profile: Profile, st: dict, extra_lines=()) -> str:
     lines = list(extra_lines)
     lines += [f"  editions month missing from live: {mo} (run load --commit "
               "to insert its live rows)" for mo in st.get("live_missing") or []]
+    lines += [f"  held, not live: {v} (a different vintage, stored as "
+              "editions only; information, not a fault)"
+              for v in st.get("held_not_live") or []]
     if not lines:
         return text
     head, tail = text.rsplit("\n", 1)
@@ -517,7 +574,10 @@ def create_file_checks(cur, profile: Profile) -> None:
     ptype = dict(spec.key_types).get(spec.period_col, "text NOT NULL")
     fn = f"{spec.name}_file_checks_immutable"
     trunc = f"{spec.name}_file_checks_no_truncate"
-    outcomes = ", ".join(f"'{o}'" for o in FILE_CHECK_OUTCOMES)
+    allowed = FILE_CHECK_OUTCOMES
+    if spec.live_single_period:
+        allowed += (HELD_NOT_LIVE,)
+    outcomes = ", ".join(f"'{o}'" for o in allowed)
     cur.execute(f"""CREATE TABLE IF NOT EXISTS public.{t} (
         id bigserial PRIMARY KEY,
         {spec.period_col} {ptype},
@@ -683,7 +743,10 @@ def _accept_periods(cur, spec, accept) -> tuple:
     editions_core compares them with). Makes editions_core._plan's halts
     first, with the same wording but periods as strings: live periods with
     no editions, an invalid chain, and an accepted period that is not
-    drifted (one matching no period included)."""
+    drifted (one matching no period included). A live_single_period spec
+    first refuses, naming it, an accepted period that is not the live
+    period."""
+    core.refuse_non_live(cur, spec, accept, "--accept-drift")
     tips, new, errors = core.latest_map(cur, spec)
     if new:
         halt(f"periods with no editions {[_p(x) for x in new]}; run sync-new "
@@ -710,7 +773,9 @@ def _accept_key_change_periods(cur, spec, accept_kc) -> tuple:
     """The --accept-key-changes strings as the database's own period values
     (as _accept_periods), so editions_core compares like with like. A
     string matching no live period is kept as given: check_key_changes
-    then refuses it as having nothing to accept."""
+    then refuses it as having nothing to accept (a live_single_period spec
+    refuses a non-live period first, naming it)."""
+    core.refuse_non_live(cur, spec, accept_kc, "--accept-key-changes")
     tips, _, _ = core.latest_map(cur, spec)
     known = {_p(p): p for p in tips}
     return tuple(known.get(a, a) for a in accept_kc)
