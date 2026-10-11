@@ -19,7 +19,7 @@ consumed-by: scripts/s7_boundaries_editions.py, scripts/s7_boundaries_editions_v
 | Loader | `scripts/s7_boundaries_editions.py`; gates `scripts/s7_boundaries_editions_verify.py` (19) |
 | Record | `docs/decisions/2026-10-10-reference-trio-editions-first-load.md` |
 
-**The W1 spine and the map's geometry.** `sql/w1/05_la_signals.sql` reads `FROM la_boundaries`; `scripts/export_map_data.py` exports `lad24cd` and `geojson` to `data/boundaries/la_boundaries.geojson`; 20 foreign keys point at the table (counted from `pg_constraint` on 2026-10-11). The loader therefore never deletes, re-keys, inserts or rebuilds a live row, and it never writes `la_code_lookup`. The first load changed no held value.
+**The W1 spine and the map's geometry.** `sql/w1/05_la_signals.sql` reads `FROM la_boundaries`; `scripts/export_map_data.py` exports `lad24cd` and `geojson` to `data/boundaries/la_boundaries.geojson`; 20 foreign keys point at the table (counted from `pg_constraint` on 2026-10-11). The loader therefore never deletes, re-keys, inserts or rebuilds a live row, and it never writes `la_code_lookup`. Its one write to `la_boundaries` is `refresh-latest --acknowledge 2024-05-01`, which updates the value columns and `loaded_at` of existing rows from the latest edition, and only with that acknowledgement. The first load changed no held value.
 
 ## What is loaded, and what the columns mean
 
@@ -67,7 +67,7 @@ Declared `old` in `scripts/geography.py`: this source **defines the canonical ke
 | Codes | E08000016, E08000019 | E08000038, E08000039 instead | E08000038, E08000039 instead |
 | Features | 93 MultiPolygon, 203 Polygon | 87 and 209 | 87 and 209 |
 
-Codes added 2, removed 2 and 294 shared; **names changed 0**; but **the geometry changed on all 294 shared districts, and `LONG`, `LAT` or `Shape__Area` changed on all 294**. These are redrawn files, not copies of May 2024 with the recode. An earlier survey assumption (that the vintages differ only by the two codes) holds for codes and names only.
+Codes added 2, removed 2 and 294 shared; **names changed 0**; but **the geometry changed on all 294 shared districts**. Measured from the held GeoJSON files against May 2024 (2026-10-11): geometry and `Shape__Area` differ on all 294; `LONG` on 211 (December 2025) and 212 (May 2026), by at most 0.000022 and 0.000038 degrees; `LAT` on 137 and 137, by at most 0.00001 and 0.00004 degrees; names on none. These are redrawn files, not copies of May 2024 with the recode. An earlier survey assumption (that the vintages differ only by the two codes) holds for codes and names only.
 
 **Adopting a newer vintage is Scott's decision.** It re-bases W1's spine and every one of the 20 foreign keys, changes the map's geometry on every district, and flips the canonical Barnsley/Sheffield form (E08000016/19 to E08000038/39, `la_code_lookup`'s recode rows). Nothing in the loader or the plan does it. A later `load --vintage <V> --commit` stores such a vintage as editions only (`held-not-live`); the engine refuses to promote it and `refresh-latest` of a non-live period halts.
 
@@ -76,6 +76,8 @@ Codes added 2, removed 2 and 294 shared; **names changed 0**; but **the geometry
 An edition is what one ArcGIS query says about its vintage: per English district the name, `LONG`, `LAT`, `Shape__Area` and the geometry. Edition 1 is the table as held (published 2026-03-25), proved against the held reply (above).
 
 A reissue of the live vintage (a later `lastEditDate` with different content) is the next edition. Any change to the live vintage's names or geometry is REJECTED unless `--acknowledge 2024-05-01`, and its `refresh-latest` needs the same flag and prints "this changes the map's geometry: Scott's decision" with the difference. The same `lastEditDate` with different content stops unless `--accept-reissue PERIOD`; a later `lastEditDate` whose only change is in `LONG`, `LAT` or `Shape__Area` is stored as the next edition without a flag and reaches live only through `refresh-latest`. An older layer halts unless `--allow-older-file`. A key-set change is PARTIAL and no flag releases it. An empty `la_boundaries` halts the load: it is never rebuilt here. The registry has `revises_back_series` false: no revision of the May 2024 layer has been seen.
+
+**Detecting a reissue.** `check_sources.py 7` compares the newest vintage in the service list with 2024-05 and also reads the May 2024 layer: when its `editingInfo.lastEditDate` (read with the loader's own `layer_identity`) is not the newest one the editions table and ledger record for 2024-05-01, it reports "reissue possible" (`revision_detected`, or in the notes and error detail while the row is `new_edition` because December 2025 and May 2026 are offered). It downloads no GeoJSON; run `load` (preview) to compare.
 
 ## How to run
 
@@ -91,7 +93,7 @@ python scripts/s7_boundaries_editions_verify.py
 
 Other commands: `ddl` (already run), `restore-edition PERIOD N`, and the one-off `migrate-legacy --file GEOJSON --layer JSON` (already run). `load` takes `--vintage V`, `--file GEOJSON --layer JSON`, `--recheck PERIOD`, `--allow-older-file`, `--accept-reissue PERIOD` and `--acknowledge 2024-05-01`. Every writing command previews unless `--commit` (or `--simulate`, which rolls back).
 
-**Run `refresh-latest` before W1** if it ever applies a change: S7 is the W1 spine and the map's geometry. Gate 17 of the verify script fails by design when `geojson` in live changes: update the `w1-read` line deliberately.
+**Run `refresh-latest` before W1** if it ever applies a change: S7 is the W1 spine and the map's geometry. **`refresh_map.py` will not notice it:** it excludes `la_boundaries` from the W1 inputs it tests (`EXCLUDED_EXACT` in `scripts/refresh_map.py`), so after an acknowledged `refresh-latest --commit` its `--check` still says fresh and its default mode would export the previous W1 run beside the new geometry. Run W1 by hand (`python scripts/w1_run.py --simulate`, then `python scripts/w1_run.py`), then `python scripts/refresh_map.py` to export that run. Gate 17 of the verify script fails by design when `geojson` in live changes: update the `w1-read` line deliberately.
 
 ## Known traps
 

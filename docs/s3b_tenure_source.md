@@ -76,7 +76,7 @@ An edition is what one NOMIS reply says about its census: per authority the nine
 
 No revision has been seen. A later LastUpdated with the same content is `unchanged` (recorded in the ledger). Census counts are not expected to change, so a later LastUpdated with different content, or the same LastUpdated with different content, stops the load unless `--accept-reissue YEAR`; an accepted reissue is the next edition and reaches the live table only through `refresh-latest`. An earlier LastUpdated halts unless `--allow-older-file`; a reissue that drops or adds an authority is PARTIAL and no flag releases it. The registry has `revises_back_series` false.
 
-**Another census** (2031, say) must be declared in `DATASETS` deliberately, with the evidence of its own definition; until then its definition halts. Once declared it is stored as editions only and never enters the live table through a load (`EditionSpec.live_single_period`; a census other than 2021 into an empty live table is REJECTED). `census_year` has no CHECK in the live table, so "one census in live" is held by the loader and by gate 3.
+**Another census** (2031, say) must be declared in `DATASETS` deliberately, with the evidence of its own definition; until then its definition halts. Once declared it is stored as editions only and never enters the live table through a load (`EditionSpec.live_single_period`; a census other than 2021 into an empty live table is REJECTED, whether it is new or already held as editions only: with the live table empty, a load inserts census 2021 and nothing else; this was tightened on 2026-10-11, when a held other census could have been re-inserted into an emptied table). `census_year` has no CHECK in the live table, so "one census in live" is held by the loader and by gate 3.
 
 **`source`.** The live `source` column keeps its two held variants: "ONS Census 2021 TS054 Tenure, Nomis NM_2072_1, Census Day 21 March 2021" on 292 rows (loaded 2026-04-01) and "ONS Census 2021 TS054 Tenure, Nomis NM_2072_1, 2023 local authority boundaries" on the 4 rows reloaded on 2026-08-20. They are provenance, never compared, and a refresh writes `source` only on the rows it changes.
 
@@ -101,11 +101,11 @@ Other commands: `ddl` (already run), `restore-edition YEAR N`, and the one-off `
 - **Building the total from the parts.** Store the publisher's total and check the parts against it.
 - **Treating the stored social and private totals as published.** The database generates them.
 - **Hashing the files.** The CSV and definition are API output; the content hash is the identity.
-- **Reading the two `source` variants as two releases.** Both are NM_2072_1.
+- **Reading the two `source` variants as two releases.** Both labels name NM_2072_1, and the counts equal NM_2072_1; the 2026-04-01 label is the n8n workflow's, whose fetch node calls the ONS beta API (see History).
 
 ## History
 
-- **2026-04-01, run-log 29:** the n8n workflow "Census 2021 TS054 Tenure (S3b)" wrote 309 rows ("static, runs once"). It fetched the ONS beta API (TS054 version 4, area type ltla), coerced a missing cell with `|| 0`, built `total_households` from the parts, and summed predecessor districts onto the 2023 unitaries through `la_code_lookup`.
+- **2026-04-01, run-log 29:** the n8n workflow "Census 2021 TS054 Tenure (S3b)" wrote 309 rows ("static, runs once"). Which route fetched the data is not established: the workflow's fetch node, as stored in n8n, calls the ONS beta API (TS054 version 4, area type ltla), but the node is named "Fetch TS054 from Nomis", run-log 29's note says "Nomis NM_2072_1" and so does the `source` of all 292 rows loaded that day. The held values equal NM_2072_1 on every count, so nothing stored depends on it. The workflow coerced a missing cell with `|| 0`, built `total_households` from the parts, and summed predecessor districts onto the 2023 unitaries through `la_code_lookup`.
 - **2026-08-20, 14:20 UTC:** the four unitaries were reloaded from NOMIS by direct SQL (no run-log row, no committed code) after the re-basing error was found.
 - **2026-10-10:** the n8n workflow is retired (its Code node throws).
 - **2026-10-11:** `ddl` (editions table and ledger; `la_tenure_2021` untouched) and `migrate-legacy` (edition 1, run-log 450). The record, with the before-state hashes, is `docs/decisions/2026-10-10-reference-trio-editions-first-load.md`.

@@ -62,7 +62,8 @@ Gates:
  17  geojson in live equals the decision note's w1-read line (the map's
      geometry: data/boundaries/la_boundaries.geojson)       (seeded + real)
  18  every foreign key to la_boundaries still validates: the keys are counted
-     from the database (pg_constraint; 18 on 2026-10-11, not assumed) and
+     from the database (pg_constraint, not assumed: 20 on 2026-10-11, after
+     the S5 and S3b editions tables added theirs; 18 before) and
      the orphan rows across the referencing tables are 0
  19  the later vintages held on disk (attribute files, read only): codes
      added and removed, names unchanged; the attribute and geometry

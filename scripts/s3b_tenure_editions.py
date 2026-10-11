@@ -33,7 +33,9 @@ re-based the four 2023 unitaries from their predecessors (wrong by up to
 75,940 households; docs/decisions/2026-08-20-s3b-tenure-rebasing-error.md).
 
 History (so the wording here stays truthful): the n8n workflow loaded the
-table on 2026-04-01 (pipeline_run_log 29) from the ONS beta API; on
+table on 2026-04-01 (pipeline_run_log 29; its fetch node calls the ONS
+beta API, but its node name, the run-log note and the 292 rows' source say
+Nomis NM_2072_1, so the route is not established); on
 2026-08-20 the four 2023 unitaries were reloaded from NOMIS NM_2072_1 by
 direct SQL (the decision note). No held value is affected: every held value
 equals the held NOMIS reply read again (data/raw/s3b_tenure). migrate-legacy
@@ -73,8 +75,8 @@ E08000039 halts), then each code's canonical form must be in la_boundaries.
 
 Stop conditions (in load; a stopped census is REJECTED: nothing stored, no
 ledger row, exit 1): a reissue that drops or adds an authority (PARTIAL; no
-flag releases it); a census other than 2021 into an empty live table (no
-flag releases it); different content for a held census (--accept-reissue
+flag releases it); a census other than 2021 into an empty live table,
+new or already held as editions only (no flag releases it); different content for a held census (--accept-reissue
 YEAR); an older definition (its LastUpdated before the held tip's, or a
 census before the newest held) halts unless --allow-older-file. Each
 acceptance is written to the edition's label and the run log.
@@ -767,9 +769,10 @@ def period_problems(new, tip, *, kind, vintage=None, live_empty=False) -> list:
     """The stop conditions of the reply's census (empty = fine); no flag
     releases any of them. revised: an authority of the held edition missing
     from the reply, or one the held edition lacks (the key set of a census
-    never changes by a reissue). new: a census other than LIVE_VINTAGE into
-    an empty live table (the table is la_tenure_2021; another census never
-    enters live through a load)."""
+    never changes by a reissue). Any kind (new, or revised: a census held
+    as editions only): a census other than LIVE_VINTAGE into an empty live
+    table (the table is la_tenure_2021; another census never enters live
+    through a load, so with live empty only LIVE_VINTAGE is inserted)."""
     out = []
     if kind == "revised":
         tk, nk = _by_key(tip), _by_key(new)
@@ -784,7 +787,9 @@ def period_problems(new, tip, *, kind, vintage=None, live_empty=False) -> list:
             out.append(f"{PARTIAL}: {len(added)} authorit(ies) not in the "
                        "held edition (a reissue never changes a census's "
                        f"key set): {', '.join(added[:8])}")
-    elif kind == "new" and live_empty and vintage != LIVE_VINTAGE:
+    if live_empty and vintage is not None and str(vintage) != LIVE_VINTAGE:
+        # every kind: a vintage held as editions only (planned as
+        # revised) must not be inserted into an empty live table either
         out.append(f"census {vintage} into an empty live table: the live "
                    f"table holds census {LIVE_VINTAGE} only "
                    "(la_tenure_2021), and another census never enters live "
@@ -1494,7 +1499,8 @@ def _run(args, conn, cur, prof, has_ed, src, d, recs, new, revised, skipped,
         if p in revised:
             kind = "revised"
             tip = _tip_records(cur, spec, p, tips, has_ed)
-            bad = period_problems(recs, tip, kind=kind)
+            bad = period_problems(recs, tip, kind=kind, vintage=p,
+                                  live_empty=live_empty)
             if _differs(recs, tip):
                 if p in reissue:
                     reissued[p] = (f"--accept-reissue {p}: the definition has "

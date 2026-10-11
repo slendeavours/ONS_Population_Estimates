@@ -62,10 +62,12 @@ Checks inside the file (checks): each rank column is a ranking of 1..296 (a
 permutation of 1..296, except that tied measures share the lowest rank, as
 the publisher ranks: the 104 zero proportions share rank 193 and the 15 zero
 extents share 282 in the held file); each rank follows its measure (a
-higher measure, which is more deprived, never ranks after a lower one; two
-measures equal at the published precision may rank apart, because the
-publisher ranks the unrounded values: two pairs of average scores in the
-held file); proportions and extents lie in [0, 1].
+higher measure, which is more deprived, never ranks after a lower one;
+measures equal at the published precision may rank apart: in the held file
+2 groups of average scores, 4 of proportions and 13 of extents, presumably
+because the publisher ranks the unrounded values, which is an inference:
+the file does not say and the technical report was not read); proportions
+and extents lie in [0, 1].
 
 Geography (rule 4): geography.resolve('5', codes) (source 5 is declared
 'old': an E08000038 or E08000039 halts), then each code's canonical form
@@ -73,8 +75,9 @@ must be in la_boundaries; anything else is UNEXPLAINED and stops.
 
 Stop conditions (in load; a stopped vintage is REJECTED: nothing stored, no
 ledger row, exit 1): a reissue that drops or adds an authority (PARTIAL; no
-flag releases it); a vintage other than IoD2025 into an empty live table
-(the live CHECK; no flag releases it); equal docProps modified with
+flag releases it); a vintage other than IoD2025 into an empty live table,
+new or already held as editions only (stopped before the live CHECK would
+refuse it; no flag releases it); equal docProps modified with
 different content (two files claim the same release) unless --accept-reissue
 VINTAGE; an older file (its rank before the held tip's, or a vintage before
 the newest held) halts unless --allow-older-file. Each acceptance is written
@@ -904,9 +907,11 @@ def period_problems(new, tip, *, kind, vintage=None, live_empty=False) -> list:
     releases any of them. revised (a reissue of a held vintage): an
     authority of the held edition missing from the file, or one the held
     edition lacks (the key set of a vintage never changes by a reissue, and
-    refresh would refuse it). new: a vintage other than LIVE_VINTAGE into
-    an empty live table (the live CHECK holds LIVE_VINTAGE only; another
-    vintage never enters live by a load)."""
+    refresh would refuse it). Any kind (new, or revised: a vintage held as
+    editions only): a vintage other than LIVE_VINTAGE into an empty live
+    table (the live CHECK holds LIVE_VINTAGE only; another vintage never
+    enters live by a load, so with live empty only LIVE_VINTAGE is
+    inserted)."""
     out = []
     if kind == "revised":
         tk, nk = _by_key(tip), _by_key(new)
@@ -920,7 +925,9 @@ def period_problems(new, tip, *, kind, vintage=None, live_empty=False) -> list:
             out.append(f"{PARTIAL}: {len(added)} authorit(ies) not in the "
                        "held edition (a reissue never changes a vintage's "
                        f"key set): {', '.join(added[:8])}")
-    elif kind == "new" and live_empty and vintage != LIVE_VINTAGE:
+    if live_empty and vintage is not None and str(vintage) != LIVE_VINTAGE:
+        # every kind: a vintage held as editions only (planned as
+        # revised) must not be inserted into an empty live table either
         out.append(f"{vintage} into an empty live table: the live table holds "
                    f"{LIVE_VINTAGE} only (its CHECK), and another vintage "
                    "never enters live through a load (adopting one is a "
@@ -1751,7 +1758,8 @@ def _run(args, conn, cur, prof, has_ed, src, f, recs, new, revised, skipped,
         if p in revised:
             kind = "revised"
             tip = _tip_records(cur, spec, p, tips, has_ed)
-            bad = period_problems(recs, tip, kind=kind)
+            bad = period_problems(recs, tip, kind=kind, vintage=p,
+                                  live_empty=live_empty)
             if ranks.get(p) == rank and _differs(recs, tip):
                 if p in reissue:
                     reissued[p] = (f"--accept-reissue {p}: the file has "

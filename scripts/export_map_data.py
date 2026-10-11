@@ -206,7 +206,7 @@ def layer_periods(cur):
     p["marac_cases"] = one("SELECT MAX(financial_year) FROM marac_cases")
     rs = one("SELECT MAX(snapshot_year) FROM la_rough_sleeping")
     p["rough_sleeping_current"] = f"autumn {rs}" if rs else None
-    p["imd_rank_of_average_rank"] = "2025"          # la_imd_2025 holds one edition by design
+    p["imd_rank_of_average_rank"] = "2025"          # la_imd_2025 holds one vintage (IoD2025); its editions are la_imd_2025_editions
     lha = one("SELECT MAX(financial_year) FROM brma_lha_rates")
     p["lha_sar_weekly"] = p["lha_1bed_weekly"] = lha
     cqc = one("SELECT MAX(source_file_date) FROM cqc_locations")

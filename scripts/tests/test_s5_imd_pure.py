@@ -632,6 +632,20 @@ class Stops(unittest.TestCase):
                                   vintage="IoD2030", live_empty=True)
         self.assertTrue(any("IoD2025" in x and "IoD2030" in x for x in p), p)
 
+    def test_a_held_other_vintage_into_an_empty_live_table_stops_too(self):
+        tip = recs(CODES)
+        with mock.patch.object(m, "EXPECTED_AREAS", len(CODES)):
+            p = m.period_problems(recs(CODES), tip, kind="revised",
+                                  vintage="IoD2030", live_empty=True)
+            self.assertTrue(any("empty live table" in x and "IoD2030" in x
+                                for x in p), p)
+            self.assertEqual(m.period_problems(
+                recs(CODES), tip, kind="revised", vintage="IoD2025",
+                live_empty=True), [])
+            self.assertEqual(m.period_problems(
+                recs(CODES), tip, kind="revised", vintage="IoD2030",
+                live_empty=False), [])
+
     def test_differs(self):
         a = recs(CODES)
         self.assertFalse(m._differs(a, recs(CODES)))

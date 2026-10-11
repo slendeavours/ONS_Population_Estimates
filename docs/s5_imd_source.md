@@ -37,7 +37,7 @@ File 10 has a sheet for each domain; only the `IMD` sheet (the Index of Multiple
 | `imd_rank_of_proportion` | IMD - Rank of proportion of LSOAs in most deprived 10% nationally | Rank on that measure |
 | `imd_extent`, `imd_rank_of_extent` | IMD25 - Extent, IMD25 - Rank of extent | The publisher's measure of that name (see below) |
 | `imd_local_concentration`, `imd_rank_of_local_concentration` | IMD25 - Local concentration, IMD25 - Rank of local concentration | The publisher's measure of that name (see below) |
-| `source` | | The release label, set by the loader from the edition (`MHCLG English Indices of Deprivation 2025, File 10 LA District Summaries (lower-tier) v2, published 30 October 2025`) |
+| `source` | | The release label. **Today all 296 rows hold the label the n8n workflow wrote on 2026-04-01**, "MHCLG English Indices of Deprivation 2025, File 10 LA District Summaries (lower-tier) v2, published 30 October 2025"; the loader has not written it (edition 1 is "as loaded" and was not refreshed into live). Its date is wrong for v2: 30 October 2025 is IoD2025's first publication, and v2 is the reissue (docProps modified 14 November 2025, announced in the page's change note of 17 November 2025). The loader writes `source` only through `refresh-latest`, on every live row, from the refreshed edition's release label, which reads `MHCLG English indices of deprivation 2025, File 10 Local Authority District summaries (lower tier), IoD2025; <file name>; docProps modified <time>; <URL> sha256 <first 16>; ...` |
 | `vintage` | | `IoD2025` on every row; added 2026-10-11 (see "The `vintage` column") |
 
 What the publisher says about the measures (the statistical release, https://www.gov.uk/government/statistics/english-indices-of-deprivation-2025/english-indices-of-deprivation-2025-statistical-release, read through the GOV.UK content API on 2026-10-11):
@@ -66,7 +66,18 @@ The held file is `data/raw/s5_imd/File_10_-_IoD2025_Local_Authority_District_Sum
 
 ## Checks inside the file
 
-Each rank column is a ranking of 1 to 296 and follows its measure (a higher measure, which is more deprived, never ranks after a lower one). Ties share the lowest rank number, as the publisher ranks: the 104 zero proportions share rank 193 and the 15 zero extents share rank 282 in the held file, so `imd_rank_of_proportion` and `imd_rank_of_extent` are **not** permutations of 1 to 296. Two pairs of average scores that are equal at the published precision rank apart, because the publisher ranks the unrounded values. Proportions and extents lie in 0 to 1.
+Each rank column is a ranking of 1 to 296 and follows its measure (a higher measure, which is more deprived, never ranks after a lower one). Ties share the lowest rank number, as the publisher ranks: the 104 zero proportions share rank 193 and the 15 zero extents share rank 282 in the held file, so `imd_rank_of_proportion` and `imd_rank_of_extent` are **not** permutations of 1 to 296. Proportions and extents lie in 0 to 1.
+
+Values that are equal at the published precision but rank apart (counted from the held file on 2026-10-11; the check allows them, so long as no higher value ranks after a lower one):
+
+| Measure | Groups | Districts | Values (ranks) |
+|---|---|---|---|
+| Average score | 2 | 4 | 15.157 (197/198); 29.836 (43/44) |
+| Proportion in the most deprived 10% | 4 | 9 | 0.0065 (188/189); 0.0171 (172/173); 0.1159 (78/78/80: two share 78, the third is 80); 0.1721 (51/52) |
+| Extent | 13 | 26 | 0.0096 (259/260); 0.0198 (243/244); 0.0254 (230/231); 0.0384 (214/215); 0.0404 (209/210); 0.0533 (189/190); 0.0890 (164/165); 0.1039 (150/151); 0.1528 (123/124); 0.2469 (81/82); 0.3182 (59/60); 0.3665 (43/44); 0.4290 (27/28) |
+| Average rank, local concentration | 0 | 0 | |
+
+Why they rank apart is not stated in the file (its Notes sheet is empty) and the technical report has not been read: that the publisher ranks the unrounded values is **an inference**, the likeliest reading, not a documented fact.
 
 ## Blanks and zeros (rule 1)
 
@@ -80,13 +91,15 @@ Declared `old` in `scripts/geography.py`: File 10 carries Barnsley and Sheffield
 
 The live table holds one vintage. On 2026-10-11 it gained one additive column, `vintage text NOT NULL DEFAULT 'IoD2025' CHECK (vintage = 'IoD2025')`: default-filled (all 296 rows read `IoD2025`), not in the key, and the CHECK makes a second vintage in the live table impossible. Before it was added the readers of `la_imd_2025` were searched for a `SELECT *`, a positional read or an unqualified `vintage`; none is in W1, the export or the map (the one `SELECT *` is in a one-off audit script, `analysis/liverpool_paper/audit.py`, which prints the row as a dict).
 
-A different IoD year (IoD2030, say) is stored as **editions only** (`EditionSpec.live_single_period`) and never reaches `la_imd_2025` through a load. Its file would halt on the header until its header is added to `FILE10_HEADERS` deliberately, with the evidence. Adopting a new IoD is a deliberate change to the CHECK and W1's layer, decided by Scott.
+A different IoD year (IoD2030, say) is stored as **editions only** (`EditionSpec.live_single_period`) and never reaches `la_imd_2025` through a load. With the live table empty, a load inserts IoD2025 and nothing else: another vintage, new or already held as editions only, is REJECTED by the loader before the CHECK would refuse it. Its file would halt on the header until its header is added to `FILE10_HEADERS` deliberately, with the evidence. Adopting a new IoD is a deliberate change to the CHECK and W1's layer, decided by Scott.
 
 ## Editions and revisions
 
 An edition is what one File 10 workbook says about its vintage: per district `la_name` and the ten measures. Edition 1 is the table as held, proved against the held file: 296 districts x 11 values = 3,256, **0 differences**.
 
 **The publisher has reissued this file.** The IoD2025 page's change history (read 2026-10-11): first published 30 October 2025; a note of 13 November 2025 that ONS had corrected and republished an LSOA-to-LAD look-up on 26 August 2025, an error in the allocation of LSOA E01027305 (West Northamptonshire 048E), which had been allocated to Cherwell (E07000177) instead of West Northamptonshire (E06000062), that "the Indices production team accessed this ONS look-up file prior to its republication to meet production timescales", and that remaining impacted files would be reissued; and a note of 17 November 2025 that Files 1 to 9 had been corrected "with no change to the data" and Files 10, 11 and 14 "updated with minor changes", with the instruction to use the updated "v2" workbooks. The held File 10 is v2 (docProps modified 2025-11-14 12:48:06 UTC); the page offers v2 only and v1 is not held, so the size of the change to File 10 is not measured here. The registry has `revises_back_series` true.
+
+**Detecting a reissue.** `check_sources.py 5` compares the newest page year with `IoD2025`, and also reads the IoD2025 page itself: when its File 10 attachment URL is not one the ledger records for IoD2025 (the held v2's URL is recorded; another URL is another file), or the page has a change note dated after the last ledger check, it reports `revision_detected` with "reissue possible". It downloads nothing, so it cannot read docProps; run `load` (preview) to compare. A file loaded only with `--file` records a local path, so the check reports "reissue possible" until a page `load` has recorded the URL.
 
 A reissue of IoD2025 (a later docProps modified) is stored as the next edition; it reaches the live table only through `refresh-latest`, which also sets `source` on every live row from the edition's release label. Equal docProps modified with different content stops unless `--accept-reissue IoD2025`; an older file stops unless `--allow-older-file`; a reissue that drops or adds a district is PARTIAL and no flag releases it.
 
@@ -108,7 +121,7 @@ Other commands: `ddl` (already run), `restore-edition IoD2025 N`, and the one-of
 
 ## Known traps
 
-- **Calling the ranks permutations.** Two rank columns share ranks (the zeros).
+- **Calling the ranks permutations.** Two rank columns share ranks (the zeros), and equal published values can rank apart (above).
 - **Reading 317.** The file ranks 296 districts. The earlier data dictionary text said 1 to 317 and IMD 2019; both were wrong.
 - **Trusting a file name.** "v2" is in the name of the held file and also in the page's instruction, but the rank of a file is its docProps modified.
 - **Expecting a cover sheet.** There is none; the Notes sheet is empty.

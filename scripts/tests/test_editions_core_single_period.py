@@ -6,8 +6,10 @@ on, a different vintage is stored as editions only ('held-not-live') and
 never reaches live through load, sync-new or refresh-latest; a reissue of
 the live vintage is the next edition and refreshes as usual. With the flag
 off every generated statement and every result is the same as the code at
-the branch base (8b5a286), which the last test class proves by running one
-scenario through both and comparing the SQL text statement for statement.
+the branch base (8b5a286): the last test class runs one scenario and
+compares it, statement for statement, with a committed fixture recorded from
+that code (tests/fixtures/editions_core_flag_off_scenario.json; no git
+history needed), and asserts that none of the opt-in's paths runs.
 
 Every database test runs on a connection from _db.get_conn() inside a
 transaction that is always rolled back. The only tables touched are the
@@ -16,16 +18,16 @@ created inside that transaction, so they never persist. Nothing here
 commits.
 """
 import dataclasses
-import importlib.util
 import io
-import subprocess
+import json
+import re
 import sys
-import tempfile
 import unittest
 from argparse import Namespace
 from contextlib import contextmanager, redirect_stdout
 from datetime import date
 from pathlib import Path
+from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPTS))
@@ -34,7 +36,6 @@ import load_checks  # noqa: E402
 import period_editions as pe  # noqa: E402
 from _db import get_conn  # noqa: E402
 
-BASE_COMMIT = "8b5a286"
 FETCHED = date(2026, 10, 10)
 CODES = ("E06000001", "E06000002", "E06000003")
 N = len(CODES)
@@ -365,39 +366,31 @@ class SingleVintageDB(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Flag off: the same SQL and results as the code at the branch base
+# Flag off: the same SQL and results as the code before the opt-in
 # ---------------------------------------------------------------------------
 
-def _git_show(path):
-    return subprocess.run(
-        ["git", "-C", str(SCRIPTS.parent), "show", f"{BASE_COMMIT}:{path}"],
-        check=True, capture_output=True, text=True,
-        encoding="utf-8").stdout
+# The flag-off scenario as the engine at commit 8b5a286 (the branch base,
+# before live_single_period existed) ran it: every result as repr, the
+# printed output and every SQL statement, recorded once and committed, so
+# the comparison needs no git history.
+GOLDEN = (Path(__file__).resolve().parent / "fixtures"
+          / "editions_core_flag_off_scenario.json")
+_LONG_HEX = re.compile(r"[0-9a-fA-F]{40,}")
 
 
-def _load(name, source, tmp):
-    f = Path(tmp) / f"{name}.py"
-    f.write_text(source, encoding="utf-8")
-    spec = importlib.util.spec_from_file_location(name, f)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod  # dataclasses looks its module up by name
-    spec.loader.exec_module(mod)
-    return mod
+def _split_hex(text):
+    """Long hex runs (row hashes in the SQL) cut into 32-character pieces
+    joined by '~', so the committed fixture holds no 40+ hex run (the
+    credential scan flags one). Applied to both sides of the comparison."""
+    return _LONG_HEX.sub(
+        lambda mm: "~".join(mm.group(0)[i:i + 32]
+                            for i in range(0, len(mm.group(0)), 32)), text)
 
 
-def base_modules():
-    """(editions_core, load_checks, period_editions) as at BASE_COMMIT,
-    wired to each other."""
-    with tempfile.TemporaryDirectory() as tmp:
-        bc = _load("zz_base_editions_core",
-                   _git_show("scripts/editions_core.py"), tmp)
-        bl = _load("zz_base_load_checks",
-                   _git_show("scripts/load_checks.py"), tmp)
-        bp = _load("zz_base_period_editions",
-                   _git_show("scripts/period_editions.py"), tmp)
-    bl.chain_tip = bc.chain_tip
-    bp.core, bp.load_checks, bp.halt = bc, bl, bc.halt
-    return bc, bl, bp
+def recorded(res, out, sql):
+    return {"results": [_split_hex(repr(r)) for r in res],
+            "stdout": _split_hex(out),
+            "sql": [_split_hex(x) for x in sql]}
 
 
 class _Recorder:
@@ -456,39 +449,91 @@ def scenario(c, lc, m, cur):
     return res, out.getvalue()
 
 
+def run_scenario(conn):
+    """(results, stdout, sql) of the flag-off scenario on the current
+    modules, in a rolled-back transaction."""
+    with rolled_back(conn) as cur:
+        # rolled_back made the editions table with SP; drop it so the
+        # scenario's own create_schema makes it, recorded
+        cur.execute("DROP TABLE public.zz_ec_sp_editions")
+        # a flag-off live table holds many periods
+        cur.execute("ALTER TABLE public.zz_ec_sp_live "
+                    "DROP CONSTRAINT zz_ec_sp_live_pkey")
+        rec = _Recorder(cur)
+        res, out = scenario(core, load_checks, pe, rec)
+        return res, out, rec.sql
+
+
 class FlagOffUnchanged(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.conn = get_conn()
-        cls.base = base_modules()
 
     @classmethod
     def tearDownClass(cls):
         cls.conn.rollback()
         cls.conn.close()
 
-    def _run(self, mods):
-        with rolled_back(self.conn) as cur:
-            # rolled_back made the editions table with SP; drop it so the
-            # scenario's own create_schema makes it, recorded
-            cur.execute("DROP TABLE public.zz_ec_sp_editions")
-            # a flag-off live table holds many periods
-            cur.execute("ALTER TABLE public.zz_ec_sp_live "
-                        "DROP CONSTRAINT zz_ec_sp_live_pkey")
-            rec = _Recorder(cur)
-            res, out = scenario(*mods, rec)
-            return res, out, rec.sql
-
-    def test_same_sql_and_results_as_base(self):
-        base_res, base_out, base_sql = self._run(self.base)
-        new_res, new_out, new_sql = self._run((core, load_checks, pe))
-        self.assertGreater(len(base_sql), 50)
-        self.assertEqual(new_res, base_res)
-        self.assertEqual(new_out, base_out)
-        self.assertEqual(len(new_sql), len(base_sql))
-        for i, (a, b) in enumerate(zip(base_sql, new_sql)):
+    def test_same_sql_and_results_as_before_the_opt_in(self):
+        golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
+        now = recorded(*run_scenario(self.conn))
+        self.assertGreater(len(golden["sql"]), 50)
+        self.assertEqual(now["results"], golden["results"])
+        self.assertEqual(now["stdout"], golden["stdout"])
+        self.assertEqual(len(now["sql"]), len(golden["sql"]))
+        for i, (a, b) in enumerate(zip(golden["sql"], now["sql"])):
             self.assertEqual(b, a, f"statement {i} differs")
+
+    def test_no_single_vintage_path_runs_with_the_flag_off(self):
+        """The invariant itself, whatever the fixture says: with the flag
+        off none of the opt-in's paths does any work."""
+        def refuse(*a, **k):
+            raise AssertionError("held_not_live_periods ran for a flag-off "
+                                 "spec")
+
+        spied = []
+        real_holds = pe.live_holds_other
+
+        def holds(cur, profile, period):
+            got = real_holds(cur, profile, period)
+            spied.append(got)
+            return got
+
+        with mock.patch.object(core, "held_not_live_periods",
+                               side_effect=refuse), \
+                mock.patch.object(pe, "live_holds_other", side_effect=holds):
+            res, out, _ = run_scenario(self.conn)
+        self.assertTrue(spied)
+        self.assertFalse(any(spied))
+        for r in res:
+            if isinstance(r, dict):
+                self.assertNotIn("held_not_live", r)
+                self.assertNotIn(pe.HELD_NOT_LIVE, r)
+            self.assertNotEqual(r, pe.HELD_NOT_LIVE)
+        self.assertNotIn(pe.HELD_NOT_LIVE, out)
+        self.assertNotIn("held, not live", out)
+        self.assertEqual(len(res[4]), 3)    # LatestMap is the old 3-tuple
+
+
+def write_golden():
+    """Regenerate the fixture from the current modules. Deliberate only:
+    read the diff before committing it."""
+    about = json.loads(GOLDEN.read_text(encoding="utf-8"))["about"]
+    conn = get_conn()
+    try:
+        doc = {"about": about}
+        doc.update(recorded(*run_scenario(conn)))
+    finally:
+        conn.rollback()
+        conn.close()
+    with open(GOLDEN, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(doc, f, indent=1, ensure_ascii=False)
+        f.write("\n")
+    print(f"wrote {GOLDEN}")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if "--write-golden" in sys.argv:
+        write_golden()
+    else:
+        unittest.main()

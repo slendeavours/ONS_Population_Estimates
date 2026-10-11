@@ -52,10 +52,14 @@ w1-read la_boundaries geometry rows=296 sha256-first32=3690c7a0b940d669e4a9c7eb1
   values equal to it. The workflow's Code node applied `parseFloat` and `parseInt` to the CSV text (it has no `|| 0`: a blank
   would have become NaN and then NULL), and its upsert cast the values; the file has no blank cell.
 - **S3b Census 2021 TS054 tenure (`la_tenure_2021`).** Loaded 2026-04-01 01:55 UTC by the n8n workflow "Census 2021 TS054
-  Tenure (S3b)", run-log row 29 (309 rows written, "static, runs once"). The workflow fetched the ONS beta API
-  (`api.beta.ons.gov.uk`, TS054 version 4), coerced a missing cell with `|| 0`, built `total_households` from the parts
-  instead of storing the publisher's total, and re-based the four 2023 unitary authorities from their predecessor
-  districts. The `|| 0` never produced a wrong stored value (no cell was missing) and the total built from the parts equals
+  Tenure (S3b)", run-log row 29 (309 rows written, "static, runs once"). **Which route fetched the data is not
+  established.** The workflow's fetch node, as stored in n8n, calls the ONS beta API (`api.beta.ons.gov.uk`, TS054 version
+  4, area type ltla), but the node is named "Fetch TS054 from Nomis", run-log 29's note says "ONS Census 2021 TS054 Tenure by
+  LA, Nomis NM_2072_1", and all 292 rows loaded that day carry the `source` "ONS Census 2021 TS054 Tenure, Nomis NM_2072_1,
+  Census Day 21 March 2021" (checked 2026-10-11). The held values equal NOMIS `NM_2072_1` on every count (0 differences,
+  below), so no stored value depends on the answer. The workflow coerced a missing cell with `|| 0`, built
+  `total_households` from the parts instead of storing the publisher's total, and re-based the four 2023 unitary
+  authorities from their predecessor districts. The `|| 0` never produced a wrong stored value (no cell was missing) and the total built from the parts equals
   the publisher's total for all 296 authorities (the proof below). The re-basing did: Cumberland, Westmorland and Furness
   and Somerset were understated (by 19,404, 31,259 and 75,940 households) and North Yorkshire overstated by 4, as
   [2026-08-20-s3b-tenure-rebasing-error.md](2026-08-20-s3b-tenure-rebasing-error.md) records. On **2026-08-20 14:20 UTC** those
@@ -72,7 +76,11 @@ w1-read la_boundaries geometry rows=296 sha256-first32=3690c7a0b940d669e4a9c7eb1
   undone the July and August 2026 lookup fixes (its ArcGIS fetch still worked although the workflow was inactive). That
   workflow was retired on 2026-10-10 (its Code node, and the `la_code_lookup` DELETE and
   INSERT nodes, now stop with an error naming the new loader; `scripts/n8n_retire_no_loader_sources.py`). The new loader
-  never writes `la_code_lookup` and never deletes or updates a `la_boundaries` row (an AST gate, S7 gate 16).
+  never writes `la_code_lookup` and never deletes, inserts or re-keys a `la_boundaries` row (S7 gate 16 checks the loader
+  for no DELETE and no `la_code_lookup` write). It does **update** `la_boundaries`, through one path only:
+  `refresh-latest --acknowledge 2024-05-01` writes the five values (`lad24nm`, `longitude`, `latitude`, `shape_area`,
+  `geojson`) and `loaded_at` of the live vintage's rows that differ from its latest edition, and only on that explicit
+  acknowledgement.
 - **The registry and METHODOLOGY caveat "Simplified to approximately 20% of original vertex count for web performance" for
   S7 was unsupported and was removed on 2026-10-11** (Task 7: `scripts/backfill_source_registry.py`, `docs/METHODOLOGY.md`
   and the map viewer's text). The workflow's code does no simplification, and the proof below shows
@@ -146,7 +154,8 @@ Per the controller's ruling no Dec 2025 or May 2026 vintage was committed in thi
 - codes added 2 (E08000038, E08000039); removed 2 (E08000016, E08000019); 294 in both: the Barnsley/Sheffield recode, and the
   only difference in codes or names;
 - names changed: 0;
-- **geometry changed on all 294 shared districts, and `LONG`, `LAT` or `Shape__Area` changed on all 294.** The Dec 2025
+- **geometry changed on all 294 shared districts, and `LONG`, `LAT` or `Shape__Area` changed on all 294** (gate 19's
+  wording, which is right). Separately, measured from the held files: geometry and `Shape__Area` differ on all 294; `LONG` on 211 (December 2025) and 212 (May 2026), by at most 0.000022 and 0.000038 degrees; `LAT` on 137 and 137, by at most 0.00001 and 0.00004 degrees; names on none. The Dec 2025
   layer (lastEditDate 2026-04-29 08:34:12 UTC) and the May 2026 layer (lastEditDate 2026-09-09 13:34:25 UTC) are redrawn
   boundary files, not copies of May 2024 with a recode; the earlier survey assumption (spec finding 3: "the same 296 English
   codes and names except E08000016/19 -> E08000038/39") holds for codes and names only. Both also have 87 MultiPolygon and 209

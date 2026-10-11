@@ -224,7 +224,9 @@ SOURCES = [
                      "the live table"),
             "retired": ("the n8n workflow 'Census 2021 TS054 Tenure (S3b)' "
                         "is retired (its Code node throws, 2026-10-10); it "
-                        "read the ONS beta API, coerced a missing cell with "
+                        "named NOMIS NM_2072_1 in its labels and run-log "
+                        "note although its fetch node calls the ONS beta "
+                        "API, coerced a missing cell with "
                         "|| 0, built the total from the parts and re-based "
                         "four unitaries")},
         revises_back_series=False,
@@ -658,9 +660,12 @@ SOURCES = [
             "la_code_lookup as change_type = 'recode'. The newer vintages "
             "the publisher offers (December 2025 and May 2026, both BGC) "
             "differ from May 2024 in more than the recode: read on "
-            "2026-10-11, both are redrawn files, with different geometry, "
-            "LONG, LAT and Shape__Area on all 294 districts they share with "
-            "May 2024 (and 87 MultiPolygon and 209 Polygon features, where "
+            "2026-10-11, both are redrawn files: of the 294 districts they "
+            "share with May 2024, geometry and Shape__Area differ on all "
+            "294, LONG on 211 (December 2025) and 212 (May 2026), by at "
+            "most 0.000022 and 0.000038 degrees, and LAT on 137 and 137, by "
+            "at most 0.00001 and 0.00004 degrees (and 87 MultiPolygon and "
+            "209 Polygon features, where "
             "May 2024 has 93 and 203). They are previewed, not stored. "
             "Adopting either is Scott's decision: it re-bases W1's spine "
             "and every foreign key, changes the map's geometry and flips "

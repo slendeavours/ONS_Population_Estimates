@@ -721,6 +721,19 @@ class Stops(unittest.TestCase):
                               live_empty=True)
         self.assertTrue(any("2021" in x and "2031" in x for x in p), p)
 
+    def test_a_held_other_census_into_an_empty_live_table_stops_too(self):
+        tip = recs(CODES)
+        p = m.period_problems(recs(CODES), tip, kind="revised",
+                              vintage="2031", live_empty=True)
+        self.assertTrue(any("empty live table" in x and "2031" in x
+                            for x in p), p)
+        self.assertEqual(m.period_problems(recs(CODES), tip, kind="revised",
+                                           vintage="2021", live_empty=True),
+                         [])
+        self.assertEqual(m.period_problems(recs(CODES), tip, kind="revised",
+                                           vintage="2031", live_empty=False),
+                         [])
+
     def test_differs(self):
         a = recs(CODES)
         self.assertFalse(m._differs(a, recs(CODES)))

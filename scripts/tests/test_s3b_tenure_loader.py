@@ -578,6 +578,31 @@ class Load(Fixture):
             self.assertEqual(editions(cur), [(1, None, N)])
             self.assertTrue(pe.status(cur, m.profile())["ok"])
 
+    def test_a_held_other_census_never_enters_an_emptied_live_table(self):
+        # editions hold 2021 and 2031, live is emptied: loading the 2031
+        # reply must not insert it (only LIVE_VINTAGE is ever inserted)
+        with rolled_back(self.conn) as cur:
+            self.seed(cur)
+            csvp, defp = self.release(ds=DS_2031, last="2033-03-01 09:30:00",
+                                      register=False)
+            self.ok(cur, ["load", "--file", csvp, "--def", defp, "--commit"])
+            cur.execute("DELETE FROM public.zz_s3b_live")
+            for extra in ([], ["--recheck", P31]):
+                rc, text, logged = self.run_main(
+                    cur, ["load", "--file", csvp, "--def", defp, "--commit"]
+                    + extra)
+                self.assertEqual(rc, 1, text)
+                self.assertIn(f"{P31}: REJECTED", text)
+                self.assertIn("empty live table", text)
+                self.assertEqual(count(cur, "zz_s3b_live"), 0)
+            self.assertEqual(editions(cur, P31), [(1, None, N)])
+            # the live census is still re-inserted from its editions
+            text, _ = self.ok(cur, ["load", "--commit"])
+            self.assertIn("live-missing", text)
+            cur.execute("SELECT DISTINCT census_year FROM public.zz_s3b_live")
+            self.assertEqual(cur.fetchall(), [(2021,)])
+            self.assertEqual(count(cur, "zz_s3b_live"), N)
+
     def test_a_redirect_records_the_final_url(self):
         with rolled_back(self.conn) as cur:
             self.release()
