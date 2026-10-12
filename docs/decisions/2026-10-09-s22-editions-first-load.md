@@ -128,6 +128,11 @@ against 303,185 for MHCLG; 178 of 296 councils differ (179 rows if England is co
 says how the measure differs from MHCLG's. Option (a), keep the map's measure, or option (b), a new Line 18 column
 read by the view and W1, is Scott's to choose; (b) is not built.
 
+**Decided by Scott 2026-10-12: keep.** Option (a): the map's long-term-empty measure stays as it is (CTB table 1.19,
+Line 16, all homes empty for more than six months; England 309,889). MHCLG's long-term vacant figure (Line 18,
+England 303,185; 178 councils differ) is not adopted, and option (b) is not built. Nothing in the data, the view, W1
+or the map changes. The text above is left as written.
+
 ## What was written (2026-10-09)
 
 - `ddl --commit`: new tables `la_council_taxbase_empties_editions`, `la_ctb_exemption_classes_editions`,
