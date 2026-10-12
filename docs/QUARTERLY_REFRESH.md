@@ -1067,9 +1067,11 @@ issue's Enforcement Notices sheet holds its header and no row:
    stored and replace live as usual; the notices period is one ledger row (outcome `empty`, no edition, the acknowledgement named),
    and the run log says `notices DATE empty` and `ACKNOWLEDGED NO NOTICES DATE`. Where a register shares the date, name the part:
    `--acknowledge-no-notices judgements:DATE`.
-4. `status` now says `EMPTY PERIOD NOT YET APPLIED: DATE ... run refresh-latest --accept-key-changes DATE` (exit 1): live notices
-   still hold the previous issue.
-5. `refresh-latest` (preview: `rsh_enforcement_notices: DATE is recorded empty (the newest issue had no rows): refresh-latest would
+4. If live notices still hold the previous issue, `status` now says `EMPTY PERIOD NOT YET APPLIED: DATE ... run refresh-latest
+   --accept-key-changes DATE` (exit 1). If live notices are already empty (this is a second notices-free issue in a row), `status` is
+   OK, the load preview says `live notices are already empty; no refresh needed`, and step 5 is skipped: `refresh-latest
+   --accept-key-changes DATE` would halt with nothing to accept.
+5. Only when step 4 reported NOT YET APPLIED: `refresh-latest` (preview: `rsh_enforcement_notices: DATE is recorded empty (the newest issue had no rows): refresh-latest would
    delete every live row of <previous issue> (<n> rows) ... this needs --accept-key-changes DATE`), then
    `refresh-latest --accept-key-changes DATE --simulate`, then `refresh-latest --accept-key-changes DATE --commit`. Without the flag
    `--commit` halts and writes nothing. The live notices table is then empty; every earlier issue stays in

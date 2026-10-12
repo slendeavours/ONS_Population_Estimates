@@ -312,6 +312,18 @@ class EmptyPeriodDB(unittest.TestCase):
             self.assertIn("nothing to empty", str(cm.exception.code))
             self.assertEqual(core.refresh_latest(cur, EP)["rows"], 0)
 
+    def test_a_halt_after_the_live_delete_leaves_live_untouched(self):
+        from unittest import mock
+        with rolled_back(self.conn) as cur:
+            apply(cur, A, recs(A))
+            empty(cur, B)
+            with mock.patch.object(core, "_plan",
+                                   side_effect=SystemExit("HALT: later")):
+                with self.assertRaises(SystemExit):
+                    core.refresh_latest(cur, EP, accept_key_changes=(B,))
+            self.assertEqual(live(cur), as_live(recs(A)))
+            cur.execute("SELECT 1")           # the transaction is still usable
+
     def test_a_drifted_live_period_is_not_emptied(self):
         with rolled_back(self.conn) as cur:
             apply(cur, A, recs(A))

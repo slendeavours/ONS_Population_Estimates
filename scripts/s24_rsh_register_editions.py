@@ -2674,16 +2674,25 @@ def _no_notices_unit(unit, cur, notices, p, path) -> None:
         f"--acknowledge-no-notices {p} (or judgements:{p}): the judgements "
         f"load as usual, the notices of {p} are recorded EMPTY (a ledger row, "
         "no edition rows), and refresh-latest --accept-key-changes "
-        f"{p} then empties the live notices (the older notices stay in the "
-        "editions as history). No other flag releases this")
+        f"{p} then empties the live notices, if they still hold rows (the "
+        "older notices stay in the editions as history; when live notices "
+        "are already empty no refresh is needed). No other flag releases "
+        "this")
 
 
-def _empty_line(period, write, commit) -> str:
+def _empty_line(period, write, commit, live_empty=False) -> str:
+    follow = ("live notices are already empty; no refresh needed"
+              if live_empty else
+              "live notices are emptied by refresh-latest "
+              f"--accept-key-changes {period}")
     return (f"  notices {period}: {pe.EMPTY}, the sheet holds no notice; "
             + ("recorded" if write else "would record")
-            + " the period as EMPTY in the ledger (no edition rows); live "
-            "notices are emptied by refresh-latest --accept-key-changes "
-            f"{period}" + (" COMMITTED" if commit else ""))
+            + f" the period as EMPTY in the ledger (no edition rows); {follow}"
+            + (" COMMITTED" if commit else ""))
+
+
+def _live_notices_empty(cur, profile) -> bool:
+    return not core.live_period_counts(cur, profile.spec)
 
 
 def _compare_line(name, period, cmp, kind, write, commit, n) -> str:
@@ -2796,7 +2805,8 @@ def _execute(units, args, conn, cur, writing, skipped_notes) -> int:
         if not writing:
             for name, recs in u.parts:
                 if name == "notices" and u.empty_notices:
-                    print(_empty_line(u.period, False, False))
+                    print(_empty_line(u.period, False, False,
+                                      _live_notices_empty(cur, profile(name))))
                     continue
                 cmp = _compare(cur, u, name, recs)
                 print(_compare_line(name, u.period, cmp, cmp["kind"], False,
@@ -2809,10 +2819,12 @@ def _execute(units, args, conn, cur, writing, skipped_notes) -> int:
             kinds = {}
             for name, recs in u.parts:
                 if name == "notices" and u.empty_notices:
+                    live_empty = _live_notices_empty(cur, profile(name))
                     kinds[name] = apply_empty_part(
                         cur, profile(name), u.period, info=u.infos[name],
                         acknowledgement=u.no_notices_ack)
-                    print(_empty_line(u.period, True, args.commit))
+                    print(_empty_line(u.period, True, args.commit,
+                                      live_empty))
                     continue
                 cmp = _compare(cur, u, name, recs)
                 kinds[name] = apply_part(cur, profile(name), u.period, recs,

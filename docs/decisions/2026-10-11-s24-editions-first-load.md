@@ -197,6 +197,10 @@ supersedes it. Nothing in the database was written for this change (code, tests 
   replaces the empty state as any newer issue does. A byte-identical re-read of the empty issue is skipped by the ledgers.
 - **Still halting.** A notices sheet with no header or a changed header (identity failure, as before). A reissue of an issue whose
   notices are already held with rows that now has none: rejected whatever the flags (not covered by Option C; ask Scott).
+- **Known limits (open item 9, [README](README.md)).** A same-date reissue withdrawing every notice is blocked whole (judgements
+  included) until the code changes. Rare stuck state: an empty issue pending, then the older live issue reissued with a notice added;
+  no flag combination passes `refresh-latest` until the next issue with notices arrives. The engine no longer leaves its live delete in
+  the caller's transaction after such a halt (`refresh_latest` runs in a savepoint for this spec).
 - **Engine.** `EditionSpec.empty_periods_allowed` (default off; needs `live_newest_period_only` and `refresh_key_changes`): an
   editions period may be recorded empty by an `empty` ledger row with no editions rows; a period with editions rows is never empty.
   Only S24's notices spec opts in. Every other loader is unchanged: the committed golden fixtures (flag-off and single-vintage
@@ -207,7 +211,7 @@ supersedes it. Nothing in the database was written for this change (code, tests 
   the new issue and live notices the previous one; `status` reports it (exit 1). Nothing reads either table for the map or W1, so the
   two commands are to be run in one sitting.
 - **Before the day.** The real notices ledger predates the opt-in. `ddl --commit` (once) adds the `acknowledgement` column, `empty`
-  to the outcome check and the empty-row check (`outcome <> 'empty' OR (edition IS NULL AND acknowledgement IS NOT NULL)`); no row
+  to the outcome check and the empty-row check (`outcome <> 'empty' OR (edition IS NULL AND acknowledgement IS NOT NULL AND btrim(acknowledgement) <> '')`); no row
   is written or changed. Until then a notices-free issue is rejected with a message naming `ddl --commit`, and verify gate 1 notes
   it. The runbook is in [QUARTERLY_REFRESH.md](../QUARTERLY_REFRESH.md) ("The day RSH lifts the last enforcement notice").
 - **Gates.** The verify script has 22 gates: gate 22 covers the notices-free issue end to end on throwaway tables, gate 9's no-notices

@@ -1295,6 +1295,20 @@ def _source_problems(cur, spec: EditionSpec, pairs) -> list:
 def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
                    accept_key_changes: tuple = (),
                    _after_update_hook=None) -> dict:
+    """See _refresh_latest. An empty_periods_allowed spec runs it inside one
+    savepoint, so the live delete of empty_live cannot stay in the caller's
+    transaction when a later check halts; any other spec runs it as before."""
+    if not spec.empty_periods_allowed:
+        return _refresh_latest(cur, spec, accept_drift, accept_key_changes,
+                               _after_update_hook)
+    with _own_savepoint(cur, "editions_core_refresh_outer"):
+        return _refresh_latest(cur, spec, accept_drift, accept_key_changes,
+                               _after_update_hook)
+
+
+def _refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
+                    accept_key_changes: tuple = (),
+                    _after_update_hook=None) -> dict:
     """Copy the latest edition into the live table for every period whose
     live rows differ from it (NULL-safe); return a result dict.
 

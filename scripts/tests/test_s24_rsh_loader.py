@@ -663,6 +663,27 @@ class EmptyNotices(Fixture):
             self.assertEqual(rc, 1, text)
             self.assertIn(f"--accept-key-changes {self.OCT}", text)
 
+    def test_a_second_notices_free_issue_needs_no_refresh(self):
+        with rolled_back(self.conn) as cur:
+            self.aug_then_empty_oct(cur)
+            text, _ = self.ok(cur, ["load", "--only", "judgements",
+                                    "--acknowledge-no-notices", self.OCT])
+            self.assertIn("live notices are emptied by refresh-latest "
+                          f"--accept-key-changes {self.OCT}", text)
+            self.ok(cur, ["load", "--only", "judgements", "--commit",
+                          "--acknowledge-no-notices", self.OCT])
+            self.ok(cur, ["refresh-latest", "--accept-key-changes", self.OCT,
+                          "--commit"])
+            self.judgements("20261021", nrows=[], changes=(self.NOV, self.OCT))
+            for extra in ([], ["--commit"]):
+                text, _ = self.ok(cur, ["load", "--only", "judgements",
+                                        "--acknowledge-no-notices", self.NOV]
+                                  + extra)
+                self.assertIn(f"notices {self.NOV}: empty", text)
+                self.assertIn("live notices are already empty; no refresh "
+                              "needed", text)
+                self.assertNotIn(f"--accept-key-changes {self.NOV}", text)
+
     def test_refresh_empties_live_notices_and_keeps_the_history(self):
         with rolled_back(self.conn) as cur:
             self.aug_then_empty_oct(cur)

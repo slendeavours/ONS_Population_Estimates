@@ -90,6 +90,19 @@ history. Engine opt-in `EditionSpec.empty_periods_allowed` (S24 notices only). `
 notices ledger take an `empty` row. See the addendum in [2026-10-11-s24-editions-first-load.md](2026-10-11-s24-editions-first-load.md),
 `docs/s24_rsh_register_source.md` and the S24 section of `docs/QUARTERLY_REFRESH.md`.
 
+### 9. S24 empty-notices: two known limits (opened 2026-10-12, not decided)
+
+Both follow from Option C (item 8) and are safe (nothing is written wrongly); each needs a code change decided by Scott.
+
+- **Same-date reissue withdrawing every notice.** A header-only reissue of a notices issue already held with rows is rejected
+  whatever the flags (`_no_notices_unit`; the engine's `record_empty_period` refuses the same), and the whole unit is blocked,
+  judgements included. The next dated issue loads normally.
+- **Stuck refresh, rare.** An empty issue is pending (recorded, live not yet emptied), then the older live issue is reissued with a
+  notice added. `refresh-latest --accept-key-changes EMPTY_DATE` halts in the key-change guard; naming both dates passes the guard and
+  then halts "nothing to accept". It clears when the next issue with notices arrives. Fixing it means planning key changes for the
+  period `empty_live` will delete, which is not a small change. (The engine side-effect, a live delete left in the caller's
+  transaction after that halt, is fixed: `refresh_latest` runs in a savepoint for an `empty_periods_allowed` spec.)
+
 ### 5. For Scott: S12 section 114 register and Bexley (opened 2026-10-10)
 
 Five points from the S.114 evidence work and the withdrawn-only rule; the first three decided by Scott on 2026-10-11; see

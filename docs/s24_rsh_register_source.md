@@ -237,6 +237,13 @@ you hold, `--only register|judgements` limits a run, `restore-edition TABLE PERI
   `empty` row only after `ddl --commit` has added the outcome and its `acknowledgement` column (the load says so; `ddl` previews it).
   Still halting, whatever the flags: a notices sheet with no header at all or a changed header (an identity failure), and a reissue
   of an issue whose notices are already held with rows that now has none (rejected; ask Scott).
+  A second notices-free issue in a row, with live notices already empty, is recorded empty the same way and needs no refresh
+  (the load preview says so; `refresh-latest --accept-key-changes DATE` would halt with nothing to accept).
+  Two known limits, listed as open item 9 in the decisions README. (a) A same-date reissue that withdraws every notice of an issue held
+  with rows is blocked whole, judgements included, until the code changes; the next dated issue loads normally. (b) Stuck state, rare:
+  an empty issue is pending, then the older live issue is reissued with a notice added (editions only, as a newer period exists);
+  no flag combination then passes `refresh-latest` (the key-change guard and the empty step disagree), and it clears when the next
+  issue with notices arrives. The engine's live delete no longer survives that halt in the caller's transaction.
 - **An empty live judgements table with a newer issue held:** loading an older issue stops (nothing stored); load the newest issue. `status` reports an editions issue newer than the live one as a fault (`live is behind`), not history.
 - **A reissue of a held period** with different content: stop. `--accept-reissue PERIOD`, and a changed row needs `--acknowledge PERIOD`. Where a register and a judgements issue share a date, name the part (`register:2026-11-18`, `judgements:2026-11-18`); a bare date is accepted when only one part of the run has it and refused when both do.
 - **A stop condition** (rejected, nothing stored, exit 1): a register with fewer than 95% of the previous snapshot's providers or more
