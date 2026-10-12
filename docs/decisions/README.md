@@ -27,6 +27,11 @@ Found in the 2026-09-30 reference-CSV reconciliation; assessed the same day.
 Nothing reads any of them, so none is urgent. See
 `2026-09-30-reference-csvs-out-of-step.md`.
 
+- **Closed 2026-10-12:** the inactive n8n workflow "Revenue Outturn RO4 (S2)" (L55sz2PN4W9V0E0I)
+  still turned blanks into 0 (`|| 0`) and upserted straight into the live
+  `ro4_housing_expenditure`, bypassing the editions. Its Code node now throws and names
+  `scripts/ro4_editions.py` (`scripts/n8n_retire_ro4.py`, as for the other retired loaders).
+  No stored data was wrong: see `docs/f4-zero-audit-2026-10.md` (outside the repo).
 - **Closed 2026-10-10:** `la_housing_register` kept one arbitrary predecessor row for eleven
   reorganised authorities, 2015 to 2023 (76 keys). Edition 2 on the loader standard holds the
   predecessor sums; edition 1 keeps what was held. See
