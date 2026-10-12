@@ -1040,13 +1040,43 @@ Run from `ONS_Population_Estimates`. A preview downloads the publisher's file or
 Run from `ONS_Population_Estimates`. `check_sources.py 24` compares the newest register title on the GOV.UK page with `MAX(snapshot_date)` of the live register table (the live table keeps every snapshot, so that is the newest held list); it does not look at the judgements. Nothing runs the load for you.
 
 1. Each month, and when the judgements page changes: `python scripts/s24_rsh_register_editions.py load` (preview). It reads both pages, downloads the files to `data/raw/s24_rsh/` (also in a preview; the database is not written), reads each file's identity and prints what is new, reissued, unchanged or skipped as older. Read the whole preview. `--only register|judgements` limits it; `--file PATH [--title-date YYYY-MM-DD] [--no-page]` takes a file you hold.
-2. `load --simulate`, then `load --commit`. A new register date is stored as edition 1 of a new period. A new judgements issue is stored as edition 1 of a new period, together with its enforcement notices (a file with none is rejected, kept in `data/raw/s24_rsh/`, and nothing releases it: an open item for Scott, [decisions/README.md](decisions/README.md) item 8; ask Scott and do not delete the file), and replaces the live judgements and notices.
+2. `load --simulate`, then `load --commit`. A new register date is stored as edition 1 of a new period. A new judgements issue is stored as edition 1 of a new period, together with its enforcement notices, and replaces the live judgements and notices. A file with no enforcement notice is REJECTED unless acknowledged by name: see "The day RSH lifts the last enforcement notice" below.
 3. A reissue of a held period: the same `load`; a changed row needs `--acknowledge PERIOD` and a reissued date with other content needs `--accept-reissue PERIOD` (when a register and a judgements issue share a date, name the part: `register:DATE` or `judgements:DATE`). Then `refresh-latest` (preview, `--simulate`, `--commit`). A judgements reissue that adds or removes keys needs `--accept-key-changes PERIOD`; the register refuses that flag (a register reissue that adds or removes a provider can be stored but not refreshed into live, and there is no flag for it).
-4. `status` should say OK and `python scripts/s24_rsh_register_editions_verify.py` should pass all 21 gates.
+4. `status` should say OK and `python scripts/s24_rsh_register_editions_verify.py` should pass all 22 gates.
 5. A period is REJECTED (nothing stored, exit 1) on an identity, header, grade or date failure; for a register with fewer than 95% of the previous snapshot's providers or more than 30 added or removed; for a judgements issue with fewer than 90% of the previous issue's rows. An older file than the one held is skipped, and a run of only older files halts (`--allow-older-file` overrides; for a period already held the file becomes the next edition, the new tip, and `refresh-latest` would roll live back to it).
 6. **Judgements are kept as RSH issued them.** A register or judgements file for a date you already hold is never overwritten: it is a new edition. Do not edit the live tables by hand.
 7. S24 is not a W1 or map input (it has no geography), so `refresh_map.py` is not needed.
 8. Keep the four held workbooks in `data/raw/s24_rsh/` (git-ignored): verify gates 5, 6, 7, 13 and 17 find them by sha256. They carry a hidden sheet; never commit them.
+
+### The day RSH lifts the last enforcement notice (a judgements issue with no notices)
+
+Decided by Scott on 2026-10-12 (Option C, [decisions/README.md](decisions/README.md) item 8). Two notices are live today. When an
+issue's Enforcement Notices sheet holds its header and no row:
+
+1. **Once, before that day (or on it):** `python scripts/s24_rsh_register_editions.py ddl`. While the notices ledger is not ready it
+   prints `rsh_enforcement_notices_editions_file_checks: does not take an 'empty' row yet; ddl --commit adds the acknowledgement column,
+   the 'empty' outcome and its check (no row written or changed)`. Then `ddl --simulate` and `ddl --commit`. After that `ddl` prints
+   `... takes an 'empty' row (a notices-free issue)`. Until it has run, a notices-free issue is REJECTED with a message naming
+   `ddl --commit`.
+2. `load` (preview). The issue is listed as `judgements DATE: REJECTED, not stored: STOP CONDITION: the judgements file ... has no
+   enforcement notices (its Enforcement Notices sheet holds the header only). The file is kept, not lost ... re-run with
+   --acknowledge-no-notices DATE ...`. Read the GOV.UK page's change note and check the notices really were lifted. Do not delete the
+   file in `data/raw/s24_rsh/`. `--acknowledge`, `--accept-reissue` and `--allow-older-file` do not release it.
+3. `load --only judgements --acknowledge-no-notices DATE` (preview: `notices DATE: empty, the sheet holds no notice; would record the
+   period as EMPTY in the ledger (no edition rows) ...`), then the same with `--simulate`, then with `--commit`. The judgements are
+   stored and replace live as usual; the notices period is one ledger row (outcome `empty`, no edition, the acknowledgement named),
+   and the run log says `notices DATE empty` and `ACKNOWLEDGED NO NOTICES DATE`. Where a register shares the date, name the part:
+   `--acknowledge-no-notices judgements:DATE`.
+4. `status` now says `EMPTY PERIOD NOT YET APPLIED: DATE ... run refresh-latest --accept-key-changes DATE` (exit 1): live notices
+   still hold the previous issue.
+5. `refresh-latest` (preview: `rsh_enforcement_notices: DATE is recorded empty (the newest issue had no rows): refresh-latest would
+   delete every live row of <previous issue> (<n> rows) ... this needs --accept-key-changes DATE`), then
+   `refresh-latest --accept-key-changes DATE --simulate`, then `refresh-latest --accept-key-changes DATE --commit`. Without the flag
+   `--commit` halts and writes nothing. The live notices table is then empty; every earlier issue stays in
+   `rsh_enforcement_notices_editions` as history.
+6. `status` (OK; the notices list `history` and `empty: DATE`) and the verify script (22 gates, exit 0). A later issue that has
+   notices again loads as usual (`notices <date>: new`) and refills live. A reissue of an issue whose notices are held with rows that
+   now has none is rejected whatever the flags: ask Scott.
 
 To go back for a period: `restore-edition TABLE PERIOD N` (preview by default) stores edition N's rows as the next edition, then `refresh-latest --commit`. Nothing is deleted from the editions.
 

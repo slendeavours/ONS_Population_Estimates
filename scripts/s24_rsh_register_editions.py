@@ -103,6 +103,20 @@ common.
     any         a reissue (or re-read) of a held period that changes any row
                 (values or null_reasons)
 
+A judgements issue with no enforcement notice (its Enforcement Notices sheet
+holds exactly the old build's header and no row; a missing or changed header
+halts as an identity failure) is REJECTED unless --acknowledge-no-notices
+[judgements:]DATE names it (Scott's Option C, 2026-10-12; nothing else
+releases it). With it the judgements load as usual and the notices period is
+recorded EMPTY (the engine opt-in empty_periods_allowed: one ledger row,
+outcome 'empty', no edition, the acknowledgement named; no editions row); the
+run log names it. refresh-latest --accept-key-changes DATE then empties the
+live notices; the older notices stay in the editions as history, and a later
+issue with notices replaces the empty state as usual. A held issue whose
+notices are held with rows, reissued without them, is rejected whatever the
+flags. The notices ledger takes an 'empty' row once `ddl --commit` has run
+(it adds the outcome and the acknowledgement column; the load says so).
+
 The legacy live judgements: the old upsert left 15 rows of 12 August in live
 beside the 30 September rows. status reports it; refresh-latest
 --accept-key-changes <newest edition date> removes them from live (each
@@ -119,6 +133,7 @@ periods.
         [--only register|judgements] [--file PATH [--title-date YYYY-MM-DD]
         [--no-page]] [--recheck PERIOD] [--allow-older-file]
         [--acknowledge [PART:]PERIOD ...] [--accept-reissue [PART:]PERIOD ...]
+        [--acknowledge-no-notices [judgements:]PERIOD ...]
         [--correction NAME] [--commit | --simulate]
         # files are downloaded to data/raw/s24_rsh/ (also in a preview; a
         # preview writes nothing to the database). A period breaking a stop
@@ -1264,7 +1279,8 @@ def tip_row_count(editions_table: str, period_col: str):
     return count
 
 
-def _spec(name, live, editions, kind, values, *, newest_only) -> core.EditionSpec:
+def _spec(name, live, editions, kind, values, *, newest_only,
+          empty_ok=False) -> core.EditionSpec:
     keys, pc, _ = KINDS[kind]
     key_types = (("registration_number", "text NOT NULL"),)
     if "publication_date" in keys:
@@ -1282,6 +1298,7 @@ def _spec(name, live, editions, kind, values, *, newest_only) -> core.EditionSpe
                            "(jsonb_typeof(null_reasons) = 'object')",),
         refresh_key_changes=newest_only,
         live_newest_period_only=newest_only,
+        empty_periods_allowed=empty_ok,
         expected_rows_per_period=tip_row_count(editions, pc))
 
 
@@ -1291,9 +1308,11 @@ REGISTER = _spec("s24_register", "rsh_registered_providers",
 JUDGEMENTS = _spec("s24_judgements", "rsh_regulatory_judgements",
                    "rsh_regulatory_judgements_editions", "judgements",
                    JUDGEMENT_VALUE_TYPES, newest_only=True)
+# a judgements issue with no enforcement notice records the notices period
+# EMPTY (Scott's Option C, 2026-10-12; --acknowledge-no-notices DATE)
 NOTICES = _spec("s24_notices", "rsh_enforcement_notices",
                 "rsh_enforcement_notices_editions", "notices",
-                NOTICE_VALUE_TYPES, newest_only=True)
+                NOTICE_VALUE_TYPES, newest_only=True, empty_ok=True)
 SPECS = {"register": REGISTER, "judgements": JUDGEMENTS, "notices": NOTICES}
 PARTS = {"register": ("register",), "judgements": ("judgements", "notices")}
 
@@ -1388,8 +1407,9 @@ def _late(name: str):
 
 def create_all(cur) -> None:
     """ddl: the three editions tables, their append-only triggers and the
-    three file-check ledgers. Idempotent; no value is written; the live
-    tables are not touched."""
+    three file-check ledgers; the notices ledger (empty_periods_allowed)
+    also takes an 'empty' row, an existing one brought up to that in place.
+    Idempotent; no value is written; the live tables are not touched."""
     for name in globals()["SPECS"]:
         prof = profile(name)
         core.create_schema(cur, prof.spec)
@@ -1456,6 +1476,18 @@ def apply_part(cur, profile, period, records, *, info) -> str:
     for src, sha in info.files:
         pe.record_file_check(cur, prof, period, src, sha, kind, tip)
     return kind
+
+
+def apply_empty_part(cur, profile, period, *, info, acknowledgement) -> str:
+    """The notices of a judgements issue whose notices sheet holds the
+    header only, acknowledged: the period is recorded EMPTY, one ledger row
+    per file read (outcome 'empty', no edition, the acknowledgement named),
+    inside the caller's savepoint; no editions row and no live row (the live
+    notices empty through refresh-latest --accept-key-changes PERIOD)."""
+    for src, sha in info.files:
+        pe.record_empty_period(cur, profile, period, src, sha,
+                               acknowledgement)
+    return pe.EMPTY
 
 
 # ---------------------------------------------------------------------------
@@ -1712,6 +1744,15 @@ def cmd_ddl(args) -> int:
                           pe.file_checks_table(prof)):
                     print(f"{t}: "
                           f"{'exists' if table_exists(cur, t) else 'does not exist'}")
+                led = pe.file_checks_table(prof)
+                if prof.spec.empty_periods_allowed and table_exists(cur, led):
+                    print(f"{led}: "
+                          + ("takes an 'empty' row (a notices-free issue)"
+                             if pe.file_checks_accept_empty(cur, prof) else
+                             "does not take an 'empty' row yet; ddl --commit "
+                             "adds the acknowledgement column, the 'empty' "
+                             "outcome and its check (no row written or "
+                             "changed)"))
             if not writing:
                 print("DRY RUN: nothing written (use --commit or --simulate)")
                 return 0
@@ -1739,8 +1780,15 @@ def status_lines(cur, name) -> list:
         last = cur.fetchone()
         line += (f"; ledger latest: {last[1]} {last[0]}" if last
                  else "; no ledger row")
-        lines.append(line)
-    return lines
+        lines.append((p, line))
+    for p in core.empty_periods(cur, s):
+        cur.execute(f"SELECT acknowledgement, source_file FROM public.{lt} "
+                    f"WHERE {s.period_col} = %s AND outcome = %s ORDER BY id "
+                    "DESC LIMIT 1", (p, pe.EMPTY))
+        ack, src = cur.fetchone()
+        lines.append((pe._p(p), f"  {pe._p(p)}: recorded EMPTY, no notices "
+                      f"({ack}); ledger latest: {pe.EMPTY} {src}"))
+    return [line for _, line in sorted(lines)]
 
 
 def _two_live_message(prof, periods) -> str:
@@ -1916,6 +1964,18 @@ def cmd_refresh_latest(args) -> int:
                       + ("" if lines else " none"))
                 for line in lines:
                     print(f"  {line}")
+                ep = core.empty_plan(cur, spec)
+                if ep is not None:
+                    e_p = pe._p(ep[0])
+                    used_kc.add(e_p)
+                    print(f"{spec.live_table}: {e_p} is recorded empty (the "
+                          "newest issue had no rows): refresh-latest would "
+                          "delete every live row of "
+                          + ", ".join(f"{pe._p(o)} ({n} rows)"
+                                      for o, n in ep[1].items())
+                          + " and insert none (they stay in "
+                          f"{spec.editions_table} as history); this needs "
+                          f"--accept-key-changes {e_p}")
                 plans[name] = (spec, newest, {}, cp)
             stray = sorted(set(drift_args) - used_drift)
             if stray and not any(v[2] for v in plans.values()):
@@ -1951,8 +2011,10 @@ def cmd_refresh_latest(args) -> int:
                         used_drift |= cp[3]
                     accept, accept_kc = cp[0], cp[1]
                     pe._refresh_guard(cur, spec, accept, accept_kc)
+                    empty_named, _ = core.split_empty_names(cur, spec,
+                                                            kc_args)
                     res = core.refresh_latest(cur, refresh_spec(spec), accept,
-                                              accept_kc)
+                                              accept_kc + empty_named)
                     check = sorted(set(res["updated"])
                                    | ({newest} if legacy else set()))
                     bad = live_equals_tip(cur, spec, check)
@@ -1972,6 +2034,11 @@ def cmd_refresh_latest(args) -> int:
                 if removed:
                     keys += (f"; {removed} left-over live rows of "
                              f"{sorted(legacy)} removed (kept in editions)")
+                if res.get("emptied"):
+                    keys += (f"; {pe._p(res['empty'])} recorded empty applied:"
+                             f" {sum(res['emptied'].values())} live rows of "
+                             f"{sorted(pe._p(x) for x in res['emptied'])} "
+                             "deleted (kept in editions)")
                 msgs.append(f"{spec.live_table}: {res['rows']} live rows "
                             f"refreshed in "
                             f"{sorted(pe._p(x) for x in res['updated'])}{keys}")
@@ -2006,6 +2073,11 @@ class Unit:
     hard: list = field(default_factory=list)
     reissue: "str | None" = None
     notes: list = field(default_factory=list)
+    # a judgements issue whose notices sheet holds the header only: the
+    # notices period is recorded EMPTY, only with --acknowledge-no-notices
+    empty_notices: bool = False
+    no_notices: "str | None" = None
+    no_notices_ack: "str | None" = None
 
     @property
     def label(self) -> str:
@@ -2043,6 +2115,21 @@ def _ack_arg(text) -> str:
     return f"{part}:{_period_arg(rest)}"
 
 
+def _no_notices_arg(text) -> str:
+    """--acknowledge-no-notices value: PERIOD (the judgements issue's
+    edition date; refused when a register unit of the run has the same
+    date) or judgements:PERIOD. register:PERIOD is refused: the register
+    has no notices."""
+    part, sep, rest = str(text).partition(":")
+    if not sep:
+        return _period_arg(text)
+    if part != "judgements":
+        raise argparse.ArgumentTypeError(
+            f"not PERIOD or judgements:PERIOD (only a judgements issue has "
+            f"enforcement notices): {text!r}")
+    return f"judgements:{_period_arg(rest)}"
+
+
 def _matches(tokens, u) -> bool:
     return u.period in tokens or f"{u.part}:{u.period}" in tokens
 
@@ -2071,8 +2158,12 @@ def _tables(cur, name, writing) -> tuple:
     tips = tip_info(cur, spec)
     checked = ledger_checks(cur, prof)
     stranded = pe.live_missing_periods(cur, prof)
-    if spec.live_newest_period_only and live:
-        stranded = []          # editions periods not in live are history
+    es = core.empty_state(cur, spec)
+    if spec.live_newest_period_only and (
+            live or (es is not None and es["latest"] is not None)):
+        # editions periods not in live are history (live holds the newest
+        # period, or its empty state when that period was recorded empty)
+        stranded = []
     return prof, spec, True, tips, checked, stranded
 
 
@@ -2373,6 +2464,13 @@ def _file_unit(part, p, revised, ident, sha, src, by_name, prepared, ranks,
                                 mine, tip, kind)
             if r and reissue is None:
                 reissue = f"{name}: {r}"
+        elif revised and has_ed and p in {
+                pe._p(x) for x in core.empty_periods(cur, spec)}:
+            # held as recorded EMPTY: its state is no rows, so a file now
+            # holding notices changes rows (an empty file again goes
+            # through --acknowledge-no-notices)
+            soft += [f"{name} (recorded empty): {x}" for x in
+                     period_problems(recs, [], None, kind=kind)]
         elif not revised:
             prev = _prev_records(cur, spec, p, tips, has_ed)
             soft += [f"{name}: {x}" for x in
@@ -2513,19 +2611,7 @@ def _prepare_judgements(args, cur, writing, today) -> tuple:
                           {"judgements": jrecs, "notices": nrecs}, prepared,
                           ranks, lsrc, how, cur)
         if not nrecs:
-            unit.hard.append(
-                f"the judgements file {path.name} has no enforcement "
-                "notices. The file is kept, not lost: it was downloaded to "
-                f"{RAW_DIR} (or is the --file you gave, at {path}), so do "
-                "not delete it. It stops here because an empty notices "
-                "edition cannot be stored by the current rule, and live "
-                "would stay on the last issue that had notices: the "
-                "judgements in this issue (including any downgrade) do not "
-                "reach live or the editions. There is no flag that releases "
-                "this. Ask Scott: the rule can be changed deliberately, with "
-                "evidence (docs/decisions/README.md, open item). The page "
-                "offers the latest file only, so a missed issue cannot be "
-                "fetched later")
+            _no_notices_unit(unit, cur, prepared["notices"], p, path)
         newer = [x for x in prepared["judgements"][3] if x > p]
         if (prepared["judgements"][1].live_newest_period_only
                 and prepared["judgements"][2] and newer
@@ -2546,6 +2632,58 @@ def _prepare_judgements(args, cur, writing, today) -> tuple:
                                  "then load this edition")
         units.append(unit)
     return units, []
+
+
+def _no_notices_unit(unit, cur, notices, p, path) -> None:
+    """A judgements issue whose Enforcement Notices sheet holds the header
+    only (the header is checked exactly by _read_sheet; a missing or changed
+    header has already halted as an identity failure). Scott's Option C
+    (2026-10-12): stored only with --acknowledge-no-notices; then the
+    judgements load as usual and the notices period is recorded EMPTY.
+    Hard (no flag releases them): the notices of the period are already
+    held with rows, or the notices ledger does not take an 'empty' row
+    yet."""
+    prof, spec, has_ed, tips, _, _ = notices
+    unit.empty_notices = True
+    if p in tips:
+        unit.hard.append(
+            f"the judgements file {path.name} has no enforcement notices, "
+            f"but the notices of {p} are held with rows (edition "
+            f"{tips[p]['edition']}): a reissue of a held issue that drops "
+            "every notice is not covered by --acknowledge-no-notices (Scott's "
+            "Option C, 2026-10-12, is for an issue whose notices are not "
+            "held with rows). The file is kept in "
+            f"{RAW_DIR} (or is the --file you gave); nothing stored; ask "
+            "Scott")
+        return
+    if has_ed and not pe.file_checks_accept_empty(cur, prof):
+        unit.hard.append(
+            f"the judgements file {path.name} has no enforcement notices, "
+            f"and {pe.file_checks_table(prof)} does not take an 'empty' row "
+            "yet: run `ddl` (preview) and `ddl --commit` once (it adds the "
+            "'empty' outcome and the acknowledgement column; no value is "
+            "written), then load again with --acknowledge-no-notices "
+            f"{p}; the file is kept, nothing stored")
+        return
+    unit.no_notices = (
+        f"the judgements file {path.name} has no enforcement notices (its "
+        "Enforcement Notices sheet holds the header only). The file is kept, "
+        f"not lost: it was downloaded to {RAW_DIR} (or is the --file you "
+        f"gave, at {path}), so do not delete it. Read the page's change "
+        "note; if RSH has lifted every notice, re-run with "
+        f"--acknowledge-no-notices {p} (or judgements:{p}): the judgements "
+        f"load as usual, the notices of {p} are recorded EMPTY (a ledger row, "
+        "no edition rows), and refresh-latest --accept-key-changes "
+        f"{p} then empties the live notices (the older notices stay in the "
+        "editions as history). No other flag releases this")
+
+
+def _empty_line(period, write, commit) -> str:
+    return (f"  notices {period}: {pe.EMPTY}, the sheet holds no notice; "
+            + ("recorded" if write else "would record")
+            + " the period as EMPTY in the ledger (no edition rows); live "
+            "notices are emptied by refresh-latest --accept-key-changes "
+            f"{period}" + (" COMMITTED" if commit else ""))
 
 
 def _compare_line(name, period, cmp, kind, write, commit, n) -> str:
@@ -2587,6 +2725,7 @@ def _execute(units, args, conn, cur, writing, skipped_notes) -> int:
     started = datetime.now(timezone.utc)
     acks = set(args.acknowledge or ())
     reissues = set(args.accept_reissue or ())
+    no_notices = set(getattr(args, "acknowledge_no_notices", None) or ())
     considered = ({u.period for u in units}
                   | {f"{u.part}:{u.period}" for u in units})
     stray = sorted((acks | reissues) - considered)
@@ -2595,10 +2734,22 @@ def _execute(units, args, conn, cur, writing, skipped_notes) -> int:
              "this run compares or stores "
              f"({', '.join(sorted({f'{u.part}:{u.period}' for u in units})) or 'none'}"
              "); nothing stored")
-    for tok in sorted((acks | reissues) & {u.period for u in units}):
+    empties = [u for u in units if u.empty_notices]
+    stray = sorted(no_notices - ({u.period for u in empties}
+                                 | {f"judgements:{u.period}" for u in empties}))
+    if stray:
+        halt(f"--acknowledge-no-notices {', '.join(stray)}: not a judgements "
+             "issue of this run whose Enforcement Notices sheet holds no "
+             "notice ("
+             + (", ".join(f"judgements:{u.period}" for u in empties)
+                or "this run has none")
+             + "); nothing stored")
+    for tok in sorted((acks | reissues | no_notices)
+                      & {u.period for u in units}):
         parts = sorted({u.part for u in units if u.period == tok})
         if len(parts) > 1:
-            halt(f"--acknowledge/--accept-reissue {tok}: this run has a "
+            halt(f"--acknowledge/--accept-reissue/--acknowledge-no-notices "
+                 f"{tok}: this run has a "
                  f"{' and a '.join(parts)} unit with that date, and a bare "
                  "date would release both. Name the part: "
                  + " or ".join(f"{x}:{tok}" for x in parts) + "; nothing "
@@ -2606,6 +2757,20 @@ def _execute(units, args, conn, cur, writing, skipped_notes) -> int:
     problems = {}
     for u in units:
         bad = list(u.hard)
+        if u.no_notices and _matches(no_notices, u):
+            u.no_notices_ack = (
+                f"--acknowledge-no-notices {u.period}: judgements issue "
+                f"{u.period} with a header-only Enforcement Notices sheet, "
+                "its notices recorded empty (Scott's Option C, 2026-10-12); "
+                f"run started {_iso(started)}")
+            u.notes.append(f"ACKNOWLEDGED NO NOTICES {u.period} "
+                           "(--acknowledge-no-notices): the notices period "
+                           "is recorded empty")
+            print(f"  {u.label}: ACKNOWLEDGED NO NOTICES "
+                  "(--acknowledge-no-notices): the notices of "
+                  f"{u.period} are recorded empty")
+        elif u.no_notices:
+            bad.append(u.no_notices)
         if u.soft and _matches(acks, u):
             u.notes.append(f"ACKNOWLEDGED {u.period}: " + "; ".join(u.soft))
             print(f"  {u.label}: ACKNOWLEDGED (--acknowledge): "
@@ -2630,6 +2795,9 @@ def _execute(units, args, conn, cur, writing, skipped_notes) -> int:
     for i, u in enumerate(ok):
         if not writing:
             for name, recs in u.parts:
+                if name == "notices" and u.empty_notices:
+                    print(_empty_line(u.period, False, False))
+                    continue
                 cmp = _compare(cur, u, name, recs)
                 print(_compare_line(name, u.period, cmp, cmp["kind"], False,
                                     False, len(recs)))
@@ -2640,6 +2808,12 @@ def _execute(units, args, conn, cur, writing, skipped_notes) -> int:
             in_sp = True
             kinds = {}
             for name, recs in u.parts:
+                if name == "notices" and u.empty_notices:
+                    kinds[name] = apply_empty_part(
+                        cur, profile(name), u.period, info=u.infos[name],
+                        acknowledgement=u.no_notices_ack)
+                    print(_empty_line(u.period, True, args.commit))
+                    continue
                 cmp = _compare(cur, u, name, recs)
                 kinds[name] = apply_part(cur, profile(name), u.period, recs,
                                          info=u.infos[name])
@@ -2736,11 +2910,12 @@ def cmd_load(args) -> int:
                 notes.append("--allow-older-file given")
             if not units:
                 stray = sorted(set(args.acknowledge or ())
-                               | set(args.accept_reissue or ()))
+                               | set(args.accept_reissue or ())
+                               | set(args.acknowledge_no_notices or ()))
                 if stray:
-                    halt(f"--acknowledge/--accept-reissue {', '.join(stray)}:"
-                         " this run compares or stores no period; nothing "
-                         "stored")
+                    halt(f"--acknowledge/--accept-reissue/--acknowledge-no-"
+                         f"notices {', '.join(stray)}: this run compares or "
+                         "stores no period; nothing stored")
                 print("nothing to do")
                 return _end(conn, args, writing, rc=0)
             rc = _execute(units, args, conn, cur, writing, notes)
@@ -3198,6 +3373,14 @@ def main(argv=None) -> int:
                    help="store this period although a file with the same "
                    "date and docProps time but other content is held "
                    "(repeatable; logged)")
+    p.add_argument("--acknowledge-no-notices", action="append",
+                   type=_no_notices_arg, metavar="[judgements:]PERIOD",
+                   help="store this judgements issue although its "
+                   "Enforcement Notices sheet holds the header only: the "
+                   "judgements load as usual and the notices period is "
+                   "recorded EMPTY (ledger row, logged); refresh-latest "
+                   "--accept-key-changes PERIOD then empties the live "
+                   "notices. Nothing else releases a notices-free issue")
     p.add_argument("--correction", metavar="NAME",
                    choices=sorted(globals()["CORRECTIONS"]),
                    help="apply this named, decided correction (CORRECTIONS) "

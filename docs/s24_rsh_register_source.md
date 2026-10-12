@@ -213,11 +213,11 @@ python scripts/s24_rsh_register_editions.py load            # preview, read it w
 python scripts/s24_rsh_register_editions.py load --simulate
 python scripts/s24_rsh_register_editions.py load --commit
 python scripts/s24_rsh_register_editions.py refresh-latest  # after a reissue of a held period
-python scripts/s24_rsh_register_editions_verify.py          # 21 gates, exit 0, writes nothing
+python scripts/s24_rsh_register_editions_verify.py          # 22 gates, exit 0, writes nothing
 ```
 
 A new register date is a new period; a new judgements issue is a new period and replaces the live judgements and notices. A judgements
-file must carry enforcement notices (a file with none is rejected; see "What halts a load" below). `--file PATH [--title-date YYYY-MM-DD] [--no-page]` takes a file
+file with no enforcement notice is rejected unless `--acknowledge-no-notices DATE` names it (see "What halts a load" below). `--file PATH [--title-date YYYY-MM-DD] [--no-page]` takes a file
 you hold, `--only register|judgements` limits a run, `restore-edition TABLE PERIOD N` brings an earlier edition back as the next one.
 `python scripts/check_sources.py 24` reads the newest register title against the newest held snapshot; nothing runs the load for you.
 
@@ -226,7 +226,17 @@ you hold, `--only register|judgements` limits a run, `restore-edition TABLE PERI
 - **An identity or header failure** (title, sheet, header, modified date, change history): the file or the page changed. Read it,
   then fix the loader in a small commit with the evidence.
 - **An older file** than the one held: skipped; a run of only older files halts. `--allow-older-file` overrides, and it does two different things: a judgements period not yet held is stored as edition 1 only (history, live unchanged); a period already held gets the file as its next edition, the new tip, and a later `refresh-latest` would copy its rows into live and roll it back.
-- **A judgements file with no enforcement notices:** REJECTED, no release flag, exit 1. This is a known limitation, deliberately not changed. The file is kept in `data/raw/s24_rsh/` (do not delete it); live judgements and notices stay on the last issue that had notices, so the judgements and downgrades in the rejected issue do not arrive, and every later `load` meets the same rejection until the rule is changed. The page offers the latest file only, so a missed issue cannot be fetched later. Ask Scott: the rule can be changed deliberately, with evidence (open item 8 in `docs/decisions/README.md`). A sheet with no header at all halts earlier as an identity failure, with the same effect.
+- **A judgements file with no enforcement notices** (the Enforcement Notices sheet holds exactly its header and no row; decided by
+  Scott on 2026-10-12, Option C, decisions README item 8): REJECTED, exit 1, unless `--acknowledge-no-notices DATE` (or
+  `judgements:DATE`) names that issue; `--acknowledge`, `--accept-reissue` and `--allow-older-file` do not release it. The file is
+  kept in `data/raw/s24_rsh/` (do not delete it). Read the page's change note first: the flag says RSH has lifted every notice. With
+  it the judgements load as usual and the notices period is recorded **empty**: one row in `rsh_enforcement_notices_editions_file_checks`
+  (outcome `empty`, no edition, the file's URL and sha256, the acknowledgement named), no editions row; the run log names it. Live
+  notices still hold the previous issue until `refresh-latest --accept-key-changes DATE` deletes them (they stay in the editions as
+  history); `status` says so until then. A later issue with notices replaces the empty state as usual. The notices ledger takes an
+  `empty` row only after `ddl --commit` has added the outcome and its `acknowledgement` column (the load says so; `ddl` previews it).
+  Still halting, whatever the flags: a notices sheet with no header at all or a changed header (an identity failure), and a reissue
+  of an issue whose notices are already held with rows that now has none (rejected; ask Scott).
 - **An empty live judgements table with a newer issue held:** loading an older issue stops (nothing stored); load the newest issue. `status` reports an editions issue newer than the live one as a fault (`live is behind`), not history.
 - **A reissue of a held period** with different content: stop. `--accept-reissue PERIOD`, and a changed row needs `--acknowledge PERIOD`. Where a register and a judgements issue share a date, name the part (`register:2026-11-18`, `judgements:2026-11-18`); a bare date is accepted when only one part of the run has it and refused when both do.
 - **A stop condition** (rejected, nothing stored, exit 1): a register with fewer than 95% of the previous snapshot's providers or more

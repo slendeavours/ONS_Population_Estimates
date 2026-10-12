@@ -292,6 +292,35 @@ class VerifyGates(unittest.TestCase):
         ok, detail = v.real_edition1_and_latest(self.cur, ZZ)
         self.assertFalse(ok)
 
+    def test_a_recorded_empty_notices_state_passes_only_once_applied(self):
+        """Option C (2026-10-12): live notices empty pass the real gates
+        only when the newest notices period is recorded empty and applied;
+        pending (not yet refreshed) fails, naming the refresh; an empty
+        live notices table without that record still fails."""
+        self.completed()
+        oct_ = "2026-10-07"
+        self.e.judgements("20261007", nrows=[], changes=(oct_, J_SEP))
+        self.e.ok(self.cur, ["load", "--only", "judgements", "--commit",
+                             "--acknowledge-no-notices", oct_])
+        for fn in (v.real_refreshed, v.real_edition1_and_latest):
+            ok, detail = fn(self.cur, ZZ)
+            self.assertFalse(ok, detail)
+            self.assertIn(f"--accept-key-changes {oct_}", detail)
+        self.e.ok(self.cur, ["refresh-latest", "--accept-key-changes", oct_,
+                             "--commit"])
+        for label, fn in self.real_gates():
+            ok, detail = fn(self.cur, ZZ)
+            self.assertTrue(ok, f"gate {label}: {detail}")
+        self.assertEqual(v.empty_latest(self.cur, ZZ["notices"]), oct_)
+        self.assertIsNone(v.empty_latest(self.cur, ZZ["judgements"]))
+        # without the record an empty live table is not a pass
+        self.cur.execute("SAVEPOINT q")
+        self.cur.execute(f"DELETE FROM public.{ZZ['judgements'].live_table}")
+        ok, detail = v.real_edition1_and_latest(self.cur, ZZ)
+        self.cur.execute("ROLLBACK TO SAVEPOINT q")
+        self.assertFalse(ok)
+        self.assertIn("no live periods", detail)
+
     def test_the_migrated_not_refreshed_state_fails_history_and_refresh(self):
         self.e.migrated()
         ok, detail = v.real_refreshed(self.cur, ZZ)

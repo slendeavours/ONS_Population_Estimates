@@ -32,7 +32,7 @@ import s24_rsh_register_editions as m  # noqa: E402
 from _db import get_conn  # noqa: E402
 from test_s24_rsh_pure import (HIDDEN_TITLE, JROWS, MEDIA, NROWS,  # noqa: E402
                                REG_ROWS, SENTINEL, jrow, judgements_page,
-                               register_page, write_judgements,
+                               register_page, write_book, write_judgements,
                                write_register)
 
 ZZ = {
@@ -576,7 +576,7 @@ class LoadJudgements(Fixture):
             self.assertIn("refresh-latest", text)
             self.assertEqual(editions(cur, "judgements", "2026-10-07"), [])
 
-    def test_a_file_with_no_notices_is_rejected_and_the_message_says_it_is_kept(self):
+    def test_a_file_with_no_notices_is_rejected_without_its_acknowledgement(self):
         with rolled_back(self.conn) as cur:
             self.judgements("20260812", jrows=JROWS[:4])
             self.ok(cur, ["load", "--only", "judgements", "--commit"])
@@ -588,19 +588,238 @@ class LoadJudgements(Fixture):
             self.assertIn("has no enforcement notices", text)
             self.assertIn("The file is kept, not lost", text)
             self.assertIn(path.name, text)
-            self.assertIn("Ask Scott", text)
-            self.assertIn("no flag", text)
+            self.assertIn(f"--acknowledge-no-notices {J_SEP}", text)
             self.assertTrue(path.is_file())
             self.assertEqual(editions(cur, "judgements", J_SEP), [])
             self.assertEqual(live_periods(cur, "judgements"),
                              [(J_AUG, 4)])
-            # the stop is not released by an acknowledgement either
-            rc, text, _ = self.run_main(
-                cur, ["load", "--only", "judgements", "--commit",
-                      "--acknowledge", J_SEP])
+            self.assertEqual(len(ledger(cur, "notices")), 1)
+            logged.assert_called_once()
+            self.assertIn("PARTIAL RUN", logged.call_args[0][2])
+            # no other flag releases it
+            for extra in (["--acknowledge", J_SEP],
+                          ["--accept-reissue", J_SEP],
+                          ["--acknowledge", f"judgements:{J_SEP}",
+                           "--allow-older-file"]):
+                with self.subTest(extra=extra):
+                    rc, text, _ = self.run_main(
+                        cur, ["load", "--only", "judgements", "--commit"]
+                        + extra)
+                    self.assertEqual(rc, 1, text)
+                    self.assertIn("has no enforcement notices", text)
+                    self.assertEqual(editions(cur, "judgements", J_SEP), [])
+
+
+def ack_rows(cur, name):
+    s = ZZ[name]
+    cur.execute(f"SELECT {s.period_col}::text, outcome, edition, "
+                "acknowledgement, source_file, file_sha256 FROM "
+                f"public.{s.editions_table}_file_checks ORDER BY id")
+    return cur.fetchall()
+
+
+class EmptyNotices(Fixture):
+    """Scott's Option C (2026-10-12): a judgements issue whose notices sheet
+    is header-only loads with --acknowledge-no-notices DATE; its notices
+    period is recorded EMPTY (ledger only), live notices empty through
+    refresh-latest --accept-key-changes DATE, the older notices stay as
+    history."""
+
+    OCT = "2026-10-07"
+    NOV = "2026-10-21"
+
+    def aug_then_empty_oct(self, cur):
+        self.judgements("20260812", jrows=JROWS[:4])
+        self.ok(cur, ["load", "--only", "judgements", "--commit"])
+        return self.judgements("20261007", nrows=[],
+                               changes=(self.OCT, J_AUG))
+
+    def test_acknowledged_the_judgements_load_and_the_notices_are_empty(self):
+        with rolled_back(self.conn) as cur:
+            path = self.aug_then_empty_oct(cur)
+            text, logged = self.ok(cur, [
+                "load", "--only", "judgements", "--commit",
+                "--acknowledge-no-notices", self.OCT])
+            self.assertIn(f"judgements {self.OCT}: new", text)
+            self.assertIn(f"notices {self.OCT}: empty", text)
+            self.assertEqual(editions(cur, "judgements", self.OCT),
+                             [(1, None, len(JROWS))])
+            self.assertEqual(live_periods(cur, "judgements"),
+                             [(self.OCT, len(JROWS))])
+            self.assertEqual(editions(cur, "notices", self.OCT), [])
+            self.assertEqual(editions(cur, "notices", J_AUG), [(1, None, 1)])
+            (p, outcome, ed, ack, src, sha), = ack_rows(cur, "notices")[-1:]
+            self.assertEqual((p, outcome, ed), (self.OCT, "empty", None))
+            self.assertIn(f"--acknowledge-no-notices {self.OCT}", ack)
+            self.assertTrue(src.startswith(self.last_url))
+            self.assertEqual(sha, m.content_sha256(path))
+            # live notices wait for refresh-latest
+            self.assertEqual(live_periods(cur, "notices"), [(J_AUG, 1)])
+            notes = logged.call_args[0][2]
+            self.assertIn(f"notices {self.OCT} empty", notes)
+            self.assertIn(f"ACKNOWLEDGED NO NOTICES {self.OCT}", notes)
+            self.assertNotIn("PARTIAL RUN", notes)
+            rc, text, _ = self.run_main(cur, ["status"])
             self.assertEqual(rc, 1, text)
-            self.assertIn("has no enforcement notices", text)
-            self.assertEqual(editions(cur, "judgements", J_SEP), [])
+            self.assertIn(f"--accept-key-changes {self.OCT}", text)
+
+    def test_refresh_empties_live_notices_and_keeps_the_history(self):
+        with rolled_back(self.conn) as cur:
+            self.aug_then_empty_oct(cur)
+            self.ok(cur, ["load", "--only", "judgements", "--commit",
+                          "--acknowledge-no-notices", self.OCT])
+            ed = core.period_hashes(cur, ZZ["notices"], "editions")
+            text, _ = self.ok(cur, ["refresh-latest"])
+            self.assertIn(f"{self.OCT} is recorded empty", text)
+            self.assertIn(f"--accept-key-changes {self.OCT}", text)
+            self.assertEqual(live_periods(cur, "notices"), [(J_AUG, 1)])
+            rc, text, _ = self.run_main(cur, ["refresh-latest", "--commit"])
+            self.assertEqual(rc, "halt", text)
+            self.assertIn(f"--accept-key-changes {self.OCT}", text)
+            self.assertEqual(live_periods(cur, "notices"), [(J_AUG, 1)])
+            text, _ = self.ok(cur, ["refresh-latest", "--accept-key-changes",
+                                    self.OCT, "--commit"])
+            self.assertIn("recorded empty applied", text)
+            self.assertEqual(live_periods(cur, "notices"), [])
+            self.assertEqual(core.period_hashes(cur, ZZ["notices"],
+                                                "editions"), ed)
+            st = pe.status(cur, m.profile("notices"))
+            self.assertTrue(st["ok"], st)
+            self.assertEqual((st["history"], st["empty"]),
+                             ([J_AUG], [self.OCT]))
+            rc, text, _ = self.run_main(cur, ["status"])
+            self.assertEqual(rc, 0, text)
+            self.assertIn(f"{self.OCT}: recorded EMPTY", text)
+            # a byte-identical re-read changes nothing
+            text, logged = self.ok(cur, ["load", "--only", "judgements",
+                                         "--commit"])
+            self.assertIn("already in both ledgers", text)
+            logged.assert_not_called()
+            # a later issue with notices restores live
+            self.judgements("20261021", changes=(self.NOV, self.OCT))
+            text, _ = self.ok(cur, ["load", "--only", "judgements",
+                                    "--commit"])
+            self.assertIn(f"notices {self.NOV}: new", text)
+            self.assertEqual(live_periods(cur, "notices"), [(self.NOV, 1)])
+            st = pe.status(cur, m.profile("notices"))
+            self.assertTrue(st["ok"], st)
+            self.assertEqual((st["history"], st["empty"]),
+                             ([J_AUG], [self.OCT]))
+
+    def test_the_preview_and_simulate_write_nothing(self):
+        with rolled_back(self.conn) as cur:
+            self.aug_then_empty_oct(cur)
+            before = {t: count(cur, t) for t in tables()}
+            for extra in ([], ["--simulate"]):
+                text, logged = self.ok(cur, [
+                    "load", "--only", "judgements",
+                    "--acknowledge-no-notices", self.OCT] + extra)
+                self.assertIn(f"notices {self.OCT}: empty", text)
+                self.assertEqual({t: count(cur, t) for t in tables()},
+                                 before)
+                logged.assert_not_called()
+
+    def test_a_missing_or_changed_header_still_halts(self):
+        with rolled_back(self.conn) as cur:
+            self.judgements("20260812", jrows=JROWS[:4])
+            self.ok(cur, ["load", "--only", "judgements", "--commit"])
+            before = {t: count(cur, t) for t in tables()}
+            d = date(2026, 10, 7)
+            path = self.root / "nohead" / "20261007_Regulatory.xlsx"
+            write_book(path, [
+                ("Regulatory Judgements", [list(m.JUDGEMENT_HEADERS)]
+                 + list(JROWS), "visible"),
+                ("Enforcement Notices", [], "visible")],
+                datetime(d.year, d.month, d.day, 11))
+            other = write_judgements(
+                self.root / "chg" / "20261007_Regulatory.xlsx", nrows=[],
+                nheader=["Reg Code", "Provider"],
+                modified=datetime(2026, 10, 7, 11))
+            for p, needle in ((path, "is empty"), (other, "header changed")):
+                with self.subTest(needle=needle):
+                    rc, text, logged = self.run_main(cur, [
+                        "load", "--only", "judgements", "--file", p,
+                        "--no-page", "--commit", "--acknowledge-no-notices",
+                        self.OCT])
+                    self.assertEqual(rc, "halt", text)
+                    self.assertIn(needle, text)
+                    self.assertEqual({t: count(cur, t) for t in tables()},
+                                     before)
+                    logged.assert_not_called()
+
+    def test_the_flag_must_name_a_notices_free_issue_of_the_run(self):
+        with rolled_back(self.conn) as cur:
+            self.aug_then_empty_oct(cur)
+            for tok in ("2026-10-08", f"judgements:{J_AUG}"):
+                with self.subTest(tok=tok):
+                    rc, text, logged = self.run_main(cur, [
+                        "load", "--only", "judgements", "--commit",
+                        "--acknowledge-no-notices", tok])
+                    self.assertEqual(rc, "halt", text)
+                    self.assertIn("--acknowledge-no-notices", text)
+                    self.assertEqual(editions(cur, "judgements", self.OCT),
+                                     [])
+                    logged.assert_not_called()
+            # a judgements issue that has notices: the flag is stray
+            self.judgements("20261007", changes=(self.OCT, J_AUG))
+            rc, text, _ = self.run_main(cur, [
+                "load", "--only", "judgements", "--commit",
+                "--acknowledge-no-notices", self.OCT])
+            self.assertEqual(rc, "halt", text)
+            self.assertEqual(editions(cur, "judgements", self.OCT), [])
+            with quiet(), contextlib.redirect_stderr(io.StringIO()), \
+                    self.assertRaises(SystemExit):
+                m.main(["load", "--acknowledge-no-notices",
+                        f"register:{self.OCT}"])
+            # the part-qualified form works
+            self.aug_then_empty_oct(cur)
+            self.ok(cur, ["load", "--only", "judgements", "--commit",
+                          "--acknowledge-no-notices",
+                          f"judgements:{self.OCT}"])
+            self.assertEqual(ack_rows(cur, "notices")[-1][1], "empty")
+
+    def test_a_held_issue_reissued_without_its_notices_is_rejected(self):
+        with rolled_back(self.conn) as cur:
+            self.judgements("20260930", modified=datetime(2026, 9, 30, 11))
+            self.ok(cur, ["load", "--only", "judgements", "--commit"])
+            self.judgements("20260930", nrows=[],
+                            modified=datetime(2026, 9, 30, 15))
+            rc, text, _ = self.run_main(cur, [
+                "load", "--only", "judgements", "--commit", "--acknowledge",
+                J_SEP, "--acknowledge-no-notices", J_SEP])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("REJECTED", text)
+            self.assertIn("held with rows", text)
+            self.assertEqual(editions(cur, "notices", J_SEP), [(1, None, 1)])
+            self.assertEqual(editions(cur, "judgements", J_SEP),
+                             [(1, None, len(JROWS))])
+
+    def test_a_ledger_not_yet_upgraded_rejects_with_the_ddl_step(self):
+        with rolled_back(self.conn) as cur:
+            self.aug_then_empty_oct(cur)
+            with mock.patch.object(pe, "file_checks_accept_empty",
+                                   return_value=False):
+                rc, text, _ = self.run_main(cur, [
+                    "load", "--only", "judgements", "--commit",
+                    "--acknowledge-no-notices", self.OCT])
+            self.assertEqual(rc, 1, text)
+            self.assertIn("ddl --commit", text)
+            self.assertEqual(editions(cur, "judgements", self.OCT), [])
+
+    def test_ddl_brings_an_old_notices_ledger_up_to_date(self):
+        with rolled_back(self.conn, ddl=False) as cur:
+            with specs():
+                old = dataclasses.replace(ZZ["notices"],
+                                          empty_periods_allowed=False)
+                core.create_schema(cur, old)
+                pe.create_file_checks(cur, m.PROFILES["notices"]
+                                      .with_spec(old))
+                prof = m.profile("notices")
+                self.assertFalse(pe.file_checks_accept_empty(cur, prof))
+                text, _ = self.ok(cur, ["ddl", "--commit"])
+                self.assertTrue(pe.file_checks_accept_empty(cur, prof))
+                self.assertFalse(pe.file_checks_accept_empty(
+                    cur, m.profile("judgements")))
 
     def _load_aug_and_sep(self, cur):
         self.judgements("20260812", jrows=JROWS[:4])
