@@ -67,9 +67,9 @@ Closed: Scott decided the two zero rules reach `cc5a` too, for exactly their key
 so live holds 21 `cc5a` zeros (was 24). Editions 1 and 2, 2025 and every `households_on_register` are unchanged. See the
 addendum in [2026-10-10-s13-editions-first-load.md](2026-10-10-s13-editions-first-load.md) and the Closed table.
 
-### 6. No requirements file (opened 2026-10-11)
+### 6. No requirements file (opened 2026-10-11, closed 2026-10-12: leave as it is)
 
-The repo has no requirements file (none in `ONS_Population_Estimates` or `ucws-repo`). `xlrd==2.0.1`, which reads the five SafeLives `.xls` years for S17, is pinned only in prose (CHANGELOG, `docs/s17_marac_source.md`, the S17 decision note). Not created, to keep deliverables minimal; if one is ever created it should list `xlrd==2.0.1`, `openpyxl` and `psycopg2`.
+The repo has no requirements file (none in `ONS_Population_Estimates` or `ucws-repo`). `xlrd==2.0.1`, which reads the five SafeLives `.xls` years for S17, is pinned only in prose (CHANGELOG, `docs/s17_marac_source.md`, the S17 decision note). Not created, to keep deliverables minimal; if one is ever created it should list `xlrd==2.0.1`, `openpyxl` and `psycopg2`. **Decided by Scott 2026-10-12: leave as it is.** The pipeline runs on a single machine; the S17 loader's own error message already says `pip install xlrd==2.0.1`; and deliverables are kept minimal. No file created.
 
 ### 7. For Scott: adopting a newer LAD boundary vintage (opened 2026-10-11, not decided)
 
@@ -116,7 +116,7 @@ Five points from the S.114 evidence work and the withdrawn-only rule; the first 
   re-filing (`S114_REFILES`); edition 3 of 2021-22 omits it, edition 3 of 2022-23 holds it.
 - **Croydon, 2 December 2020. Closed 2026-10-11:** added from the council's own report under section 114(3), dated
   2 December 2020 (14 notices; Croydon's flag was already set).
-- **Hackney, 17 October 2000.** Rests on a press report quoting the council that does not state the day.
+- **Hackney, 17 October 2000. Closed 2026-10-12: the day is stated; kept exact.** A contemporary Public Finance (CIPFA) report of October 2000 ("Hackney's financial crisis deepens as treasurer issues section 114 notice") states that the borough treasurer, George Jenkins, issued the section 114 report on October 17. It is now the evidence (edition 3 of 2000-01; notice date and `date_confirmed` unchanged). The page refuses an automated fetch, so the text was read from search-engine copies; no council document was found. See the S12 note, 2026-10-12.
 - **Bexley. Closed 2026-10-12:** the two PDFs were read. The signed direction of 10 February 2021 authorises capitalisation of up to £3.87m for 2020/21 on the council's application of 27 October 2020 for exceptional financial support; the letter of 3 December 2024 only removes its borrowing-premium condition and does not revoke it. Bexley keeps its EFS flag. The 2020-21 page's cell ("provided with in-principle support but withdrew its request") and the direction disagree about whether support was taken up; our stored row follows the page (status withdrawn, amount blank). See the S12 note. **Decided by Scott 2026-10-12: no change.** The 2020-21 row stays as the page states it (status withdrawn, amount blank); the direction's £3.87m is a ceiling, not an amount drawn, and is not stored. The flag and the map are unaffected.
 
 ## Closed
