@@ -242,11 +242,14 @@ Raw Sources (CSV / API)
         │
         ▼
   GitHub raw URLs
-  (la_boundaries.geojson, latest.json)
+  (data/boundaries/la_boundaries.geojson,
+  data/signals/staging_la_signals_latest.json;
+  data/signals/latest.json holds the run metadata)
         │
         ▼
-  Browser viewers
-  (kepler_branded.html, kepler_basic.html)
+  The map: index.html
+  (legacy viewers kept in viewers/:
+  kepler_branded.html, kepler_basic.html)
 ```
 
 ---
@@ -266,16 +269,21 @@ Rounded to 2 decimal places. NULL when either input is NULL.
 
 ### Trend Label Assignment
 
-Assigned from `ta_yoy_pct`:
+Assigned in `sql/w1/05_la_signals.sql`, tested in this order (the first match wins). `pct` is the unrounded change, `(current - prev) / prev * 100`, before `ta_yoy_pct` is rounded to 2 decimal places:
 
 ```
-ta_yoy_pct > +15%       → rising_strongly
-+5% ≤ ta_yoy_pct ≤ +15% → rising
--5% ≤ ta_yoy_pct ≤ +5%  → flat
--15% ≤ ta_yoy_pct < -5% → falling
-ta_yoy_pct < -15%       → falling_strongly
-NULL or data gap         → submission_gap
+current IS NULL                 → no_current_data
+current = 0                     → submission_gap
+prev IS NULL or prev = 0        → no_prior_year
+pct > 10                        → rising_strongly
+pct > 3   (3 < pct ≤ 10)        → rising
+pct > -3  (-3 < pct ≤ 3)        → flat
+pct > -10 (-10 < pct ≤ -3)      → falling
+pct ≤ -10                       → falling_strongly
+anything else                   → undetermined
 ```
+
+`undetermined` is a terminal guard so an unforeseen combination is never published as a direction.
 
 ### MARAC rate per 10k adult females
 

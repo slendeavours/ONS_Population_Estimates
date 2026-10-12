@@ -1411,7 +1411,8 @@ SOURCES = [
             "loader does not store the rows of Bournemouth, Christchurch "
             "and Poole (2022-23) and North Northamptonshire (2024-25), "
             "whose only rows are withdrawn requests with no direction "
-            "listed, so they carry no flag after the next W1 run; Bexley's "
+            "listed, so they carry no flag from W1 run 27 (2026-10-12) on; "
+            "Bexley's "
             "two withdrawn rows are kept because its 2020-21 page lists a "
             "Bexley capitalisation direction and an amended one (the "
             "documents have not been read).",
@@ -1903,12 +1904,11 @@ SOURCES = [
             "the data page read on 2026-10-10 links no 2026-27 file.",
             "The grain is the police force area, 39 in England, not the "
             "local authority: every authority in a force area carries the "
-            "same force-wide figure through la_pfa_mapping. After the next "
-            "W1 run the seven West Midlands authorities (Birmingham, "
-            "Coventry, Dudley, Sandwell, Solihull, Walsall, Wolverhampton) "
-            "gain 2025-26 values (7,810 cases discussed, 65.903502 per "
-            "10,000 adult women) that the published map does not show "
-            "today.",
+            "same force-wide figure through la_pfa_mapping. From W1 run 27 "
+            "(2026-10-12, map pushed the same day) the seven West Midlands "
+            "authorities (Birmingham, Coventry, Dudley, Sandwell, Solihull, "
+            "Walsall, Wolverhampton) carry the 2025-26 values (7,810 cases "
+            "discussed, 65.903502 per 10,000 adult women).",
             "A NULL has a reason in the editions table (value_flag "
             "not_submitted or no_population); a published 0 is a 0. "
             "Lancashire's housing_referrals are 0 in 2023-24, 2024-25 and "
@@ -2337,8 +2337,8 @@ SOURCES = [
                  "class D and flood empties: England 309,889 on 1.19 "
                  "against 303,185 on 1.22, and 178 of 296 authorities "
                  "differ (179 rows with England counted). The map's "
-                 "Long-Term Empty Rate uses 1.19 and is unchanged; "
-                 "whether it should move to Line 18 is pending Scott "
+                 "Long-Term Empty Rate uses 1.19 and is unchanged: Scott "
+                 "decided on 2026-10-12 to keep 1.19 and not adopt Line 18 "
                  "(decision D1).",
                  "Suppressed values are NULL, never 0: [x] and [z] are NULL "
                  "with the reason in null_reasons, "
