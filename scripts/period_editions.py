@@ -199,9 +199,14 @@ def live_other_periods(cur, profile: Profile, period: str) -> list:
 def live_holds_newer(cur, profile: Profile, period: str) -> bool:
     """live_newest_period_only: live holds a period newer than `period` (so
     `period` is history and must stay out of live). Periods are compared as
-    strings (rule 8: sortable period keys). False for every other spec,
-    without a query."""
-    return any(o > _p(period) for o in live_other_periods(cur, profile, period))
+    strings (rule 8: sortable period keys). With empty_periods_allowed a
+    newer period recorded empty counts too (its empty state is the live
+    state, live holds its 'no rows'). False for every other spec, without a
+    query."""
+    if any(o > _p(period) for o in live_other_periods(cur, profile, period)):
+        return True
+    return any(_p(e) > _p(period)
+               for e in core.empty_periods(cur, profile.spec))
 
 
 def _replace_older_live(cur, profile: Profile, period: str, records: list,
@@ -598,14 +603,19 @@ def status(cur, profile: Profile) -> dict:
         held = [_p(x) for x in st["held_not_live"]]
         missing = [m for m in missing if m not in held]
     history, behind = [], []
-    if spec.live_newest_period_only and st["periods"]:
+    empty_latest = st.get("empty_latest")
+    if spec.live_newest_period_only and (st["periods"]
+                                         or empty_latest is not None):
         # live holds the newest period: editions periods absent from it are
         # history (information, ok unaffected), not live_missing; with live
-        # empty they stay live_missing (load inserts the period). An editions
-        # period NEWER than the live one is not history: live is behind
-        # (a fault, ok false)
+        # empty they stay live_missing (load inserts the period), unless the
+        # latest state is a period recorded empty (empty_periods_allowed),
+        # which live then holds as no rows. An editions period NEWER than
+        # the live one is not history: live is behind (a fault, ok false)
         history = [_p(x) for x in st["history"]]
-        live_now = max(_p(x) for x in core.live_period_counts(cur, spec))
+        live_now = max([_p(x) for x in core.live_period_counts(cur, spec)]
+                       + ([_p(empty_latest)] if empty_latest is not None
+                          and not st["periods"] else []))
         behind = [h for h in history if h > live_now]
         history = [h for h in history if h not in behind]
         missing = [m for m in missing if m not in history and m not in behind]
@@ -622,6 +632,9 @@ def status(cur, profile: Profile) -> dict:
     if spec.live_newest_period_only:
         out["history"] = history
         out["live_behind"] = behind
+    if spec.empty_periods_allowed:
+        out["empty"] = [_p(x) for x in st["empty"]]
+        out["empty_pending"] = [_p(x) for x in st["empty_pending"]]
     return out
 
 
@@ -644,6 +657,15 @@ def format_status(profile: Profile, st: dict, extra_lines=()) -> str:
     lines += [f"  history: {v} (not the live period, stored as editions "
               "only; information, not a fault)"
               for v in st.get("history") or []]
+    pending = st.get("empty_pending") or []
+    lines += [f"  EMPTY PERIOD NOT YET APPLIED: {v} is recorded empty (the "
+              "newest period, no rows) but live still holds an older "
+              f"period; run refresh-latest --accept-key-changes {v} (the "
+              "older rows stay in the editions as history)"
+              for v in pending]
+    lines += [f"  empty: {v} (recorded with no rows, acknowledged; "
+              "information, not a fault)"
+              for v in st.get("empty") or [] if v not in pending]
     if not lines:
         return text
     head, tail = text.rsplit("\n", 1)
@@ -693,10 +715,12 @@ def mode_parser(p) -> None:
 # ---------------------------------------------------------------------------
 
 FILE_CHECK_OUTCOMES = ("new", "unchanged", "revised", LIVE_MISSING)
+# empty_periods_allowed: a period recorded with no rows (ledger only)
+EMPTY = core.EMPTY
 
 
 def file_checks_table(profile: Profile) -> str:
-    return f"{profile.spec.editions_table}_file_checks"
+    return core.file_checks_table(profile.spec)
 
 
 def _need_file_checks(profile: Profile) -> None:
@@ -738,19 +762,118 @@ def create_file_checks(cur, profile: Profile) -> None:
     cur.execute(f"""CREATE OR REPLACE TRIGGER {trunc}
         BEFORE TRUNCATE ON public.{t}
         FOR EACH STATEMENT EXECUTE FUNCTION public.{fn}()""")
+    if spec.empty_periods_allowed:
+        _empty_ledger_upgrade(cur, t, allowed + (EMPTY,))
+
+
+def _empty_ledger_upgrade(cur, t: str, allowed: tuple) -> None:
+    """empty_periods_allowed: the ledger takes an 'empty' row, which must
+    name its acknowledgement and carry no edition. Brings an existing
+    ledger (made before the opt-in) up to that in place, idempotently: the
+    acknowledgement column, the outcome check with 'empty' (replaced only
+    when it lacks it) and the empty-row check. No row is written or
+    changed; the append-only triggers stay."""
+    cur.execute(f"ALTER TABLE public.{t} ADD COLUMN IF NOT EXISTS "
+                "acknowledgement text")
+    defs = _check_defs(cur, t)
+    chk = f"{t}_outcome_check"
+    if len(f"{t}_empty_chk") > 63 or len(chk) > 63:
+        raise ValueError(f"{t}: the ledger name is too long for its "
+                         "constraint names (63 characters)")
+    if f"'{EMPTY}'" not in defs.get(chk, ""):
+        outcomes = ", ".join(f"'{o}'" for o in allowed)
+        cur.execute(f"ALTER TABLE public.{t} DROP CONSTRAINT IF EXISTS {chk}, "
+                    f"ADD CONSTRAINT {chk} CHECK (outcome IN ({outcomes}))")
+    if f"{t}_empty_chk" not in defs:
+        cur.execute(f"ALTER TABLE public.{t} ADD CONSTRAINT {t}_empty_chk "
+                    f"CHECK (outcome <> '{EMPTY}' OR (edition IS NULL AND "
+                    "acknowledgement IS NOT NULL AND btrim(acknowledgement) "
+                    "<> ''))")
+
+
+def _check_defs(cur, t: str) -> dict:
+    cur.execute("SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint "
+                "WHERE conrelid = %s::regclass AND contype = 'c'",
+                (f"public.{t}",))
+    return dict(cur.fetchall())
+
+
+def file_checks_accept_empty(cur, profile: Profile) -> bool:
+    """The spec opts in to empty periods and its ledger exists and takes an
+    'empty' row (the acknowledgement column, 'empty' in the outcome check
+    and the empty-row check): False until `ddl --commit` has brought an
+    older ledger up to date."""
+    spec = profile.spec
+    if not (spec.empty_periods_allowed and profile.file_checks):
+        return False
+    t = file_checks_table(profile)
+    if not table_exists(cur, t):
+        return False
+    cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema "
+                "= 'public' AND table_name = %s AND column_name = "
+                "'acknowledgement'", (t,))
+    if cur.fetchone() is None:
+        return False
+    defs = _check_defs(cur, t)
+    return (f"'{EMPTY}'" in defs.get(f"{t}_outcome_check", "")
+            and f"{t}_empty_chk" in defs)
 
 
 def record_file_check(cur, profile: Profile, period: str, source_file: str,
                       file_sha256: str, outcome: str,
-                      edition: "int | None" = None) -> None:
+                      edition: "int | None" = None, *,
+                      acknowledgement: "str | None" = None) -> None:
     """Append one check. Call it inside the period's savepoint so it commits
-    or rolls back with the month."""
+    or rolls back with the month. acknowledgement (empty_periods_allowed
+    ledgers only) names what allowed an 'empty' row; when None the column
+    is not written, so every other ledger's statement is as before."""
     _need_file_checks(profile)
     pc = profile.spec.period_col
+    if acknowledgement is not None:
+        cur.execute(f"INSERT INTO public.{file_checks_table(profile)} "
+                    f"({pc}, source_file, file_sha256, outcome, edition, "
+                    "acknowledgement) VALUES (%s, %s, %s, %s, %s, %s)",
+                    (period, source_file, file_sha256, outcome, edition,
+                     acknowledgement))
+        return
     cur.execute(f"INSERT INTO public.{file_checks_table(profile)} "
                 f"({pc}, source_file, file_sha256, outcome, edition) "
                 "VALUES (%s, %s, %s, %s, %s)",
                 (period, source_file, file_sha256, outcome, edition))
+
+
+def record_empty_period(cur, profile: Profile, period: str, source_file: str,
+                        file_sha256: str, acknowledgement: str) -> str:
+    """empty_periods_allowed: record `period` as EMPTY (the file holds no
+    row): one ledger row, outcome 'empty', no edition, naming
+    `acknowledgement`; no editions row and no live row is written (live
+    follows through refresh-latest --accept-key-changes PERIOD, see
+    editions_core.empty_live). Returns EMPTY. ValueError when the spec does
+    not opt in or the acknowledgement is blank; halts when the period
+    already has editions rows (a period with rows is never empty) or the
+    ledger does not take an 'empty' row yet (run ddl --commit). Call it
+    inside the period's savepoint."""
+    spec = profile.spec
+    if not (spec.empty_periods_allowed and profile.file_checks):
+        raise ValueError(f"{spec.name}: the spec does not opt in to empty "
+                         "periods (empty_periods_allowed with file_checks)")
+    if not str(acknowledgement or "").strip():
+        raise ValueError(f"{spec.name} {period}: an empty period needs a "
+                         "named acknowledgement")
+    cur.execute(f"SELECT COUNT(DISTINCT edition) FROM "
+                f"public.{spec.editions_table} WHERE {spec.period_col} = %s",
+                (period,))
+    n = cur.fetchone()[0]
+    if n:
+        halt(f"{period}: {spec.editions_table} holds {n} edition(s) of it with "
+             "rows; a period with rows is never recorded empty")
+    if not file_checks_accept_empty(cur, profile):
+        halt(f"{file_checks_table(profile)} does not take an 'empty' row yet; "
+             "run `ddl` (preview) and `ddl --commit` once, which adds it (no "
+             "value is written)")
+    record_file_check(cur, profile, period, source_file, file_sha256, EMPTY,
+                      None, acknowledgement=acknowledgement)
+    return EMPTY
 
 
 def checked_files(cur, profile: Profile) -> "dict[str, set[str]]":
@@ -959,8 +1082,19 @@ def run_refresh_latest(profile: Profile, args, *, connect=connect,
                 halt(no_table(profile))
             if preflight is not None:
                 preflight(cur)
+            empty_named, accept_kc = core.split_empty_names(cur, spec,
+                                                            accept_kc)
             accept = _accept_periods(cur, spec, accept)
             accept_kc = _accept_key_change_periods(cur, spec, accept_kc)
+            ep = core.empty_plan(cur, spec)
+            if ep is not None:
+                period, older = ep
+                print(f"{_p(period)} is recorded empty (the newest period, no "
+                      "rows): refresh-latest would delete every live row of "
+                      + ", ".join(f"{_p(o)} ({n} rows)"
+                                  for o, n in older.items())
+                      + " and insert none (kept in the editions as history); "
+                      f"this needs --accept-key-changes {_p(period)}")
             counts = core.refresh_counts(cur, spec, accept)
             print("rows refresh-latest would write: "
                   + (", ".join(f"{p}={n}" for p, n in counts.items()) or "none")
@@ -976,7 +1110,8 @@ def run_refresh_latest(profile: Profile, args, *, connect=connect,
                 print("DRY RUN: nothing written (use --commit or --simulate)")
                 return 0
             _refresh_guard(cur, spec, accept, accept_kc)
-            res = core.refresh_latest(cur, spec, accept, accept_kc)
+            res = core.refresh_latest(cur, spec, accept,
+                                      accept_kc + empty_named)
             if res["updated"]:
                 bad = load_checks.check_latest_equals_live(
                     cur, spec, sorted(res["updated"]))
@@ -988,6 +1123,11 @@ def run_refresh_latest(profile: Profile, args, *, connect=connect,
             keys = (f"; key changes {sum(res['inserted'].values())} inserted, "
                     f"{sum(res['deleted'].values())} deleted in "
                     f"{sorted(_p(x) for x in res['inserted'])}")
+        if res.get("emptied"):
+            keys += (f"; {_p(res['empty'])} recorded empty applied: "
+                     f"{sum(res['emptied'].values())} live rows of "
+                     f"{sorted(_p(x) for x in res['emptied'])} deleted (kept "
+                     "in the editions)")
         finish(conn, args, f"{res['rows']} live rows refreshed in "
                            f"{sorted(_p(x) for x in res['updated'])}{keys}; "
                            "before/after guard "
