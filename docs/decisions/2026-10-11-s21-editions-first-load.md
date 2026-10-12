@@ -41,9 +41,14 @@ subject") would need a deliberate change as well.
 - That build's rule: take the list of authorities from the latest `staging_la_signals` run (a W1 output), drop every
   neighbour that is not in it (which removes all Welsh, Scottish and Northern Irish neighbours), keep the first five left
   in the publisher's order and renumber them 1 to 5. It recoded Barnsley and Sheffield (E08000038/39 to E08000016/19)
-  with a private dict whose comment and direction the loader's docstring calls contradictory. The loader now reproduces
-  the same 1,480 rows with `la_boundaries` as the list of authorities and `geography.resolve` for the recode; no private dict.
-- The old build was not run or imported in this task. It is retired in Task 4.
+  with a private dict whose comment says the file "still carries the pre-recode codes". Checked on 2026-10-12 against the
+  file, `la_boundaries` and the live table: the file carries the new codes E08000038 and E08000039 (as subject rows and in
+  93 neighbour cells of the sheet) and never E08000016 or E08000019, while `la_boundaries` and the live table use E08000016
+  and E08000019. So the dict maps the right way (file code to canonical code) and its comment is the wrong way round.
+  The loader now reproduces the same 1,480 rows with `la_boundaries` as the list of authorities and `geography.resolve`
+  for the recode; no private dict. The script was first committed on 2026-08-20 (59ae151), four weeks after its one load.
+- The old build was not run or imported in the tasks that wrote the loader. It was retired on 2026-10-12: it exits 2 at its
+  first statement (`scripts/s21_statistical_neighbours_build.py`, tested only in the scrubbed sandbox).
 
 ## Before-state (read-only, confirmed against the live table before the ddl)
 

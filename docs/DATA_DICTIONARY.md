@@ -417,6 +417,29 @@ Source: ONS Price Index of Private Rents (PIPR), by English local authority, mon
 
 ---
 
+## Statistical Nearest Neighbours (S21)
+
+Source: ONS "Clustering similar local authorities and statistical nearest neighbours in the UK", Table 7a (LTLA global statistical nearest neighbours), released 18 March 2026. Source note: `docs/s21_neighbours_source.md`. Loaded by `scripts/s21_neighbours_editions.py`. Not a W1, export or map input; `analysis/council_briefing` and `analysis/liverpool_paper` read one authority's comparators.
+
+`la_statistical_neighbours` (key `(lad24cd, statistical_neighbour_lad24cd)`, 1,480 rows: 296 English authorities x 5) is a derived subset of `la_statistical_neighbours_editions` (the same key plus `release_date` and edition; edition 1 is 5,920 rows: 296 authorities x the publisher's 20 neighbours), with a `_file_checks` ledger. The editions table is append-only.
+
+| Column | Type | Description |
+|---|---|---|
+| `lad24cd` | varchar(9) | The authority (canonical code; Barnsley E08000016, Sheffield E08000019, although the file carries E08000038/39) |
+| `statistical_neighbour_lad24cd` | varchar(9) | The neighbour: the canonical code for an English neighbour, the publisher's code verbatim for a Welsh, Scottish or Northern Irish one (editions only) |
+| `neighbour_rank` | integer | **Live: 1 to 5, the order among the authority's five nearest English neighbours, not the publisher's rank.** The publisher ranks 20 neighbours across the UK; the live table drops every non-English one, keeps the first five English ones in the publisher's order and renumbers them 1 to 5 (`LIVE_RULE`). 238 of 1,480 pairs carry a rank different from the publisher's. In the editions table it is the live rank, NULL for a row outside live (reason in `null_reasons`) |
+| `release_date` | date | The ONS release the rows come from (the Cover sheet's "originally published" date, 2026-03-18). In the live table a CHECK allows this one value, so live holds a single release; in the editions it is the period. Added to the live table on 2026-10-12 (additive, default-filled) |
+| `source`, `loaded_at` | text, timestamptz | Provenance of the live rows. `source` reads "ONS Clustering similar LAs and statistical nearest neighbours, Table 7a (LTLA global), Mar-2026 edition" and does not name the rule |
+| `publisher_rank` | integer | Editions only. The publisher's rank, 1 to 20, from the order of "Neighbour 1" to "Neighbour 20" in the file. The file does not define the order; the loader takes it as the rank |
+| `england_rank` | integer | Editions only. The order among the English neighbours, 1 to n. NULL for a neighbour that is not an English authority |
+| `neighbour_code_published`, `neighbour_name` | varchar(9), text | Editions only. The code and name exactly as the file gives them (E08000038 for Barnsley, not the canonical code) |
+| `neighbour_nation` | text | Editions only. England, Wales, Scotland or Northern Ireland, from the code's first letter |
+| `null_reasons` | text | Editions only. Why `england_rank` or `neighbour_rank` is NULL, one string per NULL column: `england_rank=not_an_english_authority; neighbour_rank=outside_live_rule` (473 rows: a neighbour that is not English) or `neighbour_rank=outside_live_rule` (3,967 rows: an English neighbour beyond the first five); NULL on the 1,480 live rows. None of these is a blank cell in the file: Table 7a has none |
+
+A new ONS edition (another release date) is stored in the editions only and never reaches the live table through a load.
+
+---
+
 ## Empty Homes and Vacant Dwellings (S22)
 
 Source: MHCLG Council Taxbase (CTB) local authority level workbook and Live Table 615. Source note: `docs/s22_source_structure.md`. Each live table is the latest-edition layer of an append-only `*_editions` table, loaded by `scripts/s22_ctb_editions.py`.

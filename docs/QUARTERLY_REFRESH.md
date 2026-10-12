@@ -1006,6 +1006,19 @@ To go back: `restore-edition TABLE PERIOD N` (TABLE is `brma_lha_rates` or `la_b
 
 **Never run the old scripts or workflows.** `scripts/s14_lha_rates_build.py` and `scripts/s14_lha_rates_build_v2.py` now exit 2 at their first statement, and the n8n workflows "LHA Rates + List of Rents (S14)" and "VOA/DWP LHA Rates (S14)" are retired (the first's Code nodes throw; the second has no nodes). v2 dropped both tables with `CASCADE` and neither converted the VOA "&" names, so a rerun left authorities without a rate row in W1 (38 on 2026-08-20, an import; 37 on 2026-10-11, tests run before the guards). **Never import a build script to test that it parses**; `py_compile` does that.
 
+## S21 ONS statistical nearest neighbours: irregular, and a new edition is a decision
+
+`la_statistical_neighbours` holds one ONS release (18 March 2026) as the five nearest English neighbours of the publisher's twenty, renumbered 1 to 5 (`LIVE_RULE`); `la_statistical_neighbours_editions` holds the publisher's whole table. It is not a W1, export or map input. Source note: `docs/s21_neighbours_source.md`.
+
+Run from `ONS_Population_Estimates`. `check_sources.py 21` reads the dataset page's `releaseDate` and reports a later one. Downloading needs Scott's permission.
+
+1. `python scripts/s21_neighbours_editions.py status`, then `load` (preview; downloads the newest edition and compares it with what is held).
+2. A **new ONS edition** (another Cover date): `load --commit` stores it as editions only. It never reaches the live table through `load` or `refresh-latest`: adopting it changes every authority's comparators, so it is Scott's decision and a deliberate change to the live release, its CHECK and the gates.
+3. A **reissue** of the 2026 release (same Cover date, different content) needs `--accept-reissue 2026-03-18`, is stored as the next edition, and reaches live only through `refresh-latest --acknowledge 2026-03-18` (preview, `--simulate`, `--commit`).
+4. `python scripts/s21_neighbours_editions_verify.py`. After a `refresh-latest` that changes live, gates 16 and 17 fail until the decision note's `before-state` and `live-read` lines are updated (`--print-note-lines` prints them).
+
+**Never run the old script.** `scripts/s21_statistical_neighbours_build.py` now exits 2 at its first statement (it truncated and reloaded the table, and took its authorities from a W1 output).
+
 ## Reference data: S5 deprivation, S3b Census tenure and S7 boundaries (they do not refresh quarterly)
 
 These three tables each hold **one vintage**: `la_imd_2025` (IoD2025, File 10 v2), `la_tenure_2021` (Census 2021) and `la_boundaries` (LAD May 2024 BGC, the W1 spine). They are the latest-edition layers of `la_imd_2025_editions`, `la_tenure_2021_editions` and `la_boundaries_editions` (each with a file-check ledger). There is nothing to do each quarter. Records: [the first load](decisions/2026-10-10-reference-trio-editions-first-load.md). Source notes: [S5](s5_imd_source.md), [S3b](s3b_tenure_source.md), [S7](s7_boundaries_source.md).

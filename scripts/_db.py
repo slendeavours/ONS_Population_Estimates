@@ -2,7 +2,7 @@
 
 PG_HOST in .env is the docker-internal name 'postgres'; from the Windows host
 the same server is reachable on localhost:5432. Matches the established
-access pattern (see scripts/s21_statistical_neighbours_build.py).
+access pattern (see scripts/s21_neighbours_editions.py).
 
 No credential has a fallback default. PG_USER and PG_PASSWORD must come from
 the environment or a local .env, and the script stops with a clear error
