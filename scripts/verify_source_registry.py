@@ -105,9 +105,161 @@ RATE_CARD_TABLE = "commercial_rate_card"
 
 results = []
 
+# Gate 22: the backup register (docs/RULES.md rule 9).
+BACKUP_REGISTER = REPO / "docs" / "BACKUPS.md"
+BACKUP_NAME = re.compile(r"^[a-z0-9_]+_bak_(\d{8})[a-z]?$")
+BACKUP_STATUSES = {"active", "grandfathered", "modified", "dropped"}
+MAX_EXTENSION_DAYS = 30
+
 
 def gate(n, name, passed, detail):
     results.append((n, name, passed, detail))
+
+
+def parse_backup_register(text):
+    """The rows of the '| Table |' table in docs/BACKUPS.md, as dicts keyed by
+    the lower-cased header, plus the text after the table (the dated log)."""
+    rows, header, in_table = [], None, False
+    for line in text.splitlines():
+        s = line.strip()
+        if s.startswith("| Table |"):
+            header = [h.strip().lower() for h in s.strip("|").split("|")]
+            in_table = True
+            continue
+        if not in_table:
+            continue
+        if not s.startswith("|"):
+            in_table = False
+            continue
+        cells = [c.strip() for c in s.strip("|").split("|")]
+        if all(set(c) <= set("-: ") for c in cells):
+            continue
+        row = dict(zip(header, cells))
+        row["table"] = row.get("table", "").strip("`")
+        rows.append(row)
+    return rows, text
+
+
+def _date(value):
+    try:
+        return datetime.date.fromisoformat(value.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+def _count(value):
+    try:
+        return int(str(value).replace(",", "").strip())
+    except ValueError:
+        return None
+
+
+def backup_gate(cur, register_text, today, like="%\\_bak\\_%"):
+    """(passed, detail) for gate 22. Read-only: catalogue reads and counts.
+
+    Fails for a backup table that is not registered, is past its expiry,
+    has a view, function or foreign key depending on it (or one of its
+    own), has a row count other than the registered one (unless marked
+    modified), or is badly named; and for a register row that is malformed,
+    says live for a table that is gone, or says dropped for one that is
+    still there. `like` narrows the tables read (the tests use it)."""
+    rows, log = parse_backup_register(register_text)
+    reg = {r["table"]: r for r in rows}
+    cur.execute("""
+        SELECT c.oid, c.relname, pg_total_relation_size(c.oid)
+          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+           AND c.relname LIKE %s
+         ORDER BY c.relname
+    """, (like,))
+    tables = cur.fetchall()
+    present = {name for _, name, _ in tables}
+    faults, expiring = [], []
+    total = 0
+    for oid, name, size in tables:
+        total += size
+        if not BACKUP_NAME.match(name):
+            faults.append(f"{name}: name is not <table>_bak_<yyyymmdd>[a-z]")
+        r = reg.get(name)
+        if r is None:
+            faults.append(f"{name}: not in docs/BACKUPS.md")
+            continue
+        status = r.get("status", "").split(" ")[0].lower()
+        if status == "dropped":
+            faults.append(f"{name}: registered as dropped but still exists")
+            continue
+        expiry = _date(r.get("expiry", ""))
+        ext = r.get("extended to", "").strip()
+        if ext and ext not in ("-", ""):
+            ext_d = _date(ext)
+            if (ext_d is None or expiry is None
+                    or (ext_d - expiry).days > MAX_EXTENSION_DAYS
+                    or ext_d < expiry):
+                faults.append(f"{name}: extension {ext!r} is not one of up to "
+                              f"{MAX_EXTENSION_DAYS} days after {expiry}")
+            elif not re.search(rf"^- \d{{4}}-\d{{2}}-\d{{2}}.*{re.escape(name)}"
+                               rf".*extended", log, re.M | re.I):
+                faults.append(f"{name}: extended with no dated line in the "
+                              f"register's log")
+            else:
+                expiry = ext_d
+        if expiry is None:
+            faults.append(f"{name}: no valid expiry date")
+        elif today > expiry:
+            faults.append(f"{name}: expired {expiry}; drop it (Scott's "
+                          f"approval) or extend it")
+        else:
+            expiring.append((expiry, name))
+        cur.execute(f'SELECT COUNT(*) FROM public."{name}"')
+        n = cur.fetchone()[0]
+        held = _count(r.get("rows", ""))
+        if held is None:
+            faults.append(f"{name}: register row count {r.get('rows')!r} "
+                          f"is not a number")
+        elif n != held and status != "modified":
+            faults.append(f"{name}: holds {n:,} rows, registered {held:,}")
+        cur.execute("""
+            SELECT DISTINCT d.relname FROM pg_depend p
+              JOIN pg_rewrite w ON w.oid = p.objid
+              JOIN pg_class d ON d.oid = w.ev_class
+             WHERE p.classid = 'pg_rewrite'::regclass
+               AND p.refobjid = %s AND d.oid <> %s
+            UNION
+            SELECT DISTINCT conname || ' (foreign key)' FROM pg_constraint
+             WHERE contype = 'f' AND (conrelid = %s OR confrelid = %s)
+            UNION
+            SELECT DISTINCT p.proname || '() (function)' FROM pg_proc p
+             WHERE p.pronamespace = 'public'::regnamespace
+               AND p.prosrc ILIKE '%%' || %s || '%%'
+        """, (oid, oid, oid, oid, name))
+        deps = sorted(x[0] for x in cur.fetchall())
+        if deps:
+            faults.append(f"{name}: depended on by {deps}")
+    like_re = re.compile("^" + "".join(
+        ".*" if t == "%" else "." if t == "_" else re.escape(t[-1])
+        for t in re.findall(r"\\.|%|_|[^\\%_]", like)) + "$")
+    for r in rows:
+        name = r["table"]
+        if not like_re.match(name):
+            continue
+        status = r.get("status", "").split(" ")[0].lower()
+        if status not in BACKUP_STATUSES:
+            faults.append(f"register {name}: unknown status {status!r}")
+        elif status == "dropped":
+            if not re.search(r"\d{4}-\d{2}-\d{2}.*rows.*sha256",
+                             r.get("dropped", ""), re.I):
+                faults.append(f"register {name}: dropped row lacks date, "
+                              f"row count and sha256")
+        elif name not in present:
+            faults.append(f"register {name}: says {status} but the table is "
+                          f"absent; record the drop")
+    expiring.sort()
+    nxt = (f"; next expiry {expiring[0][0]} ({sum(1 for e, _ in expiring if e == expiring[0][0])}"
+           f" table(s))" if expiring else "")
+    return (not faults,
+            f"{len(tables)} backup table(s), {total / 1e6:.1f} MB; "
+            f"{len(present & set(reg))} registered{nxt}; "
+            + ("; ".join(faults) if faults else "all registered and in date"))
 
 
 def find_methodology():
@@ -549,7 +701,7 @@ def main():
           -- They are audit evidence of what a table was, so their codes must
           -- not be rewritten, and no product reads them. Gating them would
           -- produce a red that only deleting the evidence could clear.
-          AND c.table_name !~ '_bak_[0-9]{8}$'
+          AND c.table_name !~ '_bak_[0-9]{8}[a-z]?$'
         ORDER BY 1
     """)
     #
@@ -924,6 +1076,20 @@ def main():
              + (f"the single date {view_dates[0]}" if len(view_dates) == 1
                 else f"{len(view_dates)} distinct dates {view_dates}"
                      if view_dates else "no date at all"))
+
+    # ---- Gate 22: backup tables are registered and in date ---------------
+    # Nineteen _bak_ copies (~128 MB) piled up with no owner, reason or end
+    # date. Rule 9: the editions tables are the backup for loaded data; a
+    # _bak_ table is for a one-off non-editions change, registered in
+    # docs/BACKUPS.md before the change, and dropped (with Scott's approval)
+    # by its expiry. This gate only reads; it never drops anything.
+    if BACKUP_REGISTER.exists():
+        ok, detail = backup_gate(cur, BACKUP_REGISTER.read_text(
+            encoding="utf-8"), datetime.date.today())
+    else:
+        ok, detail = False, "docs/BACKUPS.md not found"
+    gate(22, "every backup table is registered, in date and unread",
+         ok, detail)
 
     cur.close()
     conn.close()

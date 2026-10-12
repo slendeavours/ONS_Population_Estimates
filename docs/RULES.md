@@ -2,7 +2,7 @@
 
 One page for the rules that apply to every source. Each rule says what to do and where the detail is. If a source needs an exception, it is written in that source's own doc and says why.
 
-Status: drafted 2026-10-07 from the review. Rules 1 and 2 are new decisions, and rule 8 (period keys) was added 2026-10-08; the rest collect existing rules that were spread across `METHODOLOGY.md`, the decision notes and session notes. The loader standard is described under rule 5.
+Status: drafted 2026-10-07 from the review. Rules 1 and 2 are new decisions, rule 8 (period keys) was added 2026-10-08 and rule 9 (backups) on 2026-10-12; the rest collect existing rules that were spread across `METHODOLOGY.md`, the decision notes and session notes. The loader standard is described under rule 5.
 
 ---
 
@@ -85,7 +85,7 @@ Loaders are to meet one standard, built from shared parts in `scripts/`. The par
 - **Preview by default:** in the loaders on it every command that writes is a dry run unless given `--commit`, with one exception: `ddl` (create the editions table and its triggers if absent) writes when run. `status` is read-only. `--simulate` runs everything and rolls back.
 - **Conformance checker:** `python scripts/check_loaders.py` lists each loader as PASS or with the reasons it does not conform. 25 of 25 loaders conform today (S1, S1b, S2, S3, S3b, S4, S5, S6, S7, S8b, S9a, S9b, S10, S11, S12, S13, S14, S15, S17, S18, S19, S21, S22, S23, S24); no loader is left on its FAIL list. It reports only and does not yet gate a push. Its checks are heuristics and do not yet test use of the blank reader or the shared checks; the verify script remains the real test.
 
-Every registered loader is now on the standard; a loader that stops conforming appears on the checker's FAIL list, which is then the worklist. A source that is never revised may declare `NO_EDITIONS = "<reason>"` instead of using the core, but is still to use the blank reader and shared checks. Related: `docs/decisions/2026-10-07-editions-quarterly-refresh.md`.
+A loader on the standard needs no `_bak_` table: its editions table is the backup (rule 9). Every registered loader is now on the standard; a loader that stops conforming appears on the checker's FAIL list, which is then the worklist. A source that is never revised may declare `NO_EDITIONS = "<reason>"` instead of using the core, but is still to use the blank reader and shared checks. Related: `docs/decisions/2026-10-07-editions-quarterly-refresh.md`.
 
 ## 6. Publishing and privacy
 
@@ -108,3 +108,14 @@ Workflow 1's SQL lives in `sql/w1/`. A change to the columns of `staging_la_sign
 3. **A source whose periods are stored as labels is relabelled in one documented migration** that records the mapping both ways (label to key and key to label), so it can be checked and reversed.
 
 S19 (PIP claimants) is the first case: its months were held as `Apr-26` and `Jul-26`. Detail: `docs/decisions/2026-10-08-s19-month-keys.md` (written with the S19 move onto the loader standard).
+
+## 9. Backups
+
+1. **The editions tables are the backup for loaded data.** A loader on the standard (all 25) never makes a `_bak_` table.
+2. **A backup table is only for a one-off destructive or re-keying change that is not an editions operation** (DDL, a repair, a migration). It is made in the same session as the change, named `<table>_bak_<yyyymmdd>` (a letter suffix, `b`, `c`, for a second one that day), and registered in `docs/BACKUPS.md` **before** the change: table, created date, source table, row count at creation, reason (linking the decision note), who asked, expiry.
+3. **Expiry is 30 days after creation.** One extension of up to 30 days is allowed, with a dated line in the register. The backup is dropped only after the work it protects is signed off (verify scripts pass, Scott told) and not earlier than 7 days after the change. From the day after expiry the gate fails until the table is dropped or extended.
+4. **Dropping a backup is a permanent deletion and needs Scott's explicit approval each time.** The register records the date, row count and a sha256 of the content at the drop, and keeps the row as history; register rows are never deleted.
+5. **A backup has its source table's privacy tier.** A research-tier (S25) backup stays private and local, never in this repository or the source registry.
+6. **A backup is never read**: not by W1, the export, a view, a function or any analysis. A backup kept as a file follows the same rule (name, register row, expiry). Copies of n8n node and workflow code under `build_reports/` are committed evidence of a retirement, not data, and are exempt (see the register).
+
+Checked by gate 22 of `python scripts/verify_source_registry.py` (read-only): every `_bak_` table in `public` is registered, in date, has no dependent view, function or foreign key, and holds the registered row count. The 19 tables made before this rule are registered as grandfathered, expiring 2026-11-11. Detail: `docs/BACKUPS.md`.

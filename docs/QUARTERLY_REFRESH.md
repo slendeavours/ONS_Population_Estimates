@@ -851,7 +851,7 @@ message. It upserted with `INSERT ... ON CONFLICT ... DO UPDATE`, setting
 `loaded_at`, so it overwrote the 17-21 rows already held (it ran at least
 twice on 2026-08-20), added suppressed cells as 0, resolved codes through
 every `la_code_lookup` row (which recoded Bournemouth and Poole 2019 to BCP)
-and recreated its backup table on every run.
+and recreated its backup table on every run. No loader makes a `_bak_` table now; backups follow [RULES.md rule 9](RULES.md#9-backups) and are listed in [BACKUPS.md](BACKUPS.md).
 
 ## S22 MHCLG Council Taxbase and Live Table 615: each November, and each Table 615 update
 
