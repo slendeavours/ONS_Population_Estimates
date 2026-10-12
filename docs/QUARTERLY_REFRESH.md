@@ -778,8 +778,9 @@ now stop with a RETIRED message. The load step upserted with `INSERT ... ON
 CONFLICT (location_id) DO UPDATE`, so each new file replaced the row of every
 location it contained (locations that dropped out of a file kept their earlier
 values). The July and August 2026 snapshots were rebuilt from the files on
-2026-10-09, and the residue rows (128 July, 108 August) also remain in
-`cqc_locations_legacy`; the map step wrote
+2026-10-09, and the residue rows (128 July, 108 August) were held in
+`cqc_locations_legacy` until it was dropped on 2026-10-12 (Scott; record in
+[BACKUPS.md](BACKUPS.md)); the map step wrote
 `cqc_unresolved_locations` on every run with no preview; the fetch step
 overwrote a same-named download and took the date from the file name.
 

@@ -1184,7 +1184,8 @@ SOURCES = [
             "replaced its row, and locations that dropped out kept earlier "
             "values. The July and August 2026 snapshots were rebuilt on "
             "2026-10-09 from the files on disk; the residue rows (128 July, "
-            "108 August) also remain in cqc_locations_legacy. Record: "
+            "108 August) were held in cqc_locations_legacy until it was "
+            "dropped on 2026-10-12 (Scott; docs/BACKUPS.md). Record: "
             "docs/decisions/2026-10-09-s11-editions-first-load.md."),
         source_name="CQC Care directory with filters",
         publisher="CQC",

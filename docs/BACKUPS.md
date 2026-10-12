@@ -37,6 +37,12 @@ The 19 tables below were made before the rule existed and are **grandfathered** 
 
 Total on 2026-10-12: 19 tables, 127.8 MB. All 19 were dropped on 2026-10-12 with Scott's approval (127.8 MB freed); no backup table remains. Each sha256 is written as two 32-hex halves (`first32` then `last32`; join them) so the credential scan, which flags a 64-hex run, stays untouched. It hashes every stored column in table order, each cast to text, NULL as empty, cells joined by `|`, the lines sorted in code-point order and joined by LF; it was computed in the same session immediately before each drop, and each table was dropped in its own transaction with no CASCADE.
 
+**Not a `_bak_` table: the pre-view S11 legacy table.** At the S11 migration (2026-10-09) the old base table `cqc_locations` was renamed `cqc_locations_legacy` and kept, and `cqc_locations` became a view over the snapshot tables ([S11 note](decisions/2026-10-09-s11-editions-first-load.md)). It was never read by W1 or the export. Once the S11 gates no longer read it (commit e5531a3: they check the view against the loader's recorded column types), it was dropped under rule 9's drop procedure with Scott's approval on 2026-10-12. Gate 22 reads only `_bak_` tables, so this row is history, checked by hand. Rows and size were counted, and the sha256 computed by the method above (41 columns), in the same session immediately before the drop; dropped in its own transaction, no CASCADE, with no view, function or foreign key depending on it.
+
+| Table | Created | Source table | Rows | Size MB | Reason | Asked by | Expiry | Extended to | Status | Dropped |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `cqc_locations_legacy` | 2026-10-09 | `cqc_locations` (the pre-view base table, renamed) | 30,797 | 20.97 | S11: the old upserted table, kept at the migration to the snapshot view ([S11 note](decisions/2026-10-09-s11-editions-first-load.md)) | Scott (drop) | - | - | dropped | 2026-10-12; 30,797 rows; sha256-first32=2b584cfd841b140da2c44058fc0ec72b sha256-last32=c616e595e3ad932f47e211359285ecf7; approved by Scott 2026-10-12 |
+
 ## Files
 
 A data backup kept as a file follows the same rule (name, row here, expiry); gate 22 reads the database only, so these rows are checked by hand.
@@ -54,3 +60,4 @@ Dated lines for extensions and drops, newest last.
 - 2026-10-12: register created; 19 tables and one file registered as grandfathered, expiry 2026-11-11 (Scott).
 - 2026-10-12: all 19 tables dropped, approved by Scott 2026-10-12; row counts and sha256 in the table above. Before the drop gate 22 passed and `scripts/s1b_editions_verify.py` exited 0. The three 2026-10-06 tables were dropped 6 days after their change, before rule 9's 7-day minimum, as an exception Scott approved on 2026-10-12. The S1b before-image CSV under Files is not a table and was not dropped.
 - 2026-10-12: Scott asked for the S1b before-image CSV to be dropped too; before deleting, I found it is read by `scripts/s1b_editions.py` and `scripts/s1b_editions_verify.py` to prove edition 1 cell by cell. Scott chose to keep it (option 2): reclassified as a verification input, no expiry, fingerprint recorded above.
+- 2026-10-12: `cqc_locations_legacy` (the pre-view S11 table, not a `_bak_` table) dropped, approved by Scott 2026-10-12; 30,797 rows and sha256 in its row above. Before the drop `scripts/s11_cqc_editions_verify.py` exited 0 with the table present, after its gates were rewritten not to read it.

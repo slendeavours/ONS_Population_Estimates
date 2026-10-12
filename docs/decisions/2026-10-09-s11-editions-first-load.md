@@ -114,6 +114,18 @@ From `ONS_Population_Estimates`:
 - The old loader scripts were retired to `scripts/historical/` on 2026-10-09 (they stop with a RETIRED message).
 - Follow-up, a later and separate decision: whether to drop `cqc_locations_legacy` (30,797 rows) and the old
   `cqc_unresolved_locations` once nobody needs them. Nothing was dropped here.
+  - *Update 2026-10-12:* `cqc_locations_legacy` was **dropped on 2026-10-12 by Scott** (30,797 rows; row count
+    and sha256 in [BACKUPS.md](../BACKUPS.md)). `cqc_unresolved_locations` is not dropped. Before the drop,
+    verify gate 16 (`real_view`), the seeded world of gates 16 and 17 (`_legacy_like`) and the loader test
+    `SpecTests` read the table; they were rewritten (commit e5531a3) to use the loader's `LEGACY_TABLE_TYPES`
+    (key, value columns, state columns, NULL rules, defaults; `legacy_table_sql` adds the primary key). Type
+    proof, 2026-10-12, in a rolled-back transaction with the table present: a table built from
+    `LEGACY_TABLE_TYPES` equalled `cqc_locations_legacy` on all 41 columns (data type, length, precision, scale,
+    nullability, default; 22 NOT NULL) and on its one constraint, `PRIMARY KEY (location_id)`.
+    `s11_cqc_editions_verify.py` exited 0 (22 of 22) before the drop with the table present and after it.
+    Gate 16 no longer compares the view with the table row for row (that branch applied only while no snapshot
+    newer than 2026-09-01 existed; 2026-10-01 exists), so a latest snapshot not newer than 2026-09-01 now fails.
+    The text above is left as written.
 
 ## Review follow-ups (final review, 2026-10-09)
 

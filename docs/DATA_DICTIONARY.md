@@ -456,7 +456,7 @@ Source: MHCLG Council Taxbase (CTB) local authority level workbook and Live Tabl
 |---|---|
 | `total_dwellings` | CTB table 1.01 (Line 1) |
 | `empty_total` | Table 1.18 (Line 15): dwellings classed as empty for council tax |
-| `empty_6_months_plus` | Table 1.19 (Line 16): dwellings classed as empty for more than six months. **Not** MHCLG's long-term vacant figure, which is Line 18 (table 1.22) and excludes empties on discount class D and flood empties (England 309,889 here against 303,185; 178 of 296 authorities differ, 179 rows if England is counted). The map's measure is unchanged; whether it should move to Line 18 is pending Scott (D1) |
+| `empty_6_months_plus` | Table 1.19 (Line 16): dwellings classed as empty for more than six months. **Not** MHCLG's long-term vacant figure, which is Line 18 (table 1.22) and excludes empties on discount class D and flood empties (England 309,889 here against 303,185; 178 of 296 authorities differ, 179 rows if England is counted). The map keeps this measure: Scott decided D1 on 2026-10-12 (keep; Line 18 not adopted) |
 | `empty_under_6_months` | Derived: `empty_total - empty_6_months_plus`; NULL unless both are published |
 | `empty_homes_premium_count` | Table 1.17 (Line 14); not comparable across 1 April 2024 |
 | `second_homes` | Table 1.11 (Line 11); affected by reclassification from 1 April 2025 |
@@ -480,7 +480,7 @@ Since 2026-10-09 each monthly file is kept as a dated snapshot of the CQC regist
 | Text rule | Repeated spaces in text cells (second and later spaces of a run, stored in the ODS as `<text:s/>`) collapse to one space, so a location or provider name with a double space is stored with one. This is a documented transformation, kept from the retired loader so held rows and joins stay stable; 41 July and 43 October cells differ from the file's raw text only by this. |
 | `cqc_location_snapshots_editions_file_checks` | Append-only ledger of every file read. |
 | `cqc_location_snapshots_unresolved` | Append-only: the locations of each snapshot that could not be given a `lad24cd`. |
-| `cqc_locations` | A **view** over the snapshots with the same columns as the old table: one row per location ever seen, with its values from the latest snapshot containing it. W1 and the map export read this view unchanged. The old table is kept as `cqc_locations_legacy` (dropping it is a later, separate decision). `cqc_unresolved_locations` is the old unresolved table, no longer written. |
+| `cqc_locations` | A **view** over the snapshots with the same columns as the old table: one row per location ever seen, with its values from the latest snapshot containing it. W1 and the map export read this view unchanged. The old table, kept as `cqc_locations_legacy` at the migration, was dropped on 2026-10-12 (Scott; record in [BACKUPS.md](BACKUPS.md)); its columns and types are recorded in the loader as `LEGACY_TABLE_TYPES`. `cqc_unresolved_locations` is the old unresolved table, no longer written. |
 
 In the view, `is_active` means the location is in the **latest snapshot**; it does not mean "deregistered". A location absent from the latest file may be deregistered, may have left the Adult social care scope, or may be a late deregistration (CQC's own README says deregistrations can appear late). `deregistered_seen_date` is the date of the first later snapshot that lacks it.
 

@@ -162,10 +162,14 @@ class RealRegister(unittest.TestCase):
         self.assertTrue(ok, detail)
         # All 19 grandfathered tables were dropped on 2026-10-12 (Scott);
         # their register rows stay as history, every one marked dropped.
+        # The 20th row is cqc_locations_legacy (not a _bak_ table; dropped
+        # 2026-10-12, Scott), which gate 22 does not read.
         self.assertIn("0 backup table(s)", detail)
         rows, _ = v.parse_backup_register(
             v.BACKUP_REGISTER.read_text(encoding="utf-8"))
-        self.assertEqual(len(rows), 19)
+        self.assertEqual(len(rows), 20)
+        self.assertEqual(sum(1 for r in rows if "_bak_" in r["table"]), 19)
+        self.assertIn("cqc_locations_legacy", {r["table"] for r in rows})
         self.assertEqual({r["status"] for r in rows}, {"dropped"})
 
 

@@ -6,6 +6,7 @@ Format follows Keep a Changelog. Versioning follows semver where tags are used.
 ## [Unreleased]
 
 ### Removed
+- **`cqc_locations_legacy` dropped (2026-10-12).** The pre-view S11 table kept at the 2026-10-09 migration (30,797 rows) was dropped under rule 9 with Scott's approval, after the S11 gates and tests were rewritten to check against the loader's recorded column types (`LEGACY_TABLE_TYPES`) instead of the table; a table built from those types equalled the legacy table on all 41 columns and its primary key before the drop. Row count and sha256 (two halves) in `docs/BACKUPS.md`; `s11_cqc_editions_verify.py` exit 0 before and after; registry row 11 and the retired S11 messages now say the residue rows were held there until the drop.
 - **The 19 grandfathered backup tables (2026-10-12).** All 19 `_bak_` tables were dropped under rule 9, approved by Scott on 2026-10-12, freeing 127.8 MB; row counts and sha256 (two halves) are in `docs/BACKUPS.md`, whose rows stay as history. The S1b before-image CSV is a file and remains registered.
 
 ### Changed
