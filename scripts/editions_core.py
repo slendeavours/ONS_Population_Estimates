@@ -20,6 +20,10 @@ Read side and refresh:
     period_hashes    per-period content hash of the live or editions table
     refuse_non_live  live_single_period / live_newest_period_only: halt on a
                      named period not in live
+    empty_periods / empty_state / empty_live
+                     empty_periods_allowed: periods recorded with no rows (a
+                     ledger row), the latest state, and refresh-latest's
+                     emptying of live
 
 Extracted from s1_editions.py (create_schema, insert_edition, the chain
 validator in latest_edition, and the generic read/refresh pieces), compared
@@ -156,6 +160,21 @@ class EditionSpec:
     the live one, and stores an older one as editions only
     ('held-not-live'). Mutually exclusive with live_single_period. False
     keeps every statement and result as before.
+    empty_periods_allowed: opt-in (default False), for a newest-period
+    source whose newest file may hold no row at all (S24's enforcement
+    notices: Scott's Option C, 2026-10-12). Needs live_newest_period_only
+    and refresh_key_changes. A period may then be recorded EMPTY: one row
+    in the spec's file-check ledger (file_checks_table) with outcome
+    'empty', edition NULL and a named acknowledgement, and no editions row
+    (empty_periods). The newest period wins: an empty period newer than
+    every editions period is the latest state (empty_state 'latest'). While
+    live still holds an older period that is pending (status 'empty_pending',
+    ok false), and refresh-latest halts unless --accept-key-changes names
+    the empty period; named, it deletes every live row of the older period
+    and inserts none (the older period's editions stay, as history). A
+    later period with rows replaces the empty state as any newer period
+    does; a period with editions rows is never empty. False keeps every
+    statement and result as before.
     """
     name: str
     live_table: str
@@ -177,6 +196,7 @@ class EditionSpec:
     whole_period_cols: tuple = ()
     live_single_period: bool = False
     live_newest_period_only: bool = False
+    empty_periods_allowed: bool = False
 
     def __post_init__(self):
         for n in (self.name, self.live_table, self.editions_table,
@@ -244,6 +264,12 @@ class EditionSpec:
             raise ValueError(f"{self.name}: live_newest_period_only and "
                              "live_single_period are mutually exclusive "
                              "(choose one)")
+        if self.empty_periods_allowed and not (self.live_newest_period_only
+                                               and self.refresh_key_changes):
+            raise ValueError(f"{self.name}: empty_periods_allowed needs "
+                             "live_newest_period_only and refresh_key_changes "
+                             "(the newest period wins, and emptying live is a "
+                             "key change named with --accept-key-changes)")
 
     @property
     def whole_period_pairs(self) -> tuple:
@@ -517,13 +543,85 @@ class LatestMap(tuple):
     from live, sorted (filled for a live_single_period spec only; [] for
     every other spec, whose editions table is then not read for it), and
     history: the same for a live_newest_period_only spec (the periods older
-    than, or otherwise not, the live one; [] for every other spec)."""
+    than, or otherwise not, the live one; [] for every other spec). For an
+    empty_periods_allowed spec, empty: the periods recorded empty, and
+    empty_pending: the newest of them when it is the latest state and live
+    still holds an older period (else None); [] and None for every other
+    spec."""
 
-    def __new__(cls, tips, new, errors, held_not_live=(), history=()):
+    def __new__(cls, tips, new, errors, held_not_live=(), history=(),
+                empty=(), empty_pending=None):
         obj = super().__new__(cls, (tips, new, errors))
         obj.held_not_live = list(held_not_live)
         obj.history = list(history)
+        obj.empty = list(empty)
+        obj.empty_pending = empty_pending
         return obj
+
+
+EMPTY = "empty"   # the ledger outcome of a period recorded with no rows
+
+
+def file_checks_table(spec: EditionSpec) -> str:
+    """The spec's file-check ledger (period_editions owns its schema)."""
+    return f"{_ident(spec.editions_table)}_file_checks"
+
+
+def empty_periods(cur, spec: EditionSpec) -> list:
+    """empty_periods_allowed: the periods with an 'empty' ledger row and no
+    editions row, sorted (database values). A period with editions rows is
+    never empty (rows recorded later win). [] for every other spec, and
+    when the ledger does not exist, without reading it."""
+    if not spec.empty_periods_allowed:
+        return []
+    led, pc = file_checks_table(spec), spec.period_col
+    cur.execute("SELECT to_regclass(%s)", (f"public.{led}",))
+    if cur.fetchone()[0] is None:
+        return []
+    cur.execute(f"SELECT DISTINCT f.{pc} FROM public.{led} f "
+                f"WHERE f.outcome = %s AND NOT EXISTS (SELECT 1 FROM "
+                f"public.{spec.editions_table} e WHERE e.{pc} = f.{pc}) "
+                "ORDER BY 1", (EMPTY,))
+    return [r[0] for r in cur.fetchall()]
+
+
+def empty_state(cur, spec: EditionSpec) -> "dict | None":
+    """None for a spec without empty_periods_allowed (no query). Else
+    {empty, latest, pending, live}: empty the periods recorded empty;
+    latest the newest of them when it is newer than every editions period
+    (the latest state of the source: the newest period wins), else None;
+    pending that period when live still holds rows (of an older period),
+    else None; live the live periods. Periods compare as strings (rule 8)."""
+    if not spec.empty_periods_allowed:
+        return None
+    pc = spec.period_col
+    empties = empty_periods(cur, spec)
+    cur.execute(f"SELECT DISTINCT {pc} FROM public.{spec.live_table} "
+                "ORDER BY 1")
+    live = [r[0] for r in cur.fetchall()]
+    latest = None
+    if empties:
+        newest = max(empties, key=str)
+        cur.execute(f"SELECT MAX({pc}::text) FROM "
+                    f"public.{spec.editions_table}")
+        top = cur.fetchone()[0]
+        if top is None or str(newest) > top:
+            latest = newest
+    pending = latest if latest is not None and live else None
+    return {"empty": empties, "latest": latest, "pending": pending,
+            "live": live}
+
+
+def split_empty_names(cur, spec: EditionSpec, names) -> tuple:
+    """(names of periods recorded empty, the other names) of an
+    --accept-key-changes list, compared as strings. ((), names) for a spec
+    without empty_periods_allowed, without a query."""
+    names = tuple(names)
+    if not spec.empty_periods_allowed or not names:
+        return (), names
+    known = {str(p) for p in empty_periods(cur, spec)}
+    return (tuple(n for n in names if str(n) in known),
+            tuple(n for n in names if str(n) not in known))
 
 
 def one_live_period(spec: EditionSpec) -> bool:
@@ -581,6 +679,11 @@ def latest_map(cur, spec: EditionSpec) -> tuple:
     held = (held_not_live_periods(cur, spec) if spec.live_single_period
             else ())
     if spec.live_newest_period_only:
+        es = empty_state(cur, spec)
+        if es is not None:
+            return LatestMap(tips, new, errors, (),
+                             held_not_live_periods(cur, spec), es["empty"],
+                             es["pending"])
         return LatestMap(tips, new, errors, (),
                          held_not_live_periods(cur, spec))
     return LatestMap(tips, new, errors, held)
@@ -729,6 +832,16 @@ def status(cur, spec: EditionSpec) -> dict:
         out["held_not_live"] = sorted(lm.held_not_live)
     if spec.live_newest_period_only:
         out["history"] = sorted(lm.history)
+    if spec.empty_periods_allowed:
+        # empty: information; empty_latest: the latest state has no rows;
+        # empty_pending: live still holds an older period (a fault until
+        # refresh-latest --accept-key-changes names the empty period)
+        es = empty_state(cur, spec)
+        out["empty"] = sorted(es["empty"], key=str)
+        out["empty_latest"] = es["latest"]
+        out["empty_pending"] = ([es["pending"]] if es["pending"] is not None
+                                else [])
+        out["ok"] = ok and not out["empty_pending"]
     return out
 
 
@@ -1182,6 +1295,20 @@ def _source_problems(cur, spec: EditionSpec, pairs) -> list:
 def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
                    accept_key_changes: tuple = (),
                    _after_update_hook=None) -> dict:
+    """See _refresh_latest. An empty_periods_allowed spec runs it inside one
+    savepoint, so the live delete of empty_live cannot stay in the caller's
+    transaction when a later check halts; any other spec runs it as before."""
+    if not spec.empty_periods_allowed:
+        return _refresh_latest(cur, spec, accept_drift, accept_key_changes,
+                               _after_update_hook)
+    with _own_savepoint(cur, "editions_core_refresh_outer"):
+        return _refresh_latest(cur, spec, accept_drift, accept_key_changes,
+                               _after_update_hook)
+
+
+def _refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
+                    accept_key_changes: tuple = (),
+                    _after_update_hook=None) -> dict:
     """Copy the latest edition into the live table for every period whose
     live rows differ from it (NULL-safe); return a result dict.
 
@@ -1230,13 +1357,27 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
     spec.live_newest_period_only): the same; a history period is never
     planned and naming one halts.
 
+    Empty periods (opt-in, spec.empty_periods_allowed): when the latest
+    state is a period recorded empty and live still holds an older period,
+    refresh-latest halts unless accept_key_changes names the empty period;
+    named, empty_live deletes every live row (each live period must equal a
+    stored edition of it, so nothing is lost) in a savepoint of its own,
+    checks the editions untouched and live empty, and the usual refresh then
+    finds nothing to do. Naming an empty period with nothing to empty halts.
+
     Result: {'updated': {period: rows}, 'rows': n, 'drift_accepted': [...],
     'inserted': {period: rows}, 'deleted': {period: rows}} (inserted and
-    deleted name only the periods with key changes applied).
+    deleted name only the periods with key changes applied); an
+    empty_periods_allowed spec's also has 'emptied' ({live period: rows
+    deleted}, {} when nothing was emptied) and 'empty' (the empty period
+    applied, or None).
     """
+    empty_named, rest = split_empty_names(cur, spec, accept_key_changes)
     refuse_non_live(cur, spec, tuple(accept_drift), "--accept-drift")
-    refuse_non_live(cur, spec, tuple(accept_key_changes),
-                    "--accept-key-changes")
+    refuse_non_live(cur, spec, rest, "--accept-key-changes")
+    emptied = (empty_live(cur, spec, empty_named)
+               if spec.empty_periods_allowed else None)
+    accept_key_changes = rest
     plan, drift = _plan(cur, spec, accept_drift)
     if drift:
         halt("live differs from the latest edition and matches no stored "
@@ -1253,6 +1394,8 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
               "drift_accepted": sorted(p for p, v in plan.items()
                                        if v["kind"] == "drift"),
               "inserted": {}, "deleted": {}}
+    if emptied is not None:
+        result["emptied"], result["empty"] = emptied
     if not plan:
         return result
     refreshed = set(plan)
@@ -1325,3 +1468,72 @@ def refresh_latest(cur, spec: EditionSpec, accept_drift: tuple = (),
     result["inserted"] = inserted
     result["deleted"] = deleted
     return result
+
+
+def empty_plan(cur, spec: EditionSpec) -> "tuple | None":
+    """(empty period, {live period: live rows}) when the latest state is a
+    period recorded empty and live still holds rows; None otherwise (also
+    for a spec without empty_periods_allowed, without a query)."""
+    es = empty_state(cur, spec)
+    if es is None or es["pending"] is None:
+        return None
+    counts = live_period_counts(cur, spec)
+    return es["pending"], {p: counts[p] for p in sorted(counts, key=str)}
+
+
+def empty_live(cur, spec: EditionSpec, named=()) -> tuple:
+    """empty_periods_allowed: apply a pending empty state (see
+    refresh_latest). named: the --accept-key-changes values that name
+    periods recorded empty. Returns ({live period: rows deleted}, the empty
+    period) or ({}, None) when nothing was pending. Halts, writing nothing,
+    when an empty state is pending and not named, when a named empty period
+    is not the pending one, or when a live period equals no stored edition
+    of it (drift) or has none."""
+    ep = empty_plan(cur, spec)
+    named = sorted({str(n) for n in named})
+    if ep is None:
+        if named:
+            halt(f"--accept-key-changes {named}: recorded empty, but nothing "
+                 "to empty (live holds no older period's rows, or a newer "
+                 "period with rows is held)")
+        return {}, None
+    period, older = ep
+    p = str(period)
+    rows = sum(older.values())
+    lp = ", ".join(f"{o} ({n} rows)" for o, n in older.items())
+    if p not in named:
+        halt(f"{p} is recorded EMPTY (the newest period, no rows) and "
+             f"{spec.live_table} still holds {lp}. Re-run with "
+             f"--accept-key-changes {p} to delete those {rows} live rows "
+             f"(they stay in {spec.editions_table} as history)")
+    stray = [n for n in named if n != p]
+    if stray:
+        halt(f"--accept-key-changes {stray}: recorded empty but not the "
+             f"newest empty period {p}; nothing to empty there")
+    for o in older:
+        try:
+            tip = chain_tip(cur, spec, o)
+        except LookupError:
+            halt(f"{p}: the live period {o} has no editions; its live rows "
+                 "would be lost, nothing emptied")
+        except ValueError as e:
+            halt(f"{p}: the live period {o}: {e}")
+        if classify_period(cur, spec, o, tip)[0] == "drift":
+            halt(f"{p}: the live rows of {o} equal no stored edition of it "
+                 "(drift); they would be lost, nothing emptied")
+    with _own_savepoint(cur, "editions_core_empty"):
+        ed_b = period_hashes(cur, spec, "editions")
+        cur.execute(f"DELETE FROM public.{spec.live_table}")
+        deleted = cur.rowcount
+        bad = []
+        if deleted != rows:
+            bad.append(f"deleted {deleted} live rows, expected {rows}")
+        cur.execute(f"SELECT COUNT(*) FROM public.{spec.live_table}")
+        if cur.fetchone()[0]:
+            bad.append("live is not empty after the delete")
+        if period_hashes(cur, spec, "editions") != ed_b:
+            bad.append("the editions table changed")
+        if bad:
+            halt("refresh-latest (empty period) failed its checks, rolled "
+                 "back: " + "; ".join(bad))
+    return dict(older), period

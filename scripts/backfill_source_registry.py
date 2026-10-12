@@ -2702,7 +2702,7 @@ SOURCES = [
         verification_checks={
             "method": "editions",
             "script": "scripts/s24_rsh_register_editions_verify.py",
-            "checks": 21,
+            "checks": 22,
             "first_load": "2026-10-11",
             "migration_proof": ("migrate-legacy: edition 1 as held for every "
                                 "period (5,357 rows), proved against the held "

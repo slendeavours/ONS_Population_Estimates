@@ -64,6 +64,12 @@ Gates:
  20  restore-edition round trip, all three tables
  21  no network, no secret in source or output, nothing left committed, a
      download never overwrites a same-named file with different content
+ 22  a notices-free judgements issue (Scott's Option C, 2026-10-12): REJECTED
+     without --acknowledge-no-notices; with it the judgements load and the
+     notices period is recorded empty (one ledger row, no editions row);
+     refresh-latest --accept-key-changes PERIOD empties live notices, the
+     history stays; a re-read is skipped; a later issue restores live; a
+     missing or changed header still halts
 
 The decision note's hash lines are scan-safe: a 64-hex run would be flagged
 by the credential scan, so a sha256 is written as two 32-hex halves in two
@@ -99,6 +105,7 @@ read-only connection checks that no zz% table or function was left behind.
 """
 import ast
 import contextlib
+import dataclasses
 import hashlib
 import io
 import os
@@ -239,6 +246,27 @@ def _edition_periods(cur, spec):
     cur.execute(f"SELECT DISTINCT {spec.period_col} FROM "
                 f"public.{spec.editions_table} ORDER BY 1")
     return [str(r[0]) for r in cur.fetchall()]
+
+
+def empty_latest(cur, spec):
+    """The period recorded empty that live holds as no rows (the notices
+    after a notices-free judgements issue, Scott's Option C of 2026-10-12):
+    the newest empty period, newer than every editions period, with live
+    empty. None otherwise (also for a spec that does not opt in), so an
+    empty live table without that record is still not a pass."""
+    es = core.empty_state(cur, spec)
+    if es is None or es["latest"] is None or es["live"]:
+        return None
+    return pe._p(es["latest"])
+
+
+def empty_pending(cur, spec):
+    """The period recorded empty whose empty state live does not hold yet
+    (refresh-latest --accept-key-changes PERIOD not run), else None."""
+    es = core.empty_state(cur, spec)
+    if es is None or es["pending"] is None:
+        return None
+    return pe._p(es["pending"])
 
 
 # ------------------------------------------------------------ throwaway data
@@ -488,9 +516,31 @@ def _constraint_names(cur, table, kind):
     return {r[0] for r in cur.fetchall()}
 
 
-def shape_problems(cur, spec):
+def empty_ledger_problems(cur, spec):
+    """An empty_periods_allowed spec's ledger must take an 'empty' row (the
+    acknowledgement column, 'empty' in the outcome check, the empty-row
+    check that wants no edition and a named acknowledgement); [] for any
+    other spec."""
+    if not spec.empty_periods_allowed:
+        return []
+    led = ledger_name(spec)
+    lc = _columns(cur, led)
+    bad = []
+    if tuple(lc.get("acknowledgement") or ()) != ("text", "YES"):
+        bad.append(f"{led}: acknowledgement is {lc.get('acknowledgement')}, "
+                   "expected ('text', 'YES')")
+    defs = pe._check_defs(cur, led)
+    if "'empty'" not in defs.get(f"{led}_outcome_check", ""):
+        bad.append(f"{led}: the outcome check does not allow 'empty'")
+    chk = defs.get(f"{led}_empty_chk", "")
+    if not ("edition IS NULL" in chk and "acknowledgement IS NOT NULL" in chk):
+        bad.append(f"{led}: empty-row check is {chk!r}")
+    return bad
+
+
+def shape_problems(cur, spec, *, empty_required=True):
     """Problems with the editions table, the live table and the ledger of a
-    spec."""
+    spec (empty_required: also the 'empty' row of an opted-in ledger)."""
     bad = []
     led = ledger_name(spec)
     for t in (spec.editions_table, spec.live_table, led):
@@ -556,6 +606,8 @@ def shape_problems(cur, spec):
         bad.append(f"{led}: outcome check is {chk!r}")
     bad += _triggers(cur, led, f"{spec.name}_file_checks_immutable",
                      f"{spec.name}_file_checks_no_truncate")
+    if empty_required:
+        bad += empty_ledger_problems(cur, spec)
     return bad
 
 
@@ -595,14 +647,45 @@ def gate_1_table_shape_and_immutability(cur):
     for k, msg in immutability(cur, stmts, seed).items():
         if not (msg and "append-only" in msg):
             bad.append(f"{k} not refused ({msg})")
+    # ddl brings a ledger made before the empty-period opt-in up to date, in
+    # place and idempotently, keeping its rows and its triggers
+    def upgrade(cur):
+        s = ZZ["notices"]
+        old = m.PROFILES["notices"].with_spec(
+            dataclasses.replace(s, empty_periods_allowed=False))
+        led = ledger_name(s)
+        cur.execute(f"DROP TABLE public.{led}")
+        pe.create_file_checks(cur, old)
+        pe.record_file_check(cur, old, J_SEP, "f (judgements x)", "ab" * 32,
+                             "new", 1)
+        got = [bool(empty_ledger_problems(cur, s))]
+        with tl.specs():
+            m.create_all(cur)
+            m.create_all(cur)
+        got.append(empty_ledger_problems(cur, s))
+        got.append(cnt(cur, led))
+        got.append(_triggers(cur, led, f"{s.name}_file_checks_immutable",
+                             f"{s.name}_file_checks_no_truncate"))
+        return got
+    old_bad, after, rows, trig = _in_savepoint(cur, upgrade)
+    if not old_bad or after or rows != 1 or trig:
+        bad.append(f"ddl upgrade of an old notices ledger: before flagged "
+                   f"{old_bad}, after {after}, rows {rows}, triggers {trig}")
     scope = "throwaway copies"
+    note = ""
     if exists(cur):
         scope += " and real tables"
         bad += [f"real: {p}" for s in REAL.values()
-                for p in shape_problems(cur, s)]
+                for p in shape_problems(cur, s, empty_required=False)]
+        pend = [p for s in REAL.values() for p in empty_ledger_problems(cur, s)]
+        note = ("; NOTE real notices ledger not yet upgraded for an empty "
+                "issue (run ddl --commit before a notices-free issue is "
+                "loaded; the load rejects it until then)" if pend else
+                "; the real notices ledger takes an 'empty' row")
     report(1, name, not bad, "; ".join(bad[:4]) if bad else
            f"checked on the {scope}; UPDATE/DELETE/TRUNCATE raise "
-           "append-only on the three editions tables and the three ledgers")
+           "append-only on the three editions tables and the three ledgers; "
+           "ddl upgrades an old notices ledger in place" + note)
 
 
 # ---------------------------------------------------------------- gate 2
@@ -620,10 +703,19 @@ def real_edition1_and_latest(cur, specs=None):
     for name in NAMES:
         spec = specs[name]
         periods = _live_periods(cur, spec)
+        held = _edition_periods(cur, spec)
+        if not periods and empty_latest(cur, spec):
+            parts.append(f"{spec.live_table} empty: {empty_latest(cur, spec)}"
+                         f" recorded empty, {len(held)} held as history")
+            continue
         if not periods:
             bad.append(f"{spec.live_table}: {EMPTY}")
             continue
-        held = _edition_periods(cur, spec)
+        if empty_pending(cur, spec):
+            bad.append(f"{spec.live_table}: {empty_pending(cur, spec)} is "
+                       "recorded empty but live still holds "
+                       f"{periods} (refresh-latest --accept-key-changes "
+                       f"{empty_pending(cur, spec)})")
         for p in periods:
             if not cnt(cur, spec.editions_table,
                        f"WHERE {spec.period_col} = %s AND edition = 1", (p,)):
@@ -814,7 +906,7 @@ def real_provenance(cur, specs=None):
             n = cnt(cur, t, f"WHERE {w}")
             if n:
                 bad.append(f"{t}: {n} row(s) missing a provenance field")
-        if not _live_periods(cur, spec):
+        if not _live_periods(cur, spec) and not empty_latest(cur, spec):
             bad.append(f"{spec.live_table}: {EMPTY}")
         for p in _live_periods(cur, spec):
             cur.execute(f"SELECT DISTINCT {', '.join(m.LIVE_PROVENANCE)} "
@@ -1898,8 +1990,17 @@ def gate_9_stop_conditions(cur):
 
     def no_notices(e):
         e.judgements(nrows=[])
-    case("a judgements file with no enforcement notices", no_notices,
-         jud_load, "no enforcement notices", J, J_SEP)
+
+    def no_notices_after(e):
+        # neither --acknowledge nor --accept-reissue releases it
+        for extra in (["--acknowledge", J_SEP], ["--accept-reissue", J_SEP]):
+            bad = rejects(e, jud_load + extra, "--acknowledge-no-notices", J,
+                          J_SEP)
+            if bad:
+                problems.append(f"no notices with {extra[0]}: {bad}")
+    case("a judgements file with no enforcement notices, unacknowledged",
+         no_notices, jud_load, "--acknowledge-no-notices", J, J_SEP,
+         no_notices_after)
 
     def legacy_two(e):
         e.judgements("20260812", jrows=JROWS[:4] + [
@@ -1943,7 +2044,9 @@ def gate_9_stop_conditions(cur):
            "a register losing 40 providers, adding 40, a judgements edition "
            "at 30% of the last, a reissue with other content, a held "
            "judgements re-read, a wrong correction count, a file with no "
-           "notices and a new edition while live holds two periods are each "
+           "notices (without --acknowledge-no-notices; --acknowledge and "
+           "--accept-reissue do not release it) and a new edition while live "
+           "holds two periods are each "
            "REJECTED with exit 1, nothing stored, no ledger row and a "
            "partial run-log row; --acknowledge (and --accept-reissue with "
            "it) releases and logs; a stray acknowledgement, a repeated and a "
@@ -2369,6 +2472,16 @@ def real_history(cur, specs=None):
         spec = specs[name]
         prof = m.PROFILES[name].with_spec(spec)
         live, held = _live_periods(cur, spec), _edition_periods(cur, spec)
+        e = empty_latest(cur, spec)
+        if not live and held and e:
+            st = pe.status(cur, prof)
+            if not st["ok"] or st.get("history") != held:
+                bad.append(f"{name}: recorded empty {e}, status ok "
+                           f"{st['ok']}, history {st.get('history')}, "
+                           f"expected {held}")
+            parts.append(f"{name} live empty ({e} recorded empty), history "
+                         f"{held}")
+            continue
         if not live or not held:
             bad.append(f"{spec.live_table}: {EMPTY}")
             continue
@@ -2463,8 +2576,13 @@ def real_refreshed(cur, specs=None):
         except SystemExit as e:       # two live periods: the engine halts
             bad.append(f"{spec.live_table}: {_first(e.code)[:120]}")
             continue
-        if not tips and not new:
+        if not tips and not new and not empty_latest(cur, spec):
             bad.append(f"{spec.live_table}: {EMPTY}")
+        if empty_pending(cur, spec):
+            bad.append(f"{spec.live_table}: {empty_pending(cur, spec)} is "
+                       "recorded empty, live not yet emptied (pending: "
+                       "refresh-latest --accept-key-changes "
+                       f"{empty_pending(cur, spec)})")
         if new or errors:
             bad.append(f"{spec.live_table}: periods with no editions "
                        f"{sorted(map(str, new))}, chain errors {errors}")
@@ -3268,6 +3386,168 @@ def gate_21_no_network_no_secrets(cur):
            f"{in_out or 'none'}")
 
 
+# ---------------------------------------------------------------- gate 22
+
+def _empty_rows(cur, period):
+    led = ledger_name(ZZ["notices"])
+    cur.execute(f"SELECT outcome, edition, acknowledgement, source_file, "
+                f"file_sha256 FROM public.{led} WHERE edition_date = %s "
+                "ORDER BY id", (period,))
+    return cur.fetchall()
+
+
+def gate_22_empty_notices(cur):
+    name = ("a notices-free judgements issue (Scott's Option C, 2026-10-12): "
+            "stored only with --acknowledge-no-notices, the notices recorded "
+            "empty, live notices emptied by refresh-latest, history kept")
+    problems = []
+    OCT, NOV = "2026-10-07", "2026-10-21"
+    J = ("judgements", "notices")
+    NOT = ZZ["notices"]
+    load = ["load", "--only", "judgements", "--commit"]
+    ack = ["--acknowledge-no-notices", OCT]
+    D = datetime
+
+    def body(e):
+        e.completed()
+        path = e.judgements("20261007", nrows=[],
+                            changes=(OCT, J_SEP, J_AUG))
+        url = e.last_url
+        # unacknowledged: REJECTED, nothing stored, a partial run-log row
+        bad = rejects(e, load, "--acknowledge-no-notices", J, OCT)
+        if bad:
+            problems.append(f"unacknowledged: {bad}")
+        # a stray flag halts with nothing stored
+        ok, t = e.halts(load + ["--acknowledge-no-notices", "2026-10-08"],
+                        state(e.cur), "--acknowledge-no-notices")
+        if not ok:
+            problems.append(f"a stray --acknowledge-no-notices: {t[-100:]}")
+        # the preview and --simulate with the flag write nothing
+        snap = state(e.cur)
+        for extra in ([], ["--simulate"]):
+            rc, text, logged = e.cmd(["load", "--only", "judgements"] + ack
+                                     + extra)
+            if rc != 0 or state(e.cur) != snap or logged.called or \
+                    f"notices {OCT}: empty" not in text:
+                problems.append(f"load {' '.join(extra) or 'preview'} with "
+                                f"the flag wrote or did not say empty: rc "
+                                f"{rc}: {text[-120:]}")
+        ed = core.period_hashes(e.cur, NOT, "editions")
+        text, logged = e.ok(e.cur, load + ack)
+        if tl.editions(e.cur, "judgements", OCT) != [(1, None, len(JROWS))] \
+                or tl.live_periods(e.cur, "judgements") != [(OCT, len(JROWS))]:
+            problems.append("the judgements of the notices-free issue did not "
+                            "load as usual")
+        if tl.editions(e.cur, "notices", OCT):
+            problems.append("an empty notices issue stored editions rows")
+        got = _empty_rows(e.cur, OCT)
+        want = ("empty", None)
+        if len(got) != 1 or got[0][:2] != want or \
+                f"--acknowledge-no-notices {OCT}" not in (got[0][2] or "") or \
+                not str(got[0][3]).startswith(url) or \
+                got[0][4] != m.content_sha256(path):
+            problems.append(f"the empty ledger row is {got}")
+        if core.period_hashes(e.cur, NOT, "editions") != ed:
+            problems.append("the notices editions changed at the load")
+        notes = logged.call_args[0][2] if logged.called else ""
+        if f"notices {OCT} empty" not in notes or \
+                f"ACKNOWLEDGED NO NOTICES {OCT}" not in notes:
+            problems.append(f"run-log notes: {notes[:160]}")
+        # pending until refresh-latest: live notices are still September's
+        if tl.live_periods(e.cur, "notices") != [(J_SEP, 1)]:
+            problems.append("the load changed the live notices")
+        ok, d = real_refreshed(e.cur, ZZ)
+        if ok or "recorded empty" not in d:
+            problems.append(f"the pending empty state passes: {d[:100]}")
+        rc, text, _ = e.cmd(["status"])
+        if rc != 1 or f"--accept-key-changes {OCT}" not in text:
+            problems.append("status does not name the pending refresh")
+        snap = state(e.cur)
+        rc, text, logged = e.cmd(["refresh-latest"])
+        if rc != 0 or state(e.cur) != snap or logged.called or \
+                f"{OCT} is recorded empty" not in text:
+            problems.append(f"the refresh preview: rc {rc}: {text[-120:]}")
+        ok, t = e.halts(["refresh-latest", "--commit"], snap,
+                        f"--accept-key-changes {OCT}")
+        if not ok:
+            problems.append(f"refresh without the period named: {t[-100:]}")
+        e.ok(e.cur, ["refresh-latest", "--accept-key-changes", OCT,
+                     "--commit"])
+        if tl.live_periods(e.cur, "notices"):
+            problems.append("live notices not empty after the refresh")
+        if core.period_hashes(e.cur, NOT, "editions") != ed or not all(
+                tl.editions(e.cur, "notices", p) for p in (J_AUG, J_SEP)):
+            problems.append("the notices history changed")
+        for fn in (real_edition1_and_latest, real_provenance, real_history,
+                   real_refreshed):
+            ok, d = fn(e.cur, ZZ)
+            if not ok:
+                problems.append(f"{fn.__name__} on the empty state: {d}")
+        st = pe.status(e.cur, m.profile("notices"))
+        if not st["ok"] or st["history"] != [J_AUG, J_SEP] or \
+                st["empty"] != [OCT]:
+            problems.append(f"notices status after the refresh: {st}")
+        # a byte-identical re-read is unchanged
+        snap = state(e.cur)
+        text, logged = e.ok(e.cur, load)
+        if "already in both ledgers" not in text or logged.called or \
+                state(e.cur) != snap:
+            problems.append("a byte-identical re-read was not skipped")
+        # a later issue with notices restores live
+        e.judgements("20261021", changes=(NOV, OCT, J_SEP))
+        text, _ = e.ok(e.cur, load)
+        if tl.live_periods(e.cur, "notices") != [(NOV, 1)] or \
+                f"notices {NOV}: new" not in text:
+            problems.append(f"a later issue did not restore live: "
+                            f"{tl.live_periods(e.cur, 'notices')}")
+        ok, d = real_history(e.cur, ZZ)
+        st = pe.status(e.cur, m.profile("notices"))
+        if not ok or st["empty"] != [OCT] or st["history"] != [J_AUG, J_SEP]:
+            problems.append(f"after the later issue: {ok} {d[:100]} {st}")
+
+    def headers(e):
+        e.completed()
+        snap = state(e.cur)
+        nohead = write_book(e.root / "nh" / "20261007_RJN_published.xlsx", [
+            ("Regulatory Judgements", [list(m.JUDGEMENT_HEADERS)]
+             + list(JROWS), "visible"),
+            ("Enforcement Notices", [], "visible")], D(2026, 10, 7, 11))
+        changed = write_judgements(
+            e.root / "ch" / "20261007_RJN_published.xlsx", nrows=[],
+            nheader=["Reg Code", "Provider"], modified=D(2026, 10, 7, 11))
+        for label, p, needle in (("no header", nohead, "is empty"),
+                                 ("a changed header", changed,
+                                  "header changed")):
+            ok, t = e.halts(["load", "--only", "judgements", "--file", p,
+                             "--no-page", "--commit"] + ack, snap, needle,
+                            rc_ok=("halt",))
+            if not ok:
+                problems.append(f"{label}: not an identity halt: {t[-100:]}")
+        # an empty reissue of a held issue whose notices have rows
+        e.judgements("20260930", nrows=[], modified=D(2026, 9, 30, 15))
+        bad = rejects(e, load + ["--acknowledge", J_SEP,
+                                 "--acknowledge-no-notices", J_SEP],
+                      "held with rows", J, J_SEP)
+        if bad:
+            problems.append(f"an empty reissue of a held issue: {bad}")
+    scenario(cur, body)
+    scenario(cur, headers)
+    report(22, name, not problems,
+           "unacknowledged it is REJECTED (nothing stored, partial run-log "
+           "row; --acknowledge and --accept-reissue do not release it); the "
+           "preview and --simulate write nothing; acknowledged, the "
+           "judgements load as usual and the notices period is one 'empty' "
+           "ledger row naming the acknowledgement, the file's URL and sha256 "
+           "(no editions row, the run log names it); status and the real "
+           "checks name the pending refresh, which halts unless "
+           "--accept-key-changes names the issue, then empties live with the "
+           "notices history unchanged and every real check passing; a "
+           "byte-identical re-read is skipped; a later issue with notices "
+           "restores live; a missing or changed header halts as an identity "
+           "failure; an empty reissue of a held issue is rejected"
+           if not problems else "; ".join(problems[:3]))
+
+
 # --------------------------------------------------------------------- main
 
 GATES = (gate_1_table_shape_and_immutability, gate_2_edition1_and_latest,
@@ -3277,7 +3557,8 @@ GATES = (gate_1_table_shape_and_immutability, gate_2_edition1_and_latest,
          gate_11_ledger_skip, gate_12_preview, gate_13_reread,
          gate_14_newer_judgements, gate_15_refresh,
          gate_16_before_state_hash, gate_17_migration_proof, gate_18_rerun,
-         gate_19_stranded, gate_20_restore, gate_21_no_network_no_secrets)
+         gate_19_stranded, gate_20_restore, gate_21_no_network_no_secrets,
+         gate_22_empty_notices)
 
 
 def run_gate(cur, gate):

@@ -80,14 +80,28 @@ districts** (from the held files: geometry and `Shape__Area` differ on all 294; 
 such a vintage as editions only and never promotes it. See [2026-10-10-reference-trio-editions-first-load.md](2026-10-10-reference-trio-editions-first-load.md)
 and `docs/s7_boundaries_source.md`. Likewise a new IoD year can only reach `la_imd_2025` by a deliberate change to its CHECK.
 
-### 8. For Scott: S24 judgements file with no enforcement notices (opened 2026-10-11, not decided)
+### 8. S24 judgements file with no enforcement notices (closed 2026-10-12: Option C)
 
-A judgements file whose notices sheet is empty is REJECTED by `scripts/s24_rsh_register_editions.py load` and no flag releases it, so the
-whole issue (judgements as well as notices) is not stored and live stays on the last issue that had notices. Only two notices exist
-today; when RSH lifts the last one, every later load stops until the rule is changed, and each missed issue is lost history because the page
-offers the latest file only. The file is kept in `data/raw/s24_rsh/`. The rule was left unchanged on purpose. Options for Scott: let
-`--acknowledge` store the judgements and empty the live notices (logged, an empty notices period recorded in the ledger), or leave it as it is.
-See [2026-10-11-s24-editions-first-load.md](2026-10-11-s24-editions-first-load.md) and `docs/s24_rsh_register_source.md`.
+Closed: Scott chose Option C on 2026-10-12. A judgements file whose Enforcement Notices sheet holds the header only is still
+REJECTED by `scripts/s24_rsh_register_editions.py load` unless `--acknowledge-no-notices DATE` names it (nothing else releases it);
+with it the judgements load as usual and the notices period is recorded empty (an `empty` ledger row naming the acknowledgement,
+no editions row, logged), and `refresh-latest --accept-key-changes DATE` empties the live notices while the earlier notices stay as
+history. Engine opt-in `EditionSpec.empty_periods_allowed` (S24 notices only). `ddl --commit` must run once first to let the real
+notices ledger take an `empty` row. See the addendum in [2026-10-11-s24-editions-first-load.md](2026-10-11-s24-editions-first-load.md),
+`docs/s24_rsh_register_source.md` and the S24 section of `docs/QUARTERLY_REFRESH.md`.
+
+### 9. S24 empty-notices: two known limits (opened 2026-10-12, not decided)
+
+Both follow from Option C (item 8) and are safe (nothing is written wrongly); each needs a code change decided by Scott.
+
+- **Same-date reissue withdrawing every notice.** A header-only reissue of a notices issue already held with rows is rejected
+  whatever the flags (`_no_notices_unit`; the engine's `record_empty_period` refuses the same), and the whole unit is blocked,
+  judgements included. The next dated issue loads normally.
+- **Stuck refresh, rare.** An empty issue is pending (recorded, live not yet emptied), then the older live issue is reissued with a
+  notice added. `refresh-latest --accept-key-changes EMPTY_DATE` halts in the key-change guard; naming both dates passes the guard and
+  then halts "nothing to accept". It clears when the next issue with notices arrives. Fixing it means planning key changes for the
+  period `empty_live` will delete, which is not a small change. (The engine side-effect, a live delete left in the caller's
+  transaction after that halt, is fixed: `refresh_latest` runs in a savepoint for an `empty_periods_allowed` spec.)
 
 ### 5. For Scott: S12 section 114 register and Bexley (opened 2026-10-10)
 

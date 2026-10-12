@@ -178,3 +178,42 @@ brings back the 'None' notes text. Editions are append-only, so nothing is lost.
   `data/raw/s24_rsh/dereg_2026.json`. The pages are still not loaded.
 - The registry row 24 (loader, verification, gotchas, caveats, completeness, revision note) was rewritten and the registry verify
   passes; the node docs carry a line saying they describe the retired build.
+
+## Addendum 2026-10-12: a judgements issue with no enforcement notices (Option C, decided by Scott)
+
+Open item 8 ([README](README.md)) is closed. Scott chose Option C on 2026-10-12. The text above ("When a new file appears", "a file
+with none is REJECTED, and nothing releases it") records the rule as it stood on 2026-10-11 and is left as written; this addendum
+supersedes it. Nothing in the database was written for this change (code, tests and documents only; branch `s24-empty-notices`).
+
+- **The rule now.** A judgements file whose Enforcement Notices sheet holds exactly the old build's header and no row is REJECTED
+  (exit 1, nothing stored, a partial run-log row) unless `load --acknowledge-no-notices DATE` (or `judgements:DATE`) names that issue.
+  `--acknowledge`, `--accept-reissue` and `--allow-older-file` do not release it. With it the judgements load as usual (edition 1, live
+  replaced) and the notices period is recorded **empty**: one row in `rsh_enforcement_notices_editions_file_checks` with outcome
+  `empty`, no edition, the file's URL and sha256 and the acknowledgement named; no editions row is written. The run log names the
+  empty period and the acknowledgement.
+- **Live notices.** The newest period wins. `status` reports the empty issue as not yet applied until `refresh-latest
+  --accept-key-changes DATE` deletes the live notices of the previous issue and inserts none; without the flag `refresh-latest
+  --commit` halts. Every earlier notices issue stays in `rsh_enforcement_notices_editions` as history. A later issue with notices
+  replaces the empty state as any newer issue does. A byte-identical re-read of the empty issue is skipped by the ledgers.
+- **Still halting.** A notices sheet with no header or a changed header (identity failure, as before). A reissue of an issue whose
+  notices are already held with rows that now has none: rejected whatever the flags (not covered by Option C; ask Scott).
+- **Known limits (open item 9, [README](README.md)).** A same-date reissue withdrawing every notice is blocked whole (judgements
+  included) until the code changes. Rare stuck state: an empty issue pending, then the older live issue reissued with a notice added;
+  no flag combination passes `refresh-latest` until the next issue with notices arrives. The engine no longer leaves its live delete in
+  the caller's transaction after such a halt (`refresh_latest` runs in a savepoint for this spec).
+- **Engine.** `EditionSpec.empty_periods_allowed` (default off; needs `live_newest_period_only` and `refresh_key_changes`): an
+  editions period may be recorded empty by an `empty` ledger row with no editions rows; a period with editions rows is never empty.
+  Only S24's notices spec opts in. Every other loader is unchanged: the committed golden fixtures (flag-off and single-vintage
+  scenarios, statement for statement) and every editions verify script pass.
+- **Design refinement, and why.** The load records the empty period but does not empty live notices itself; `refresh-latest
+  --accept-key-changes DATE` does, as the design asked. This mirrors how the old build's left-over judgements rows were removed and
+  makes the deletion of live rows a second, named step. The cost is a window between the two commands in which live judgements show
+  the new issue and live notices the previous one; `status` reports it (exit 1). Nothing reads either table for the map or W1, so the
+  two commands are to be run in one sitting.
+- **Before the day.** The real notices ledger predates the opt-in. `ddl --commit` (once) adds the `acknowledgement` column, `empty`
+  to the outcome check and the empty-row check (`outcome <> 'empty' OR (edition IS NULL AND acknowledgement IS NOT NULL AND btrim(acknowledgement) <> '')`); no row
+  is written or changed. Until then a notices-free issue is rejected with a message naming `ddl --commit`, and verify gate 1 notes
+  it. The runbook is in [QUARTERLY_REFRESH.md](../QUARTERLY_REFRESH.md) ("The day RSH lifts the last enforcement notice").
+- **Gates.** The verify script has 22 gates: gate 22 covers the notices-free issue end to end on throwaway tables, gate 9's no-notices
+  case now needs the new flag, and gates 2, 4, 14 and 15 accept live notices empty only when the newest notices period is recorded
+  empty and applied (an empty live table without that record still fails).
