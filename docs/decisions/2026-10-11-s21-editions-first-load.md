@@ -80,7 +80,7 @@ After the migration the live rows were read again: 1,480 rows, one `loaded_at` (
 2. `migrate-legacy` on the held file (preview, `--simulate` rolled back, `--commit`): edition 1 "as loaded" for release
    2026-03-18, 5,920 rows (296 English subjects x 20 neighbours), content sha256 (two halves, join them)
    `26ec5c3c8df08c16cb4df42c084fca60` then `786829274cf715e558f3936f14bfeab8`, proved against a re-read of the held file (`LIVE_RULE`
-   reproduces all 1,480 live rows, 0 differences either way); a ledger row marked as loaded. Run-log id 543. Live untouched.
+   reproduces all 1,480 live rows, 0 differences either way); a ledger row recorded with outcome "unchanged". Run-log id 543. Live untouched.
 3. `load` (preview): the landing page lists only the 2026 edition (release 2026-03-18, API date agrees); the download is
    byte-identical to the held file; already in the ledger; "nothing to do". `refresh-latest` (preview): "none (live equals
    LIVE_RULE applied to the latest edition)", so nothing was refreshed. The `source` text therefore stays as held. `status`: OK.
@@ -95,7 +95,7 @@ date). Adopting it would change the comparator sets of every authority, so it is
 deliberate change (the live release, the CHECK and the gates), not a flag. A reissue of the live release (same Cover date,
 different content) is the next edition of 2026-03-18 and reaches live only through `refresh-latest`, which needs
 `--acknowledge 2026-03-18` when it changes a live pair or rank. A plain `load` follows the newest edition on the landing
-page; a reissue of the live edition after a later edition exists must go through `--file --no-page`. Gates 16 and 17 are
+page; a reissue of the live edition after a later edition exists can go through `--file` (plain `--file` also works while the 2026 edition is still listed, and keeps the landing-page cross-check) or `--file --no-page`. Gates 16 and 17 are
 migration-time guards: a later `refresh-latest` that changes live will fail gate 17 until this note is updated.
 
 ## How to reverse

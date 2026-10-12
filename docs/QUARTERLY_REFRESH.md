@@ -1014,7 +1014,7 @@ Run from `ONS_Population_Estimates`. `check_sources.py 21` reads the dataset pag
 
 1. `python scripts/s21_neighbours_editions.py status`, then `load` (preview; downloads the newest edition and compares it with what is held).
 2. A **new ONS edition** (another Cover date): `load --commit` stores it as editions only. It never reaches the live table through `load` or `refresh-latest`: adopting it changes every authority's comparators, so it is Scott's decision and a deliberate change to the live release, its CHECK and the gates.
-3. A **reissue** of the 2026 release (same Cover date, different content) needs `--accept-reissue 2026-03-18`, is stored as the next edition, and reaches live only through `refresh-latest --acknowledge 2026-03-18` (preview, `--simulate`, `--commit`).
+3. A **reissue** of the 2026 release (same Cover date, different content) needs `--accept-reissue 2026-03-18` and `--acknowledge 2026-03-18` on `load`, is stored as the next edition, and reaches live only through `refresh-latest --acknowledge 2026-03-18` (preview, `--simulate`, `--commit`).
 4. `python scripts/s21_neighbours_editions_verify.py`. After a `refresh-latest` that changes live, gates 16 and 17 fail until the decision note's `before-state` and `live-read` lines are updated (`--print-note-lines` prints them).
 
 **Never run the old script.** `scripts/s21_statistical_neighbours_build.py` now exits 2 at its first statement (it truncated and reloaded the table, and took its authorities from a W1 output).

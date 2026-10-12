@@ -110,7 +110,7 @@ python scripts/s21_neighbours_editions_verify.py
 
 Other commands: `ddl` and `migrate-legacy FILE` (both already run), `restore-edition RELEASE N`. `load` takes `--file PATH [--no-page]`, `--recheck RELEASE`, `--allow-older-file`, `--accept-reissue RELEASE` and `--acknowledge RELEASE`. There is no `sync-new`.
 
-**After any `refresh-latest` that changes live, gates 16 and 17 of the verify script fail** until the decision note's `before-state` and `live-read` hash lines are updated. They compare edition 1 and the live rows with the migration-time state, so they fail by design when a reissue changes a live pair; read the change, then update the lines deliberately (the verify script prints the new ones with `--print-note-lines`). A plain `load` follows the newest edition on the landing page; a reissue of the live release after a later edition exists goes through `--file --no-page`.
+**After any `refresh-latest` that changes live, gates 16 and 17 of the verify script fail** until the decision note's `before-state` and `live-read` hash lines are updated. They compare edition 1 and the live rows with the migration-time state, so they fail by design when a reissue changes a live pair; read the change, then update the lines deliberately (the verify script prints the new ones with `--print-note-lines`). A plain `load` follows the newest edition on the landing page; a reissue of the live release after a later edition exists can go through `--file` (plain `--file` also works while the 2026 edition is still listed, and keeps the landing-page cross-check) or `--file --no-page`.
 
 ## Known traps
 
