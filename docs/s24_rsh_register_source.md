@@ -219,7 +219,10 @@ python scripts/s24_rsh_register_editions_verify.py          # 22 gates, exit 0, 
 A new register date is a new period; a new judgements issue is a new period and replaces the live judgements and notices. A judgements
 file with no enforcement notice is rejected unless `--acknowledge-no-notices DATE` names it (see "What halts a load" below). `--file PATH [--title-date YYYY-MM-DD] [--no-page]` takes a file
 you hold, `--only register|judgements` limits a run, `restore-edition TABLE PERIOD N` brings an earlier edition back as the next one.
-`python scripts/check_sources.py 24` reads the newest register title against the newest held snapshot; nothing runs the load for you.
+`python scripts/check_sources.py 24` reads the newest register title against the newest held snapshot and, since 2026-10-12, the
+judgements page's file-name date (the loader's `judgements_attachment`) against the newest judgements issue held (editions table or
+notices ledger): a newer issue is reported `new_edition` ("new judgements issue available"), an unreadable page or a changed
+attachment title `check_failed`, and a held issue more than 35 days old is warned. Nothing runs the load for you.
 
 ### What halts a load, and what to do
 
@@ -234,7 +237,8 @@ you hold, `--only register|judgements` limits a run, `restore-edition TABLE PERI
   (outcome `empty`, no edition, the file's URL and sha256, the acknowledgement named), no editions row; the run log names it. Live
   notices still hold the previous issue until `refresh-latest --accept-key-changes DATE` deletes them (they stay in the editions as
   history); `status` says so until then. A later issue with notices replaces the empty state as usual. The notices ledger takes an
-  `empty` row only after `ddl --commit` has added the outcome and its `acknowledgement` column (the load says so; `ddl` previews it).
+  `empty` row only after `ddl --commit` has added the outcome and its `acknowledgement` column (the load says so; `ddl` previews it);
+  that `ddl --commit` was run on 2026-10-12.
   Still halting, whatever the flags: a notices sheet with no header at all or a changed header (an identity failure), and a reissue
   of an issue whose notices are already held with rows that now has none (rejected; ask Scott).
   A second notices-free issue in a row, with live notices already empty, is recorded empty the same way and needs no refresh

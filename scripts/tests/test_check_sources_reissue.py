@@ -1,12 +1,14 @@
 """Tests for the reissue checks in check_sources.py (S5 File 10, S7 May 2024
 layer): a reissue of the held vintage is not a newer period, so these read
 the publisher's rank for the held vintage and compare it with the rank the
-loader recorded.
+loader recorded. Also the S24 judgements check: a new judgements issue is not
+a newer register list, so the judgements page is read beside the register.
 
-No network and no database: fetch() and held_sources() are stubbed, and
-check_one() is called directly (main(), which writes the check log, is never
-run).
+No network and no database: fetch(), held_sources(), held_s24_judgements()
+and get_conn() are stubbed, and check_one() is called directly (main(), which
+writes the check log, is never run).
 """
+import datetime as dt
 import json
 import sys
 import unittest
@@ -19,6 +21,7 @@ sys.path.insert(0, str(SCRIPTS))
 import check_sources as cs  # noqa: E402
 import s5_imd_editions as s5  # noqa: E402
 import s7_boundaries_editions as s7  # noqa: E402
+import s24_rsh_register_editions as s24  # noqa: E402
 
 UTC = timezone.utc
 CHECKED = datetime(2026, 10, 11, 13, 58, 56, tzinfo=UTC)
@@ -227,6 +230,176 @@ class S7Reissue(unittest.TestCase):
         row, _ = run_s7({SERVICES: services("May_2024"), LAYER: layer()},
                         [])
         self.assertEqual(row["outcome"], "check_failed")
+
+
+REGISTER_PAGE = cs.GOVUK_CONTENT + ("/government/publications/"
+                                    "registered-providers-of-social-housing")
+JUDGEMENTS_PAGE = cs.GOVUK_CONTENT + s24.JUDGEMENTS_PATH
+MEDIA = "https://assets.publishing.service.gov.uk/media/abc123/"
+
+
+def register_page(day="17 September 2026"):
+    return {"details": {"attachments": [
+        {"title": f"List of registered providers – {day}",
+         "url": MEDIA + "List_of_registered_providers.xlsx"}]}}
+
+
+def judgements_page(name="20260930_RegulatoryJudgementsNotices_published.xlsx",
+                    title=s24.JUDGEMENTS_TITLE, dates=("2026-09-30",)):
+    return {"title": "Regulatory judgements and enforcement notices",
+            "public_updated_at": dates[0] + "T11:00:00Z",
+            "details": {
+                "attachments": [{"title": title, "url": MEDIA + name}],
+                "change_history": [{"public_timestamp": d + "T11:00:00Z",
+                                    "note": "Latest table added"}
+                                   for d in dates]}}
+
+
+class FakeConn:
+    """get_conn() stand-in for the finder's loaded_sql (the register)."""
+    def __init__(self, value):
+        self.value = value
+
+    def cursor(self):
+        return self
+
+    def execute(self, sql, *a):
+        assert sql.lstrip().upper().startswith("SELECT"), sql
+
+    def fetchone(self):
+        return (self.value,)
+
+    def close(self):
+        pass
+
+    def rollback(self):
+        pass
+
+
+def s24_reg():
+    return {"source_code": "24", "landing_page_url": None,
+            "latest_period_loaded": "2026-09-17",
+            "last_seen_fingerprint": None, "revises_back_series": False,
+            "target_table": "rsh_registered_providers",
+            "detected_period_type": "reference_period"}
+
+
+def run_s24(pages, held="2026-09-30", today=dt.date(2026, 10, 12),
+            register_held="2026-09-17"):
+    with mock.patch.object(cs, "fetch", router(pages)), \
+            mock.patch.object(cs, "get_conn",
+                              return_value=FakeConn(register_held)), \
+            mock.patch.object(cs, "held_s24_judgements",
+                              return_value=held) as hj, \
+            mock.patch.object(cs, "_today", return_value=today):
+        row = cs.check_one("24", s24_reg())
+    return row, hj
+
+
+class S24Judgements(unittest.TestCase):
+    def test_the_held_issue_is_no_change(self):
+        row, hj = run_s24({REGISTER_PAGE: register_page(),
+                           JUDGEMENTS_PAGE: judgements_page()})
+        self.assertEqual(row["outcome"], "no_change")
+        self.assertIn("judgements no change (newest issue 2026-09-30 held)",
+                      row["notes"])
+        self.assertIsNone(row["error_detail"])
+        hj.assert_called_once_with()
+
+    def test_a_newer_issue_is_new_edition(self):
+        page = judgements_page("20261014_RegulatoryJudgementsNotices.xlsx",
+                               dates=("2026-10-14", "2026-09-30"))
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: page},
+                         today=dt.date(2026, 10, 15))
+        self.assertEqual(row["outcome"], "new_edition")
+        self.assertEqual(row["detected_period"], "2026-09-17")
+        self.assertIn("NEW JUDGEMENTS ISSUE AVAILABLE: 2026-10-14", row["notes"])
+        self.assertIn("new judgements issue available", row["error_detail"])
+        self.assertNotIn("not a date the judgements page states",
+                         row["error_detail"])
+
+    def test_a_newer_issue_the_page_does_not_date_is_flagged(self):
+        page = judgements_page("20261014_RegulatoryJudgementsNotices.xlsx",
+                               dates=("2026-09-30",))
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: page})
+        self.assertEqual(row["outcome"], "new_edition")
+        self.assertIn("not a date the judgements page states",
+                      row["error_detail"])
+
+    def test_a_new_register_keeps_new_edition_and_reports_judgements(self):
+        page = judgements_page("20261014_RegulatoryJudgementsNotices.xlsx",
+                               dates=("2026-10-14",))
+        row, _ = run_s24({REGISTER_PAGE: register_page("16 October 2026"),
+                          JUDGEMENTS_PAGE: page})
+        self.assertEqual(row["outcome"], "new_edition")
+        self.assertEqual(row["detected_period"], "2026-10-16")
+        self.assertIn("NEW JUDGEMENTS ISSUE AVAILABLE", row["notes"])
+
+    def test_a_changed_title_is_check_failed(self):
+        page = judgements_page(title="Regulatory judgements table")
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: page})
+        self.assertEqual(row["outcome"], "check_failed")
+        self.assertIn("judgements check not possible", row["error_detail"])
+
+    def test_an_unreadable_page_is_check_failed(self):
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: OSError("connection reset")})
+        self.assertEqual(row["outcome"], "check_failed")
+        self.assertIn("connection reset", row["error_detail"])
+
+    def test_a_file_name_without_a_date_is_check_failed(self):
+        page = judgements_page("RegulatoryJudgementsNotices.xlsx")
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: page})
+        self.assertEqual(row["outcome"], "check_failed")
+        self.assertIn("yyyymmdd", row["error_detail"])
+
+    def test_nothing_held_is_check_failed(self):
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: judgements_page()}, held=None)
+        self.assertEqual(row["outcome"], "check_failed")
+        self.assertIn("no judgements edition", row["error_detail"])
+
+    def test_an_older_issue_than_held_is_check_failed(self):
+        page = judgements_page("20260812_RegulatoryJudgementsNotices.xlsx",
+                               dates=("2026-08-12",))
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: page})
+        self.assertEqual(row["outcome"], "check_failed")
+        self.assertIn("older than the newest held issue", row["error_detail"])
+
+    def test_a_held_issue_over_35_days_old_warns(self):
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: judgements_page()},
+                         today=dt.date(2026, 11, 5))
+        self.assertEqual(row["outcome"], "no_change")
+        self.assertIn("WARNING: the newest held judgements issue 2026-09-30 "
+                      "is 36 days old", row["error_detail"])
+
+    def test_35_days_does_not_warn(self):
+        row, _ = run_s24({REGISTER_PAGE: register_page(),
+                          JUDGEMENTS_PAGE: judgements_page()},
+                         today=dt.date(2026, 11, 4))
+        self.assertIsNone(row["error_detail"])
+
+    def test_the_fingerprint_follows_the_judgements_issue(self):
+        a, _ = run_s24({REGISTER_PAGE: register_page(),
+                        JUDGEMENTS_PAGE: judgements_page()})
+        page = judgements_page("20261014_RegulatoryJudgementsNotices.xlsx",
+                               dates=("2026-10-14",))
+        b, _ = run_s24({REGISTER_PAGE: register_page(),
+                        JUDGEMENTS_PAGE: page})
+        self.assertNotEqual(a["fingerprint_after"], b["fingerprint_after"])
+
+    def test_the_held_query_reads_both_tables(self):
+        self.assertIn("rsh_regulatory_judgements_editions",
+                      cs.S24_JUDGEMENTS_HELD_SQL)
+        self.assertIn("rsh_enforcement_notices_editions_file_checks",
+                      cs.S24_JUDGEMENTS_HELD_SQL)
+        self.assertTrue(cs.S24_JUDGEMENTS_HELD_SQL.startswith("SELECT"))
 
 
 class Outcomes(unittest.TestCase):

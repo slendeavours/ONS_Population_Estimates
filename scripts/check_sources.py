@@ -134,14 +134,19 @@ DETECTORS = {
                loaded_sql="SELECT to_char(MAX(period), 'YYYY-MM') FROM la_house_prices",
                note="UK HPI monthly release titles in the UK House Price Index "
                     "reports collection; the title month is the data month"),
+    # judgements: the judgements page is read too (judgements_s24), because a
+    # new judgements issue is not a newer register list
     "24": dict(method="govuk_content_api", finder="s24",
                loaded_sql="SELECT MAX(snapshot_date)::text FROM rsh_registered_providers",
+               judgements="s24",
                note="'List of registered providers' attachment titles on the RSH "
                     "register page (GOV.UK content API); snapshot date is in the title. "
                     "Loaded side: the live register table keeps every snapshot (editions "
                     "in rsh_registered_providers_editions), so MAX(snapshot_date) is the "
-                    "newest held list. The judgements table (rsh_regulatory_judgements, "
-                    "newest issue only) is not checked here"),
+                    "newest held list. Judgements: the judgements page's one attachment "
+                    "(the loader's judgements_attachment), its file name's yyyymmdd date "
+                    "against the newest edition_date held in "
+                    "rsh_regulatory_judgements_editions or the notices ledger"),
     # la_boundaries does not record its own vintage, so the loaded side is
     # stated here: LAD May 2024 BGC (registry known_gotchas for S7). A newer
     # vintage is reported, never adopted: changing vintage re-bases every join.
@@ -881,6 +886,128 @@ def reissue_s7(held):
     return findings, desc
 
 
+# --- S24 judgements issues ---------------------------------------------------
+# The S24 finder compares register lists only. RSH issues a new judgements
+# table every one to three weeks on a separate page, and the page offers the
+# latest file only, so a missed issue cannot be fetched later. This reads that
+# page with the loader's own discovery (judgements_attachment, the file name's
+# yyyymmdd prefix, page_dates) and compares the date with the newest issue
+# held. Nothing is downloaded or loaded; the loader's preview decides.
+
+S24_JUDGEMENTS_HELD_SQL = (
+    "SELECT GREATEST("
+    "(SELECT MAX(edition_date) FROM rsh_regulatory_judgements_editions), "
+    "(SELECT MAX(edition_date) FROM "
+    "rsh_enforcement_notices_editions_file_checks))::text")
+
+
+def _today():
+    return datetime.date.today()
+
+
+def held_s24_judgements():
+    """The newest judgements issue held, 'YYYY-MM-DD', or None: the newest
+    edition_date in rsh_regulatory_judgements_editions or in the notices
+    ledger (which also records an issue whose notices were empty).
+    Read-only; the transaction is rolled back."""
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(S24_JUDGEMENTS_HELD_SQL)
+        v = (cur.fetchone() or [None])[0]
+        return str(v)[:10] if v else None
+    finally:
+        conn.rollback()
+        conn.close()
+
+
+def judgements_s24(held):
+    """{newest, held, file_name, stated, note, overdue_days} for the RSH
+    judgements page. ValueError when it cannot be asked: nothing held, the
+    page's attachment is not the one .xlsx titled as the loader expects (the
+    title changed), or the file name carries no yyyymmdd date."""
+    import s24_rsh_register_editions as s24
+    if not held:
+        raise ValueError("no judgements edition or notices ledger row is held")
+    _, body = fetch(GOVUK_CONTENT + s24.JUDGEMENTS_PATH)
+    page = json.loads(body)
+    att = s24.judgements_attachment(page)
+    mm = s24.FILE_DATE_RE.match(att["file_name"])
+    if not mm:
+        raise ValueError(f"{att['file_name']}: the file name does not start "
+                         "with a date yyyymmdd")
+    newest = datetime.date(int(mm.group(1)), int(mm.group(2)),
+                           int(mm.group(3))).isoformat()
+    notes = s24.change_history(page)
+    return {"newest": newest, "held": held, "file_name": att["file_name"],
+            "stated": newest in s24.page_dates(page),
+            "note": notes[0] if notes else None,
+            "overdue_days": s24.JUDGEMENTS_OVERDUE_DAYS}
+
+
+def _add_detail(row, text):
+    row["error_detail"] = (f"{row['error_detail']}; {text}"
+                           if row.get("error_detail") else text)
+
+
+def apply_s24_judgements(row, run):
+    """Run the judgements check (run() -> judgements_s24's dict) and fold it
+    into the S24 row. A newer issue on the page: no_change becomes
+    new_edition and error_detail says 'new judgements issue available'. The
+    same date: no change. A check that cannot be made, or a page that offers
+    an older issue than held, turns no_change into check_failed. The newest
+    held issue older than the loader's overdue rule (35 days) adds a
+    warning; the outcome is not changed by it."""
+    try:
+        j = run()
+    except Exception as e:
+        msg = f"judgements check not possible: {type(e).__name__}: {str(e)[:160]}"
+        row["notes"] += f"; {msg}"
+        if row["outcome"] == "no_change":
+            row.update(outcome="check_failed", error_detail=msg)
+        else:
+            _add_detail(row, msg)
+        return row
+    newest, held = j["newest"], j["held"]
+    row["fingerprint_after"] = hashlib.sha256(
+        f"{row.get('fingerprint_after')}|judgements {newest}|"
+        f"{j['file_name']}".encode()).hexdigest()[:32]
+    note = (f"; newest page note {j['note'][0]}: '{j['note'][1][:70]}'"
+            if j["note"] else "")
+    if newest > held:
+        row["notes"] += (f"; NEW JUDGEMENTS ISSUE AVAILABLE: {newest} "
+                         f"({j['file_name']}), newest held {held}{note}")
+        if row["outcome"] == "no_change":
+            row["outcome"] = "new_edition"
+        _add_detail(row, f"new judgements issue available: {newest} "
+                         f"({j['file_name']}) on the judgements page, newest "
+                         f"held {held}. The page offers the latest file only; "
+                         "run `s24_rsh_register_editions.py load` (preview) "
+                         "soon. Nothing was downloaded or loaded")
+        if not j["stated"]:
+            _add_detail(row, f"the file name's date {newest} is not a date the "
+                             "judgements page states; the loader's identity "
+                             "check would reject it")
+    elif newest == held:
+        row["notes"] += f"; judgements no change (newest issue {newest} held)"
+    else:
+        msg = (f"the judgements page offers {newest} ({j['file_name']}), "
+               f"older than the newest held issue {held}")
+        row["notes"] += f"; {msg}"
+        if row["outcome"] == "no_change":
+            row.update(outcome="check_failed", error_detail=msg)
+        else:
+            _add_detail(row, msg)
+    age = (_today() - datetime.date.fromisoformat(held)).days
+    if age > j["overdue_days"]:
+        warn = (f"WARNING: the newest held judgements issue {held} is {age} "
+                f"days old; a new issue is expected within "
+                f"{j['overdue_days']} days")
+        row["notes"] += f"; {warn}"
+        _add_detail(row, warn)
+    return row
+
+
 def apply_reissue(row, run):
     """Run a reissue check (run() -> (findings, desc)) and fold it into the
     row. A finding is a change: no_change becomes revision_detected, and
@@ -943,6 +1070,8 @@ def check_finder(row, det, reg):
         table, col = REISSUE_HELD["s7"]
         apply_reissue(row, lambda: reissue_s7(
             held_sources(table, col, s7.LIVE_PERIOD)))
+    if det.get("judgements") == "s24":
+        apply_s24_judgements(row, lambda: judgements_s24(held_s24_judgements()))
     return row
 
 

@@ -217,3 +217,9 @@ supersedes it. Nothing in the database was written for this change (code, tests 
 - **Gates.** The verify script has 22 gates: gate 22 covers the notices-free issue end to end on throwaway tables, gate 9's no-notices
   case now needs the new flag, and gates 2, 4, 14 and 15 accept live notices empty only when the newest notices period is recorded
   empty and applied (an empty live table without that record still fails).
+- **2026-10-12: ddl committed 2026-10-12 by Scott's approval** (branch `s24-ddl-detector`; preview, `--simulate`, `--commit`). The
+  real notices ledger gained the `acknowledgement` column (text, NULL on every row), `'empty'` in its outcome check and the new
+  `rsh_enforcement_notices_editions_file_checks_empty_chk`. Its two append-only triggers (UPDATE and DELETE; TRUNCATE) are still
+  present. The 4 existing rows are unchanged: md5 over the original seven columns, rows by `id`, was
+  `ced749e2697304daffdb08f5770dc99c` before and after. `ddl` now prints "takes an 'empty' row", `status` is OK and the verify script
+  passes 22/22 (exit 0).
