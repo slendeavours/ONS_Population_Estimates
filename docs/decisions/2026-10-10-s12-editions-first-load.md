@@ -363,3 +363,12 @@ council statement and 3 on press reports quoting the council. The loader no long
 Effect on the map: none. The S.114 authority set is the same 10 codes, so Croydon's and Northumberland's `s114_flag` are
 unchanged. The `w1-read la_s114_notices` line above is still correct. `--print-note-lines` printed the same line, so it was
 not regenerated. W1, `refresh_map.py`, the export, `push.py` (real) and `git push` were not run.
+
+## Addendum 2026-10-12: the Bexley direction documents were read
+
+Scott asked for the two PDFs listed on the 2020-21 page to be read.
+
+- **Direction of 10 February 2021** (signed by Matthew Hemsley, MHCLG, to Bexley's Director of Finance). Under sections 16(2)(b) and 20 of the Local Government Act 2003 it approves, on Bexley's application of 27 October 2020 "for exceptional financial support", capitalisation of revenue expenditure "not exceeding" £3.87m for the financial year 2020/21. Conditions: capitalise only when incurred; minimum revenue provision over no more than 20 years; an external assurance review by the end of May 2021; any further borrowing from the PWLB with an extra one percentage point premium.
+- **Letter of 3 December 2024** (Suzie Clarke, MHCLG). It removes only the PWLB premium condition for borrowing from 3 December 2024. It does not revoke, reduce or replace the direction.
+
+So Bexley did receive exceptional financial support in 2020-21 in the form of a capitalisation direction. Keeping its EFS flag is right. The 2020-21 page's table says Bexley "withdrew its request" after in-principle support; the direction says otherwise. Our stored 2020-21 row follows the page (status withdrawn, amount blank) and is unchanged; the direction's £3.87m is not stored as an amount. Whether to store it (a new edition, status capitalisation-direction, source the signed direction) is a decision for Scott. The flag and the map are the same either way.

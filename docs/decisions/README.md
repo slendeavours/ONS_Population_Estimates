@@ -101,8 +101,7 @@ Five points from the S.114 evidence work and the withdrawn-only rule; the first 
 - **Croydon, 2 December 2020. Closed 2026-10-11:** added from the council's own report under section 114(3), dated
   2 December 2020 (14 notices; Croydon's flag was already set).
 - **Hackney, 17 October 2000.** Rests on a press report quoting the council that does not state the day.
-- **Bexley.** Kept in the EFS flag on the strength of its 2020-21 capitalisation direction and the amended direction of
-  December 2024; the two PDFs have not been read.
+- **Bexley. Closed 2026-10-12:** the two PDFs were read. The signed direction of 10 February 2021 authorises capitalisation of up to £3.87m for 2020/21 on the council's application of 27 October 2020 for exceptional financial support; the letter of 3 December 2024 only removes its borrowing-premium condition and does not revoke it. Bexley keeps its EFS flag. The 2020-21 page's cell ("provided with in-principle support but withdrew its request") and the direction disagree about whether support was taken up; our stored row follows the page (status withdrawn, amount blank). See the S12 note.
 
 ## Closed
 

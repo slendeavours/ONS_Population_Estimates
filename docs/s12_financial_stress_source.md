@@ -100,7 +100,7 @@ S12 is declared `none` in `scripts/geography.py`: the data has no Barnsley or Sh
 W1's `efs_flag` is true for any row, so a withdrawn request flags an authority. Three authorities have only withdrawn rows: Bexley (2020-21 and 2021-22), Bournemouth, Christchurch and Poole (2022-23) and North Northamptonshire (2024-25). By Scott's decision of 2026-10-10, as a named rule in the loader (`WITHDRAWN_ONLY_NOT_SUPPORT`):
 
 - BCP and North Northamptonshire are not stored by the editions (their pages say "withdrew its request" and list no capitalisation direction, and they appear on no other year's page). They lost the flag in W1 run 27 (2026-10-12). Edition 1 keeps both rows as held.
-- Bexley is kept: its 2020-21 page lists a "Bexley capitalisation direction 2020-21" and an amended direction (change note of 13 March 2025, "Added varied directions for: Bexley, ..."), and a capitalisation direction is a form of EFS support. The two directions have not been read.
+- Bexley is kept (the direction documents were read on 2026-10-12: a signed direction of 10 February 2021 authorises up to £3.87m for 2020/21; the 3 December 2024 letter only removes a borrowing condition): its 2020-21 page lists a "Bexley capitalisation direction 2020-21" and an amended direction (change note of 13 March 2025, "Added varied directions for: Bexley, ..."), and a capitalisation direction is a form of EFS support. The two directions have not been read.
 - An authority not named whose every request was withdrawn halts until it is named. The withdrawn rows of authorities that have support in another year (Peterborough, Luton, Nottingham) stay.
 
 The `efs_flag` rule itself is W1's and is not changed by this source.

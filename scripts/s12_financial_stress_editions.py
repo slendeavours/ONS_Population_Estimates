@@ -58,8 +58,10 @@ with any request not withdrawn halts (the rule no longer holds), and an
 authority not named whose every request was withdrawn halts until it is
 named in the rule or in its 'kept' list. Bexley is in the 'kept' list (Scott,
 2026-10-10): its 2020-21 page lists a Bexley capitalisation direction and an
-amended one, a capitalisation direction is a form of EFS support, and those
-documents have not been read; its rows are stored as parsed (the withdrawn
+amended one, a capitalisation direction is a form of EFS support, and the
+documents were read on 2026-10-12 (direction of 10 February 2021 for up to
+£3.87m in 2020/21; the 3 December 2024 letter only removes a borrowing
+condition); its rows are stored as parsed (the withdrawn
 requests as status 'withdrawn', amount NULL). Edition 1 'as loaded' keeps
 the named authorities' rows as held; the editions stored by load do not
 carry them, and refresh-latest removes them from live only with
@@ -276,8 +278,11 @@ WITHDRAWN_ONLY_NOT_SUPPORT = {
                       "of 13 March 2025 'Added varied directions for: Bexley, "
                       "Eastbourne, Luton, Nottingham, Peterborough and "
                       "Wirral'). A capitalisation direction is a form of EFS "
-                      "support and the direction documents have not been "
-                      "read, so Bexley keeps its rows and its EFS flag."),
+                      "support; the direction documents were read on 2026-10-12: the "
+                      "signed direction of 10 February 2021 authorises up to "
+                      "3.87m for 2020/21 and the 3 December 2024 letter only "
+                      "removes a borrowing condition, so Bexley keeps its rows "
+                      "and its EFS flag."),
     },
 }
 
