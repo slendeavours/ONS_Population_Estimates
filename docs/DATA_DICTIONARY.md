@@ -103,7 +103,7 @@ Source: DfE Children Looked After in England including adoptions, SSDA903 return
 
 | Column | Type | Range | Description |
 |---|---|---|---|
-| `care_leavers_semi_indep` | integer | 0 – 500+ | Care leavers aged 17-21 in DfE's published category `Semi-independent, transitional accommodation` (`semi_independent_published`), latest year. NULL where DfE suppressed the cell, never 0. Up to W1 run 25 this column held the wider pipeline aggregate `semi_independent` (see below) |
+| `care_leavers_semi_indep` | integer | 0 – 500+ | Care leavers aged 17-21 in DfE's published category `Semi-independent, transitional accommodation` (`semi_independent_published`), latest year. NULL where DfE suppressed the cell, never 0. Up to W1 run 25 this column held the wider pipeline aggregate `semi_independent` (see below); W1 run 27 (2026-10-12) and the map hold the published category |
 
 ### Which measure to quote
 
@@ -114,7 +114,7 @@ Two measures are held on `care_leaver_accommodation` and they are not interchang
 | `semi_independent_published` | DfE's published `Semi-independent, transitional accommodation` alone | **External documents, W1 and the map.** Reproducible directly from DfE |
 | `semi_independent` | The above plus `foyers` plus `supported_lodgings`; NULL unless all six DfE parts (three categories, two age bands) are published | A pipeline aggregate, **not read by W1 or the map** since 2026-10-09. Cite only when labelled as a combined measure with its components named |
 
-In 2025 the aggregate has a value for 17 of the 296 mapped authorities and the published category for 121. Liverpool 2025: 188 published; the aggregate held before the correction (208, which was 188 plus two partial sums of 10) is NULL because foyers and supported lodgings are suppressed for one age band. W1 run 25 mapped 208 for Liverpool; the next run maps 188.
+In 2025 the aggregate has a value for 17 of the 296 mapped authorities and the published category for 121. Liverpool 2025: 188 published; the aggregate held before the correction (208, which was 188 plus two partial sums of 10) is NULL because foyers and supported lodgings are suppressed for one age band. W1 run 25 mapped 208 for Liverpool; W1 run 27 (2026-10-12) maps 188.
 
 ### Suppression, NULL and the editions tables
 
@@ -253,7 +253,7 @@ Source: MHCLG Exceptional Financial Support (EFS) year pages, and a curated regi
 
 | Column | Type | Values | Description |
 |---|---|---|---|
-| `efs_flag` | boolean | true / false | The authority has at least one row in `la_efs_support`: a request for Exceptional Financial Support on a MHCLG year page, in any year from 2020-21, whether agreed in principle, issued as a direction or withdrawn. It does not say the authority is supported now. BCP and North Northamptonshire (withdrawn requests only) have no row and no flag after the next W1 run; Bexley, whose rows are withdrawn requests, keeps one |
+| `efs_flag` | boolean | true / false | The authority has at least one row in `la_efs_support`: a request for Exceptional Financial Support on a MHCLG year page, in any year from 2020-21, whether agreed in principle, issued as a direction or withdrawn. It does not say the authority is supported now. BCP and North Northamptonshire (withdrawn requests only) have no row, and no flag since W1 run 27 (2026-10-12); Bexley, whose rows are withdrawn requests, keeps one |
 | `s114_flag` | boolean | true / false | The authority has at least one row in `la_s114_notices`: a section 114 notice on the curated register (Local Government Finance Act 1988), in any year from 2000-01. It is attributed to the issuing authority and is not propagated to successors |
 
 ### Exceptional Financial Support (S12)
