@@ -38,14 +38,19 @@ Source: DLUHC H-CLIC statutory homelessness return (quarterly)
 
 **`ta_trend_label` values:**
 
+Tested in this order; the first match wins (`sql/w1/05_la_signals.sql`). The percentage is the unrounded year-on-year change, before `ta_yoy_pct` is rounded to 2 decimal places.
+
 | Value | Meaning |
 |---|---|
-| `rising_strongly` | YoY increase > +15% |
-| `rising` | YoY increase +5% to +15% |
-| `flat` | YoY change within ±5% |
-| `falling` | YoY decrease -5% to -15% |
-| `falling_strongly` | YoY decrease > -15% |
-| `submission_gap` | LA has not submitted data for one or more recent quarters |
+| `no_current_data` | No TA figure for the latest quarter (NULL) |
+| `submission_gap` | The latest quarter's figure is 0 |
+| `no_prior_year` | The figure for the same quarter a year earlier is NULL or 0 |
+| `rising_strongly` | Change above +10% |
+| `rising` | Change above +3%, up to +10% |
+| `flat` | Change above -3%, up to +3% |
+| `falling` | Change above -10%, down to -3% |
+| `falling_strongly` | Change of -10% or below |
+| `undetermined` | Anything not caught above (should not occur; never published as a direction) |
 
 ### Statutory homelessness editions (S1)
 
