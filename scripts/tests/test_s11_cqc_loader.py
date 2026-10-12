@@ -588,8 +588,7 @@ class Migration(_Base):
             rows, _ = m.parse_locations(paths[d])
             mapped, _ = m.map_locations(rows, BOUNDS, {}, {}, api=Api())
             by[d] = {r["location_id"]: r for r in mapped}
-        cur.execute(f"CREATE TABLE public.{LEGACY} (LIKE public.cqc_locations "
-                    "INCLUDING ALL)")
+        cur.execute(m.legacy_table_sql(LEGACY))
         cur.execute(f"CREATE TABLE public.{LEG_UNRES} (LIKE "
                     "public.cqc_unresolved_locations INCLUDING ALL)")
         dates = sorted(by)
@@ -730,8 +729,7 @@ class LegacyPreview(_Base):
             p = self.make(D1)
             rows, _ = m.parse_locations(p)
             mapped, _ = m.map_locations(rows, BOUNDS, {}, {}, api=Api())
-            cur.execute(f"CREATE TABLE public.{LEGACY} (LIKE "
-                        "public.cqc_locations INCLUDING ALL)")
+            cur.execute(m.legacy_table_sql(LEGACY))
             cols = ("location_id",) + m.VALUE_COLUMNS
             for r in mapped:
                 cur.execute(f"INSERT INTO public.{LEGACY} ({', '.join(cols)}, "
@@ -829,37 +827,102 @@ class Fetch(unittest.TestCase):
             m.fetch_file(self.link, self.dest, _Session(_Resp(status=500)))
 
 
+SPEC_PROBE = "zz_s11_legacy_spec"
+_INFO = {"character varying": "varchar({length})",
+         "numeric": "numeric({prec},{scale})",
+         "timestamp with time zone": "timestamptz"}
+
+
+def _info_columns(cur, table):
+    cur.execute("SELECT column_name, data_type, character_maximum_length, "
+                "numeric_precision, numeric_scale, is_nullable, "
+                "column_default FROM information_schema.columns WHERE "
+                "table_schema = 'public' AND table_name = %s ORDER BY "
+                "ordinal_position", (table,))
+    return cur.fetchall()
+
+
+def type_mismatches(rows, types, nullability=True):
+    """Columns whose name, type or (nullability=True) NULL rule in the
+    information_schema rows differ from (column, SQL) pairs."""
+    bad = []
+    if tuple(r[0] for r in rows) != tuple(c for c, _ in types):
+        bad.append("column names or order")
+    for (name, typ, length, prec, scale, nullable, _), (_, want) in zip(
+            rows, types):
+        got = _INFO.get(typ, typ).format(length=length, prec=prec,
+                                         scale=scale)
+        if got != want.split()[0]:
+            bad.append(f"{name}: type {got}, expected {want.split()[0]}")
+        if nullability and ("NOT NULL" in want) != (nullable == "NO"):
+            bad.append(f"{name}: is_nullable {nullable}, expected {want}")
+    return bad
+
+
 class SpecTests(unittest.TestCase):
-    def test_spec_matches_the_legacy_columns(self):
-        conn = get_conn()
-        try:
-            cur = conn.cursor()
-            # After the migration cqc_locations is a view (all columns
-            # nullable); the old base table is cqc_locations_legacy.
-            for table in ("cqc_locations_legacy", "cqc_locations"):
-                cur.execute("SELECT column_name, data_type, "
-                            "character_maximum_length, numeric_precision, "
-                            "numeric_scale, is_nullable FROM "
-                            "information_schema.columns WHERE table_schema = "
-                            "'public' AND table_name = %s ORDER BY "
-                            "ordinal_position", (table,))
-                legacy = cur.fetchall()
-                if legacy:
-                    break
-        finally:
-            conn.rollback()
-            conn.close()
-        self.assertEqual(tuple(r[0] for r in legacy), m.LEGACY_COLUMNS)
-        types = dict(m.COLUMN_TYPES)
-        for name, typ, length, prec, scale, nullable in legacy:
-            if name not in types:
-                continue
-            want = types[name]
-            self.assertEqual("NOT NULL" in want, nullable == "NO", name)
-            base = want.replace(" NOT NULL", "")
-            got = {"character varying": f"varchar({length})",
-                   "numeric": f"numeric({prec},{scale})"}.get(typ, typ)
-            self.assertEqual(got, base, name)
+    """LEGACY_TABLE_TYPES records the legacy cqc_locations table (dropped
+    2026-10-12 as cqc_locations_legacy): its value columns are COLUMN_TYPES
+    and its names are LEGACY_COLUMNS; the view has the same names and
+    types."""
+
+    def setUp(self):
+        self.conn = get_conn()
+
+    def tearDown(self):
+        self.conn.rollback()
+        self.conn.close()
+
+    def probe(self, cur):
+        cur.execute("SELECT to_regclass(%s)", (f"public.{SPEC_PROBE}",))
+        self.assertIsNone(cur.fetchone()[0])
+        cur.execute(m.legacy_table_sql(SPEC_PROBE))
+        return _info_columns(cur, SPEC_PROBE)
+
+    def test_legacy_table_types_cover_the_value_columns(self):
+        self.assertEqual(tuple(c for c, _ in m.LEGACY_TABLE_TYPES),
+                         m.LEGACY_COLUMNS)
+        self.assertEqual(m.LEGACY_TABLE_TYPES[1:-4], m.COLUMN_TYPES)
+
+    def test_built_table_has_the_types_null_rules_and_key(self):
+        cur = self.conn.cursor()
+        rows = self.probe(cur)
+        self.assertEqual(type_mismatches(rows, m.LEGACY_TABLE_TYPES), [])
+        self.assertEqual(type_mismatches(rows[1:-4], m.COLUMN_TYPES), [])
+        defaults = {r[0]: r[6] for r in rows if r[6] is not None}
+        self.assertEqual(defaults, {"is_active": "true",
+                                    "loaded_at": "now()"})
+        cur.execute("SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+                    "WHERE conrelid = %s::regclass AND contype = 'p'",
+                    (f"public.{SPEC_PROBE}",))
+        self.assertEqual(cur.fetchall(), [("PRIMARY KEY (location_id)",)])
+
+    def test_a_nullable_not_null_column_is_caught(self):
+        cur = self.conn.cursor()
+        self.probe(cur)
+        cur.execute(f"ALTER TABLE public.{SPEC_PROBE} ALTER COLUMN lad24cd "
+                    "DROP NOT NULL")
+        bad = type_mismatches(_info_columns(cur, SPEC_PROBE),
+                              m.LEGACY_TABLE_TYPES)
+        self.assertEqual(bad, ["lad24cd: is_nullable YES, expected "
+                               "varchar(9) NOT NULL"])
+
+    def test_a_changed_type_is_caught(self):
+        cur = self.conn.cursor()
+        self.probe(cur)
+        cur.execute(f"ALTER TABLE public.{SPEC_PROBE} ALTER COLUMN postcode "
+                    "TYPE varchar(12)")
+        bad = type_mismatches(_info_columns(cur, SPEC_PROBE),
+                              m.LEGACY_TABLE_TYPES)
+        self.assertEqual(bad, ["postcode: type varchar(12), expected "
+                               "varchar(10)"])
+
+    def test_the_view_has_the_legacy_names_and_types(self):
+        # a view's columns are all nullable, so only names and types
+        cur = self.conn.cursor()
+        rows = _info_columns(cur, m.LEGACY)
+        self.assertTrue(rows)
+        self.assertEqual(type_mismatches(rows, m.LEGACY_TABLE_TYPES,
+                                         nullability=False), [])
 
 
 if __name__ == "__main__":

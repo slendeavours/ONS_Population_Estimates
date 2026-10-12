@@ -239,24 +239,32 @@ class VerifyGates(unittest.TestCase):
         files, runs, _ = v.seed_legacy(self.cur, e)
         rc, text, _, _ = v.migrate(e, files, runs)
         self.assertEqual(rc, 0, text)
-        ok, detail = v.real_view(self.cur, v.ZLEG, v.ZREN, ZZ)
-        self.assertTrue(ok, detail)
-        self.assertIn("equals", detail)
+        # the seeded legacy table and the view have the recorded types
+        self.assertEqual(v.column_type_differences(self.cur, v.ZREN), [])
+        self.assertEqual(v.column_type_differences(self.cur, v.ZLEG), [])
+        # no snapshot newer than the migration: the legacy table that branch
+        # compared with is dropped, so the gate is not met
+        ok, detail = v.real_view(self.cur, v.ZLEG, ZZ)
+        self.assertFalse(ok)
+        self.assertIn("not newer than", detail)
         # a snapshot newer than the migration: the is_active branch
         e.make(v.D3, **v.D3_RETURN)
         rc, text, _, _ = e.run(["load", "--commit"], page=v.url(v.D3))
         self.assertEqual(rc, 0, text)
-        ok, detail = v.real_view(self.cur, v.ZLEG, v.ZREN, ZZ)
+        ok, detail = v.real_view(self.cur, v.ZLEG, ZZ)
         self.assertTrue(ok, detail)
         self.assertIn("is_active count", detail)
-        # drift while the migrated state is current is caught
-        self.cur.execute(f"DELETE FROM public.{v.ZL} WHERE snapshot_date = "
-                         "%s", (v.D3,))
-        self.cur.execute(f"UPDATE public.{v.ZREN} SET provider_name = 'x' "
-                         "WHERE location_id = '1-5'")
-        ok, detail = v.real_view(self.cur, v.ZLEG, v.ZREN, ZZ)
+        self.assertIn("LEGACY_TABLE_TYPES", detail)
+        # a view whose column type drifts is caught
+        cols = ", ".join("r.postcode::text AS postcode" if c == "postcode"
+                         else f"r.{c}"
+                         for c in ("location_id",) + m.VALUE_COLUMNS)
+        self.cur.execute(f"DROP VIEW public.{v.ZLEG}")
+        self.cur.execute(m.VIEW_SQL.format(view=v.ZLEG, live=v.ZL, cols=cols))
+        ok, detail = v.real_view(self.cur, v.ZLEG, ZZ)
         self.assertFalse(ok)
-        self.assertIn("only in", detail)
+        self.assertIn("columns:", detail)
+        self.assertIn("postcode", detail)
 
     def test_the_view_gate_is_not_met_while_cqc_locations_is_a_table(self):
         with mock.patch.object(m, "relkind", return_value="r"):

@@ -46,7 +46,7 @@ Gates:
      source_file; a changed location set is REJECTED
  15  Barnsley/Sheffield: form 'none', a file cell with E08000038 halts, API
      E08000039 maps to E08000019, no private dict in the module (AST check)
- 16  the view: same columns and types as cqc_locations_legacy; equals legacy
+ 16  the view: same columns and types as the legacy table; equals legacy
      for the migrated state; seeded leave-and-return behaves as legacy
                                                                 (real data)
  17  W1's S11 subquery on the view equals the latest snapshot's count per
@@ -423,7 +423,8 @@ def apply(cur, e, d, over=None, ids=None, link=None):
 _TYPE = {"text": ("text", None, None, None),
          "boolean": ("boolean", None, None, None),
          "integer": ("integer", None, 32, 0),
-         "date": ("date", None, None, None)}
+         "date": ("date", None, None, None),
+         "timestamptz": ("timestamp with time zone", None, None, None)}
 
 
 def _want_type(sql):
@@ -1661,14 +1662,33 @@ MIG_FILES = {D0: dict(ids=[i for i in range(N) if i != 61] + [62]),
 D3_RETURN = dict(ids=list(range(0, 59)) + [61])
 
 
-def _legacy_like(cur):
-    """The relation to copy the legacy columns from: the real base table,
-    or, once it has been swapped for the view, the renamed table."""
-    for name in (m.LEGACY, m.LEGACY_RENAMED):
-        if m.relkind(cur, name) == "r":
-            return name
-    raise RuntimeError("neither cqc_locations nor cqc_locations_legacy is a "
-                       "base table")
+def expected_columns(types=None):
+    """(name, data_type, character_maximum_length, numeric_precision,
+    numeric_scale) per column of the loader's LEGACY_TABLE_TYPES, as
+    information_schema.columns gives them."""
+    return [(name,) + _want_type(sql.split()[0])
+            for name, sql in (types or m.LEGACY_TABLE_TYPES)]
+
+
+def relation_columns(cur, name):
+    cur.execute("""SELECT column_name, data_type, character_maximum_length,
+                          numeric_precision, numeric_scale
+                   FROM information_schema.columns
+                   WHERE table_schema = 'public' AND table_name = %s
+                   ORDER BY ordinal_position""", (name,))
+    return cur.fetchall()
+
+
+def column_type_differences(cur, name):
+    """Differences between the columns (order, name, type) of `name` and the
+    loader's LEGACY_TABLE_TYPES."""
+    got, want = relation_columns(cur, name), expected_columns()
+    if not got:
+        return [f"{name} has no columns"]
+    if got != want:
+        return [f"{x} vs {y}" for x, y in zip(got, want) if x != y][:3] or [
+            f"{len(got)} vs {len(want)} columns"]
+    return []
 
 
 def seed_legacy(cur, e):
@@ -1681,8 +1701,7 @@ def seed_legacy(cur, e):
         rows, _ = m.parse_locations(paths[d])
         mapped, _ = m.map_locations(rows, BOUNDS, {}, {}, api=Api())
         by[d] = {r["location_id"]: r for r in mapped}
-    cur.execute(f"CREATE TABLE public.{ZLEG} (LIKE public.{_legacy_like(cur)}"
-                " INCLUDING ALL)")
+    cur.execute(m.legacy_table_sql(ZLEG))
     cur.execute(f"CREATE TABLE public.{ZLEGU} (LIKE "
                 "public.cqc_unresolved_locations INCLUDING ALL)")
     dates = sorted(by)
@@ -1770,6 +1789,8 @@ def migrated_world(cur):
             if rc != 0:
                 return out
             out["cols"] = view_columns(c, ZLEG, ZREN)
+            out["cols_types"] = (column_type_differences(c, ZLEG)
+                                 + column_type_differences(c, ZREN))
             out["kinds"] = (m.relkind(c, ZLEG), m.relkind(c, ZREN))
             out["diff"] = m.view_differences(c, ZLEG, ZREN)
             wrong = m.VIEW_SQL.replace("ELSE (SELECT MIN(s.snapshot_date)",
@@ -1818,7 +1839,7 @@ def migrated_world(cur):
 
 
 def gate_16_the_view(cur):
-    name = ("the view: same columns and types as cqc_locations_legacy; "
+    name = ("the view: same columns and types as the legacy table; "
             "equals legacy for the migrated state; seeded leave-and-return "
             "behaves as legacy")
     try:
@@ -1830,7 +1851,8 @@ def gate_16_the_view(cur):
                       f"{w.get('text', '')[-300:]}")
     exp = {k: tuple(v) for k, v in w["expected"].items()}
     got = {k: tuple(v) for k, v in w["view"].items()}
-    ok = (w["kinds"] == ("v", "r") and w["cols"] == [] and w["diff"] == (0, 0)
+    ok = (w["kinds"] == ("v", "r") and w["cols"] == []
+          and w["cols_types"] == [] and w["diff"] == (0, 0)
           and w["wrong_view_diff"] != (0, 0)
           and w["w1_swap"][0] == w["w1_swap"][1]
           and w["rc3"] == 0 and got == exp
@@ -1853,28 +1875,27 @@ def gate_16_the_view(cur):
         real_view(c)))
 
 
-def real_view(cur, view=m.LEGACY, old=m.LEGACY_RENAMED, spec=SPEC):
-    """The real view: same columns and types as the renamed legacy table;
-    equal to it (EXCEPT ALL both ways, all columns but loaded_at) while no
-    snapshot newer than 2026-09-01 exists; afterwards its is_active count is
-    the latest snapshot's row count."""
+def real_view(cur, view=m.LEGACY, spec=SPEC):
+    """The real view: the column names and types of the legacy table, as
+    the loader's LEGACY_TABLE_TYPES records them; its is_active count is the
+    latest snapshot's row count. (While no snapshot newer than 2026-09-01
+    existed it was also compared row for row with cqc_locations_legacy; that
+    table was dropped on 2026-10-12, so a latest snapshot not newer than
+    2026-09-01 now fails.)"""
     if m.relkind(cur, view) != "v":
         return False, (f"{view} is not the view yet "
                        f"({m.relkind(cur, view)!r}): not yet migrated")
-    if m.relkind(cur, old) != "r":
-        return False, f"{old} (the kept legacy table) is missing"
-    bad = [f"columns: {p}" for p in view_columns(cur, view, old)]
+    bad = [f"columns: {p}" for p in column_type_differences(cur, view)]
     cur.execute(f"SELECT MAX({spec.period_col}) FROM "
                 f"public.{spec.live_table}")
     latest = cur.fetchone()[0]
     if latest is None:
         return False, "the live table holds no snapshot"
     if _s(latest) <= MIGRATED_AT:
-        diff = m.view_differences(cur, view, old)
-        if diff != (0, 0):
-            bad.append(f"view vs {old}: {diff[0]} rows only in the view, "
-                       f"{diff[1]} only in the table")
-        what = f"equals {old} on every column but loaded_at (0 and 0 rows)"
+        bad.append(f"the latest snapshot {latest} is not newer than "
+                   f"{MIGRATED_AT}: the legacy table the view was compared "
+                   "with then is dropped")
+        what = ""
     else:
         cur.execute(f"SELECT COUNT(*) FROM public.{view} WHERE is_active")
         n = cur.fetchone()[0]
@@ -1887,7 +1908,8 @@ def real_view(cur, view=m.LEGACY, old=m.LEGACY_RENAMED, spec=SPEC):
         what = (f"snapshot {latest} is newer than {MIGRATED_AT}: is_active "
                 f"count {n} = its row count")
     return not bad, "; ".join(bad[:3]) if bad else (
-        f"{view} has the columns and types of {old}; {what}")
+        f"{view} has the legacy columns and types (LEGACY_TABLE_TYPES); "
+        f"{what}")
 
 
 def gate_17_w1_subquery(cur):

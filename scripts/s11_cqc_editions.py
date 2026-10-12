@@ -368,6 +368,25 @@ PUBLISHER_COLUMNS = tuple(c for c in VALUE_COLUMNS
 LEGACY_COLUMNS = (("location_id",) + VALUE_COLUMNS
                   + ("is_active", "deregistered_seen_date",
                      "source_file_date", "loaded_at"))
+# the whole legacy base table (key, value columns, the three state columns
+# and loaded_at), with its NULL rules and defaults; it equalled the
+# information_schema of cqc_locations_legacy on 2026-10-12, before that
+# table was dropped. The S11 gates and tests build their seeded legacy
+# table from this and check the view's column types against it.
+LEGACY_TABLE_TYPES = ((("location_id", "varchar(20) NOT NULL"),)
+                      + COLUMN_TYPES
+                      + (("is_active", "boolean NOT NULL DEFAULT true"),
+                         ("deregistered_seen_date", "date"),
+                         ("source_file_date", "date NOT NULL"),
+                         ("loaded_at", "timestamptz DEFAULT now()")))
+
+
+def legacy_table_sql(name) -> str:
+    """CREATE TABLE for a base table shaped like the legacy cqc_locations
+    (primary key location_id)."""
+    cols = ",\n    ".join(f"{c} {sql}" for c, sql in LEGACY_TABLE_TYPES)
+    return (f"CREATE TABLE public.{name} (\n    {cols},\n"
+            "    PRIMARY KEY (location_id)\n)")
 
 _MONTHS = ("january", "february", "march", "april", "may", "june", "july",
            "august", "september", "october", "november", "december")
