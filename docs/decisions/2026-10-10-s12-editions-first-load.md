@@ -372,3 +372,33 @@ Scott asked for the two PDFs listed on the 2020-21 page to be read.
 - **Letter of 3 December 2024** (Suzie Clarke, MHCLG). It removes only the PWLB premium condition for borrowing from 3 December 2024. It does not revoke, reduce or replace the direction.
 
 So Bexley did receive exceptional financial support in 2020-21 in the form of a capitalisation direction. Keeping its EFS flag is right. The 2020-21 page's table says Bexley "withdrew its request" after in-principle support; the direction says otherwise. Our stored 2020-21 row follows the page (status withdrawn, amount blank) and is unchanged; the direction's £3.87m is not stored as an amount. Whether to store it (a new edition, status capitalisation-direction, source the signed direction) is a decision for Scott. The flag and the map are the same either way.
+
+## 2026-10-12: Hackney's notice date tightened
+
+Scott asked (2026-10-12) for the Hackney date to be tightened. The register had 17 October 2000 marked exact, but its evidence
+(LGC, 19 October 2000) does not state the day. The rule: if a source states the day, cite it and keep the date exact; if none
+does, store it month only (2000-10-01, `approximate - month only confirmed`), as for Northamptonshire's July 2018 notice.
+
+Searches run (2026-10-12): (a) web search, Hackney section 114 notice October 2000 date; (b) the same with "Guardian" and
+"treasurer"; (c) BBC News, spending freeze, October 2000; (d) the exact phrase "issued a section 114 report on October 17";
+(e) "George Jenkins" Hackney treasurer; (f) "17 October 2000" Hackney council; (g) Hackney committee papers for the full
+council of 7 November 2000 (only 2009 onwards online); (h) Hansard through the Parliament API, October 2000 to June 2001,
+"Hackney section 114" and "Hackney treasurer" (no contributions); (i) the IfG explainer (year only: "in 2000"); (j) the LGC
+article re-read (no day of issue); (k) the libcom reprint of Black Flag 220 (October 2000, an order forbidding new
+expenditure, no day); (l) Wikipedia's list (17 October 2000, citing a Guardian feature of 13 November 2000, which could not
+be fetched; Wikipedia is not used as evidence).
+
+Finding: **the day is stated.** Public Finance (CIPFA), news, October 2000, "Hackney's financial crisis deepens as treasurer
+issues section 114 notice", says all spending was frozen after the borough treasurer, George Jenkins, issued a section 114
+report on October 17, sent to the district auditor and all members, with full council to meet on 7 November. It is a
+contemporary trade-press report and states the day; no council document was found. Caveat: the page refuses an automated
+fetch (HTTP 403; not bypassed), so the sentence was read from search-engine copies of the page, which agreed across four
+searches.
+
+What was stored. The Hackney row keeps `notice_date` 2000-10-17 and `date_confirmed` exact; `evidence_url` is now the Public
+Finance article, `evidence_title` says what it states and the caveat, `checked_on` 2026-10-12; the register is
+`register_as_at,2026-10-12`. `load --only s114` (preview, `--simulate`, `--commit`; no acknowledgement was asked for):
+edition 3 of 2000-01 (1 row revised, evidence only), the other seven years `unchanged` (ledger rows only), one run-log row.
+`refresh-latest` (preview): nothing to write and no key change, because the live table does not carry the evidence columns;
+it was therefore not committed. Live `la_s114_notices`: 14 notices, 10 authorities, unchanged; the `w1-read la_s114_notices`
+line above is unaffected. W1 and `refresh_map.py` were not run; the map is unchanged.
