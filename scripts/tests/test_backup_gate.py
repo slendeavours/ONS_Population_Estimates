@@ -160,7 +160,13 @@ class RealRegister(unittest.TestCase):
             conn.rollback()
             conn.close()
         self.assertTrue(ok, detail)
-        self.assertIn("19 backup table(s)", detail)
+        # All 19 grandfathered tables were dropped on 2026-10-12 (Scott);
+        # their register rows stay as history, every one marked dropped.
+        self.assertIn("0 backup table(s)", detail)
+        rows, _ = v.parse_backup_register(
+            v.BACKUP_REGISTER.read_text(encoding="utf-8"))
+        self.assertEqual(len(rows), 19)
+        self.assertEqual({r["status"] for r in rows}, {"dropped"})
 
 
 if __name__ == "__main__":
