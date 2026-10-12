@@ -1,0 +1,11 @@
+{
+ "backed_up_at": "2026-10-12T194110Z",
+ "workflows": {
+  "L55sz2PN4W9V0E0I": {
+   "workflow": "Revenue Outturn RO4 (S2)",
+   "nodes": {
+    "Process RO4 Data": "const raw = $input.first().json.data;\n\nconst lines = raw.trim().split('\\n');\nconst headers = lines[0].split(',');\n\n// Valid LAD24CD prefixes only - excludes subtotal rows (E06, E07, E08, E09 without full code)\nconst validCode = /^E\\d{8}$/;\n\nconst rows = [];\n\nfor (let i = 1; i < lines.length; i++) {\n  // Handle quoted fields (source column contains commas)\n  const cols = [];\n  let current = '';\n  let inQuotes = false;\n  for (const ch of lines[i]) {\n    if (ch === '\"') { inQuotes = !inQuotes; }\n    else if (ch === ',' && !inQuotes) { cols.push(current); current = ''; }\n    else { current += ch; }\n  }\n  cols.push(current);\n\n  const lad24cd = cols[0];\n  if (!validCode.test(lad24cd)) continue;\n\n  const missing = cols[3] === 'True';\n\n  rows.push({\n    lad24cd,\n    la_name: cols[1],\n    financial_year: cols[2],\n    data_missing: missing,\n    nightly_paid_ta_gross_exp_000:           missing ? null : parseFloat(cols[4]) || 0,\n    nightly_paid_ta_net_exp_000:             missing ? null : parseFloat(cols[5]) || 0,\n    hostels_gross_exp_000:                   missing ? null : parseFloat(cols[6]) || 0,\n    hostels_net_exp_000:                     missing ? null : parseFloat(cols[7]) || 0,\n    bb_gross_exp_000:                        missing ? null : parseFloat(cols[8]) || 0,\n    bb_net_exp_000:                          missing ? null : parseFloat(cols[9]) || 0,\n    hra_admin_prevention_relief_net_exp_000: missing ? null : parseFloat(cols[10]) || 0,\n    total_homelessness_gross_exp_000:        missing ? null : parseFloat(cols[11]) || 0,\n    total_homelessness_net_exp_000:          missing ? null : parseFloat(cols[12]) || 0,\n    total_housing_gross_exp_000:             missing ? null : parseFloat(cols[13]) || 0,\n    total_housing_net_exp_000:               missing ? null : parseFloat(cols[14]) || 0,\n    source: cols.length > 15 ? cols[15] : cols[4]\n  });\n}\n\nreturn [{ json: { rows, row_count: rows.length, batch_json: JSON.stringify(rows) } }];"
+   }
+  }
+ }
+}
