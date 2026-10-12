@@ -153,7 +153,7 @@ DETECTORS = {
     "3": dict(method="api_probe", finder="s3",
               loaded_sql="SELECT MAX(reference_year)::text FROM la_population",
               note="ONS MYE dataset listing (the /data JSON the registry api_endpoint points at), newest "
-                   "mid<year> edition, as s3_mye_refresh.py resolves it"),
+                   "mid<year> edition, as scripts/s3_mye_editions.py resolves it"),
     "3b": dict(method="api_probe", finder="s3b", loaded_const="2023-01-05",
                note="NOMIS dataset NM_2072_1 (TS054) LastUpdated. Census 2021 is static, so the baseline is the "
                     "publisher's LastUpdated seen on 2026-10-01 and any later value is reported"),

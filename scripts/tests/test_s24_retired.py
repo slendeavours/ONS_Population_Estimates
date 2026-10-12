@@ -1,14 +1,15 @@
 """The two retired S24 scripts (scripts/historical/s24_*.py) stop at once,
-also when run directly (scripts/ is then not on sys.path), with a broken
-environment (an invalid database host, a broken PYTHONPATH) and without
+also when run directly (scripts/ is then not on sys.path), in the scrubbed
+sandbox of retired_sandbox.py (invalid host, no .env, no _db) and without
 opening a connection."""
 
-import os
 import re
-import subprocess
 import sys
 import unittest
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from retired_sandbox import run_retired  # noqa: E402
 
 SCRIPTS = Path(__file__).resolve().parents[1]
 HIST = SCRIPTS / "historical"
@@ -17,20 +18,9 @@ GUARD = "sys.exit(2)"
 
 
 class RetiredS24(unittest.TestCase):
-    def _run(self, name, env=None):
-        return subprocess.run([sys.executable, str(HIST / name)],
-                              capture_output=True, text=True, cwd=HIST,
-                              timeout=60, env=env)
-
-    def _broken_env(self):
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(HIST / "nonexistent")
-        for k in ("PGHOST", "PG_PASSWORD", "PGPASSWORD", "DATABASE_URL",
-                  "PG_PORT", "PG_DATABASE", "PG_USER"):
-            env.pop(k, None)
-        env["PG_HOST"] = "invalid.invalid"
-        env["PG_HOST_OVERRIDE"] = "invalid.invalid"
-        return env
+    def _run(self, name):
+        # always the scrubbed sandbox (retired_sandbox.py)
+        return run_retired(HIST / name)
 
     def test_run_directly_prints_retired_and_exits_2(self):
         for name in NAMES:
@@ -49,7 +39,7 @@ class RetiredS24(unittest.TestCase):
     def test_retired_even_with_broken_environment(self):
         for name in NAMES:
             with self.subTest(name):
-                r = self._run(name, self._broken_env())
+                r = self._run(name)
                 self.assertEqual(r.returncode, 2)
                 self.assertIn("RETIRED", r.stderr)
                 self.assertIn("s24_rsh_register_editions", r.stderr)

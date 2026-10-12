@@ -1,0 +1,23 @@
+{
+  "_about": "S14 BRMA names: the VOA BRMA layer (data/raw/s14_lha/GML.zip, member 'English BRMA(LHA) Layer.gml', field Name, applicable May 2020, sha256 66515b0a1403e455...) writes 18 names as 'X & Y' where the DWP 2026-27 England rates CSV (england-rates-2026-to-2027.csv) writes 'X and Y'. W1 joins la_brma_mapping to brma_lha_rates on the name (docs/decisions/2026-08-21-s14-brma-join-break.md), so scripts/s14_lha_editions.py converts each VOA name through this exact table and never by a pattern: a VOA name with '&' that is not a key here halts the crosswalk. Read 2026-10-11: these are all 18 '&' names in the layer, and each value is a BRMA of the 2026-27 CSV.",
+  "aliases": {
+    "Bradford & South Dales": {"name": "Bradford and South Dales", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Central Norfolk & Norwich": {"name": "Central Norfolk and Norwich", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Crawley & Reigate": {"name": "Crawley and Reigate", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Grantham & Newark": {"name": "Grantham and Newark", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Harlow & Stortford": {"name": "Harlow and Stortford", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Hull & East Riding": {"name": "Hull and East Riding", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Lowestoft & Great Yarmouth": {"name": "Lowestoft and Great Yarmouth", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Medway & Swale": {"name": "Medway and Swale", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Mid & East Devon": {"name": "Mid and East Devon", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Mid & West Dorset": {"name": "Mid and West Dorset", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "North Cornwall & Devon Borders": {"name": "North Cornwall and Devon Borders", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Oldham & Rochdale": {"name": "Oldham and Rochdale", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Peaks & Dales": {"name": "Peaks and Dales", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Richmond & Hambleton": {"name": "Richmond and Hambleton", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Rugby & East": {"name": "Rugby and East", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Stevenage & North Herts": {"name": "Stevenage and North Herts", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Tameside & Glossop": {"name": "Tameside and Glossop", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"},
+    "Taunton & West Somerset": {"name": "Taunton and West Somerset", "seen": "GML.zip Name, read 2026-10-11; england-rates-2026-to-2027.csv"}
+  }
+}

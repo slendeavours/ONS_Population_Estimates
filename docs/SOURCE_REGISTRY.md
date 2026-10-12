@@ -112,8 +112,9 @@ is a risk signal, not a tidy row.
 ## The tiers
 
 Assigned by acquisition mechanics, not by importance. S14 LHA rates are
-central to the analysis and sit in tier C, because the edition URL is replaced
-by hand.
+central to the analysis and sit in tier C. Since 2026-10-11 the loader finds
+the edition itself, but the file's layout and header year have changed between
+years, so the cautious tier stays.
 
 | Tier | Mechanics | What can be automated |
 | --- | --- | --- |
@@ -399,6 +400,24 @@ it. S7's caveat that the shapes were simplified to about 20% of the original
 vertex count had no support and is replaced: they are the publisher's
 generalised (BGC) boundaries as published. Records:
 `docs/decisions/2026-10-10-reference-trio-editions-first-load.md`.
+
+S3 (the ONS mid-year population estimates) and S14 (the DWP LHA rates and the
+BRMA crosswalk) are on the same engine since 2026-10-11, each with a loader
+that finds the newest release itself (`scripts/s3_mye_editions.py`,
+`scripts/s14_lha_editions.py`). Both source rows now say `revises_back_series`:
+ONS restates earlier years in each July workbook (the July 2026 revision of
+mid-2024 is edition 2, 295 of 296 authorities, England -12,931), and DWP has
+reissued a year's England file in place (2024-25 twice, 2026-27 once). The S14
+weekly rates are derived from DWP's monthly amounts, and the crosswalk is a
+derived table whose `mapping_method` text `NaN` is corrected in edition 2. The
+old S3 and S14 scripts and n8n workflows are retired; the S14 scripts and the
+S3 script ran by accident on 2026-10-11 and the tables were repaired the same
+day. Both rows' n8n workflow name is cleared (Workflow 1 only reads the
+tables) and S14's node docs are no longer cited (they describe the retired
+build). Source notes: `docs/s3_mye_source.md`, `docs/s14_lha_source.md`.
+Records: `docs/decisions/2026-10-11-s3-editions-first-load.md`,
+`docs/decisions/2026-10-11-s14-editions-first-load.md`,
+`docs/decisions/2026-10-11-s3-s14-accidental-rebuild.md`.
 
 S24 (the RSH register of registered providers, regulatory judgements and
 enforcement notices) is on the same engine since 2026-10-11. The register is a

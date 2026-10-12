@@ -13,6 +13,9 @@ ALLOW = {
     # Retires the seven n8n loader workflows for the no-loader sources
     # (none of them is W1); edits those workflow rows.
     "n8n_retire_no_loader_sources.py",
+    # Retires the S3 and S14 n8n loader workflows (neither is W1); edits
+    # those workflow rows.
+    "n8n_retire_s3_s14.py",
     # Archives the old n8n W1 workflow (this is its whole purpose).
     "archive_n8n_w1.py",
 }

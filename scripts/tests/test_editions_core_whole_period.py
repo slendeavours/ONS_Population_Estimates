@@ -235,6 +235,8 @@ OPTED_IN = {"s23_rsh_stock_editions.SPEC",
             "s6_asylum_editions.SPEC_NON_ENGLAND",
             "s6_asylum_editions.SPEC_GROUPS",
             "s13_lahs_editions.SPEC",
+            "s14_lha_editions.RATES",
+            "s14_lha_editions.MAPPING",
             "s24_rsh_register_editions.REGISTER",
             "s24_rsh_register_editions.JUDGEMENTS",
             "s24_rsh_register_editions.NOTICES"}
@@ -307,6 +309,26 @@ class WholePeriodOptIn(unittest.TestCase):
         live_cols, _ = core._insert_cols(spec)
         self.assertNotIn("live_source", live_cols)
         self.assertIn("source", live_cols)
+
+    def test_s14_opts_in_to_an_editions_only_source(self):
+        """S14: live source from the editions-only source_text column (per
+        row: edition 1 keeps each held row's own text, Ashford's included);
+        not whole-period. The rates opt in to key changes, so the key-change
+        insert writes source from source_text and never names
+        source_text."""
+        specs = real_specs()
+        for name in ("RATES", "MAPPING"):
+            with self.subTest(spec=name):
+                spec = specs[f"s14_lha_editions.{name}"]
+                self.assertEqual(spec.whole_period_cols, ())
+                self.assertEqual(spec.editions_only_cols, ("source_text",))
+                self.assertNotIn("source", spec.compare_cols)
+                live_cols, src = core._insert_cols(spec)
+                self.assertNotIn("source_text", live_cols)
+                self.assertEqual(dict(zip(live_cols, src))["source"],
+                                 "e.source_text")
+        self.assertTrue(specs["s14_lha_editions.RATES"].refresh_key_changes)
+        self.assertTrue(specs["s14_lha_editions.MAPPING"].live_single_period)
 
     def test_s6_opts_in_with_the_release_label(self):
         """S6: live source_edition from the editions metadata column
