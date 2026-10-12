@@ -86,8 +86,10 @@ Closed: Scott chose Option C on 2026-10-12. A judgements file whose Enforcement 
 REJECTED by `scripts/s24_rsh_register_editions.py load` unless `--acknowledge-no-notices DATE` names it (nothing else releases it);
 with it the judgements load as usual and the notices period is recorded empty (an `empty` ledger row naming the acknowledgement,
 no editions row, logged), and `refresh-latest --accept-key-changes DATE` empties the live notices while the earlier notices stay as
-history. Engine opt-in `EditionSpec.empty_periods_allowed` (S24 notices only). `ddl --commit` must run once first to let the real
-notices ledger take an `empty` row. See the addendum in [2026-10-11-s24-editions-first-load.md](2026-10-11-s24-editions-first-load.md),
+history. Engine opt-in `EditionSpec.empty_periods_allowed` (S24 notices only). The loose ends are closed (2026-10-12, Scott's
+approval): `ddl --commit` has run, so the real notices ledger takes an `empty` row (its 4 rows unchanged), and
+`scripts/check_sources.py 24` now watches the judgements page and reports a new issue (the page offers the latest file only, so a
+missed issue cannot be fetched later) and a held issue more than 35 days old. See the addendum in [2026-10-11-s24-editions-first-load.md](2026-10-11-s24-editions-first-load.md),
 `docs/s24_rsh_register_source.md` and the S24 section of `docs/QUARTERLY_REFRESH.md`.
 
 ### 9. S24 empty-notices: two known limits (opened 2026-10-12, not decided)
