@@ -455,11 +455,12 @@ def single_on_scenario(cur):
     return res, out.getvalue()
 
 
-def run_single_on(conn):
+def run_single_on(conn, with_day=False):
     with sp.rolled_back(conn) as cur:
+        day = sp.run_day(cur)
         rec = sp._Recorder(cur)
         res, out = single_on_scenario(rec)
-        return res, out, rec.sql
+        return (res, out, rec.sql, day) if with_day else (res, out, rec.sql)
 
 
 @contextmanager
@@ -494,30 +495,30 @@ class FlagOffUnchanged(unittest.TestCase):
         cls.conn.rollback()
         cls.conn.close()
 
-    def assert_matches(self, golden_path, now):
+    def assert_matches(self, golden_path, run):
+        """run: (results, stdout, sql, run day); compared with the golden
+        file, the run day normalised on both sides (sp.golden_matches)."""
+        res, out, sql, day = run
         golden = json.loads(golden_path.read_text(encoding="utf-8"))
-        self.assertGreater(len(golden["sql"]), 50)
-        self.assertEqual(now["results"], golden["results"])
-        self.assertEqual(now["stdout"], golden["stdout"])
-        self.assertEqual(len(now["sql"]), len(golden["sql"]))
-        for i, (a, b) in enumerate(zip(golden["sql"], now["sql"])):
-            self.assertEqual(b, a, f"statement {i} differs")
+        now = sp.recorded(res, out, sql)
+        sp.golden_matches(self, golden, now, day)
+        return now
 
     def test_flag_off_scenario_unchanged_and_no_newest_path_runs(self):
         with newest_paths_refused() as answers:
-            now = sp.recorded(*sp.run_scenario(self.conn))
+            run = sp.run_scenario(self.conn, with_day=True)
         self.assertTrue(answers)
         self.assertFalse(any(answers))
-        self.assert_matches(sp.GOLDEN, now)
+        now = self.assert_matches(sp.GOLDEN, run)
         for r in now["results"]:
             self.assertNotIn("'history'", r)
 
     def test_single_vintage_scenario_unchanged_and_no_newest_path_runs(self):
         with newest_paths_refused() as answers:
-            now = sp.recorded(*run_single_on(self.conn))
+            run = run_single_on(self.conn, with_day=True)
         self.assertTrue(answers)
         self.assertFalse(any(answers))
-        self.assert_matches(SINGLE_ON_GOLDEN, now)
+        now = self.assert_matches(SINGLE_ON_GOLDEN, run)
         for r in now["results"]:
             self.assertNotIn("'history'", r)
 
@@ -541,8 +542,9 @@ def write_golden():
             encoding="utf-8"))["about"]
     conn = get_conn()
     try:
-        doc = {"about": about}
-        doc.update(sp.recorded(*run_single_on(conn)))
+        res, out, sql, day = run_single_on(conn, with_day=True)
+        doc = {"about": about, "recorded_on": day.isoformat()}
+        doc.update(sp.recorded(res, out, sql))
     finally:
         conn.rollback()
         conn.close()

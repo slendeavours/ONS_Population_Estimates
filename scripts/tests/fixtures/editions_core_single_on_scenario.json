@@ -1,5 +1,6 @@
 {
  "about": "The live_single_period scenario of test_editions_core_newest_period (single_on_scenario()), run through editions_core, load_checks and period_editions as at commit afa5707 with only the live_newest_period_only field and its __post_init__ check added (no behaviour of the opt-in yet) on 2026-10-11: every result as repr, the printed output and every SQL statement, with hex runs of 40 or more characters cut into 32-character pieces joined by '~'. A live_single_period spec must reproduce it exactly. Regenerate only deliberately, after reading the diff: python tests/test_editions_core_newest_period.py --write-golden",
+ "recorded_on": "2026-10-11",
  "results": [
   "'new'",
   "'held-not-live'",

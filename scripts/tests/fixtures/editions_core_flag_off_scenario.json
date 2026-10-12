@@ -1,5 +1,6 @@
 {
  "about": "The flag-off scenario of test_editions_core_single_period (scenario()), run through editions_core, load_checks and period_editions as at commit 8b5a286 (the branch base, before live_single_period existed) on 2026-10-11: every result as repr, the printed output and every SQL statement, with hex runs of 40 or more characters cut into 32-character pieces joined by '~'. A flag-off spec must reproduce it exactly. Regenerate only deliberately, after reading the diff: python tests/test_editions_core_single_period.py --write-golden",
+ "recorded_on": "2026-10-11",
  "results": [
   "'new'",
   "'new'",
