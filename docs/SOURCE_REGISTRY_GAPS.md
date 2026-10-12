@@ -19,22 +19,22 @@ The top of this list is the documentation debt.
 | `n8n_workflow_name` | 19 | the n8n workflow that runs the source, where one does |
 | `node_docs_path` | 16 | the per-node documentation under docs/nodes/ |
 | `detected_period_type` | 11 | — |
-| `api_endpoint` | 8 | the build script or node documentation, where acquisition is an API |
+| `api_endpoint` | 7 | the build script or node documentation, where acquisition is an API |
 | `publication_window` | 7 | the publisher's stated release window |
-| `source_doc_path` | 7 | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | 7 | the source's verification suite and its documented check count |
-| `join_path` | 6 | the build script's geography resolution step |
-| `build_script_path` | 4 | the build script, if it is in the published tree |
-| `caveats` | 4 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
-| `revises_back_series` | 4 | — |
+| `source_doc_path` | 6 | a source documentation file — the single largest gap for undocumented sources |
+| `verification_checks` | 6 | the source's verification suite and its documented check count |
+| `join_path` | 5 | the build script's geography resolution step |
+| `build_script_path` | 3 | the build script, if it is in the published tree |
 | `cadence_months` | 3 | the publisher's stated cadence, where it is regular enough to express in months |
+| `caveats` | 3 | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `landing_page_url` | 3 | the publisher's landing page, recorded in a source or node documentation file |
+| `revises_back_series` | 3 | — |
 | `series_name` | 3 | the publisher's dataset or table title, as named in a source documentation file |
 | `completeness_note` | 2 | the source documentation's coverage statement |
 | `known_gotchas` | 2 | a source documentation file — acquisition traps are only known once written down |
-| `revision_note` | 2 | — |
+| `revision_note` | 1 | — |
 
-Total: 242 null fields across 26 published sources.
+Total: 234 null fields across 26 published sources.
 
 ## Null fields by source
 
@@ -398,26 +398,18 @@ Total: 242 null fields across 26 published sources.
 
 | Field | Where the value would come from |
 | --- | --- |
-| `api_endpoint` | the build script or node documentation, where acquisition is an API |
 | `auth_env_var` | the build script, where the source needs a credential |
 | `cadence_months` | the publisher's stated cadence, where it is regular enough to express in months |
 | `expected_lag_days` | the publisher's stated publication lag, in days |
 | `next_expected_at` | the publisher's release calendar. Not derivable from anything in this repository — a stated window such as 'late January' is not a date, and inventing one would be a guess |
-| `join_path` | the build script's geography resolution step |
 | `n8n_workflow_name` | the n8n workflow that runs the source, where one does |
-| `build_script_path` | the build script, if it is in the published tree |
 | `node_docs_path` | the per-node documentation under docs/nodes/ |
-| `source_doc_path` | a source documentation file — the single largest gap for undocumented sources |
-| `verification_checks` | the source's verification suite and its documented check count |
-| `caveats` | the source documentation. Caveats travel with the data, so an absent caveat list is a risk, not a tidy row |
 | `ucws_lens` | an explicit dual-lens note in the source documentation |
 | `hss_lens` | an explicit dual-lens note in the source documentation |
 | `superseded_by` | only populated when a source is replaced; null is correct for an active source |
-| `revises_back_series` | — |
-| `revision_note` | — |
 | `detected_period_type` | — |
 
-**Note.** Free download, no login required. The build script s21_statistical_neighbours_build.py is not in the published tree, so build_script_path is null here. refresh_tier is C because acquisition is a hand download.
+**Note.** Free download, no login required. The loader is in the repo and finds the edition itself. refresh_tier stays C: the loader has seen one edition only, so the layout across editions is untested, and a new edition is a decision, not a refresh, because it changes every authority's comparators.
 
 ### S22
 

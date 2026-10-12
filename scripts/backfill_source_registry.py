@@ -2105,23 +2105,120 @@ SOURCES = [
             "https://www.ons.gov.uk/peoplepopulationandcommunity/wellbeing/"
             "datasets/clusteringsimilarlocalauthoritiesandstatistical"
             "nearestneighboursintheuk"),
-        acquisition_method="manual",
+        api_endpoint=(
+            "https://www.ons.gov.uk/peoplepopulationandcommunity/wellbeing/"
+            "datasets/clusteringsimilarlocalauthoritiesandstatistical"
+            "nearestneighboursintheuk/data"),
+        acquisition_method="landing_page",
+        build_script_path="scripts/s21_neighbours_editions.py",
+        source_doc_path="docs/s21_neighbours_source.md",
         known_gotchas=(
-            "The build reads a pre-downloaded workbook from "
-            "data/raw/ons_statistical_neighbours_2026.xlsx; there is no "
-            "discovery step, so a new edition must be downloaded by hand. "
-            "The Mar-2026 edition carries E08000038 and E08000039 for "
-            "Barnsley and Sheffield, remapped to E08000016 and E08000019 "
-            "directly in the build script rather than through "
-            "la_code_lookup, which is deliberately unchanged."),
+            "The loader (scripts/s21_neighbours_editions.py) reads the ONS "
+            "dataset page's /data JSON, takes the newest edition listed "
+            "(2026) and its one download; none listed or an edition JSON it "
+            "cannot parse halts. A newer edition (another Cover date) is "
+            "named in the preview and stored as editions only (load "
+            "--commit stores it with no flag); it is never promoted to the "
+            "live table through a load: "
+            "adopting it changes every authority's comparator set. The "
+            "release is read from the file's Cover sheet ('originally "
+            "published at 9.30am 18 March 2026'), never from the name. "
+            "Traps. (1) The live table is not the publisher's top five. It "
+            "is the five nearest ENGLISH neighbours of the publisher's "
+            "twenty, renumbered 1 to 5 (LIVE_RULE in the loader; Scott kept "
+            "this rule on 2026-10-11). 238 of the 1,480 pairs carry a rank "
+            "different from the publisher's, in 71 authorities whose "
+            "publisher top five include a Welsh, Scottish or Northern Irish "
+            "neighbour, and 105 pairs come from publisher ranks 6 to 15. "
+            "The live source text ('... Table 7a (LTLA global), Mar-2026 "
+            "edition') does not say so. (2) The file carries Barnsley and "
+            "Sheffield as E08000038 and E08000039 (as subjects and in 93 "
+            "neighbour cells) and never E08000016 or E08000019; the loader "
+            "resolves both columns through geography.resolve to the "
+            "canonical E08000016 and E08000019, with no private dict. The "
+            "retired build recoded the same pair with a private dict "
+            "whose comment said the file still carried the pre-recode "
+            "codes, which is the wrong way round. (3) Every English subject "
+            "has 20 neighbours across the UK (473 of the 5,920 are Welsh, "
+            "Scottish or Northern Irish; their codes are stored verbatim "
+            "in the editions); a blank pair, the note 12 marker [x] or "
+            "any other text in a code cell halts. (4) The file does not "
+            "define the order of the neighbours; the loader takes the "
+            "file's order, Neighbour 1 first, as the rank."),
         cadence="periodic",
         publication_window="Irregular (Mar 2026 edition)",
         target_table="la_statistical_neighbours", geography_level="LAD24",
+        join_path=(
+            "Subjects and English neighbours resolve through "
+            "geography.resolve (source 21 is declared 'new': the file "
+            "carries E08000038/39) to the canonical lad24cd, and each "
+            "canonical code must be in la_boundaries; a non-English "
+            "neighbour code is stored verbatim in the editions and never "
+            "resolved. Not a W1, export or map input; read by "
+            "analysis/council_briefing and analysis/liverpool_paper for "
+            "one authority's comparators."),
+        verification_checks={
+            "method": "editions",
+            "script": "scripts/s21_neighbours_editions_verify.py",
+            "checks": 21,
+            "first_load": "2026-10-12",
+            "migration_proof": ("migrate-legacy: edition 1 'as loaded' is "
+                                "the held file read again (5,920 rows, 296 "
+                                "English authorities x 20 neighbours); "
+                                "LIVE_RULE applied to it reproduces every "
+                                "live pair and rank, 1,480 of 1,480 for "
+                                "296 of 296 authorities, 0 differences "
+                                "either way"),
+            "gate": ("all gates must pass, including live equal to "
+                     "LIVE_RULE applied to the latest edition and the "
+                     "decision note's before-state and live-read hash "
+                     "lines; the loader halts before any write on an "
+                     "identity, header, blank, marker, code or geography "
+                     "failure or an older file, and a second ONS edition "
+                     "can never reach the live table"),
+            "retired": ("scripts/s21_statistical_neighbours_build.py now "
+                        "exits 2 at its first statement. It loaded the "
+                        "table once, on 2026-07-24 (run-log 66, 1,480 "
+                        "rows), by TRUNCATE then insert, and was first "
+                        "committed on 2026-08-20")},
+        revises_back_series=False,
+        revision_note=(
+            "None seen. The ONS dataset page lists one edition (2026, "
+            "released 18 March 2026) and no earlier versions, so there is "
+            "nothing to compare. A reissue of that release would be stored "
+            "as the next edition and reach the live table only through "
+            "refresh-latest; a new ONS edition is a new vintage, held as "
+            "editions only. Record: docs/decisions/"
+            "2026-10-11-s21-editions-first-load.md."),
+        caveats=[
+            "The live table (la_statistical_neighbours) holds the five "
+            "nearest English neighbours of the publisher's twenty, "
+            "renumbered 1 to 5, so neighbour_rank is not always the "
+            "publisher's rank: 238 of the 1,480 pairs differ, in 71 "
+            "authorities. The publisher's own ranks are in "
+            "la_statistical_neighbours_editions (publisher_rank). The rule "
+            "was kept by Scott on 2026-10-11; the live source text does not "
+            "name it.",
+            "The statistics are labelled by ONS as 'official statistics in "
+            "development' (Notes, note 1). Neighbours are calculated using "
+            "euclidean distance (note 17) on the global model's indicators; "
+            "they are not part of the clustering model, so an area's "
+            "neighbours need not share its cluster (note 18). The models "
+            "use the local authority boundaries as at March 2026 (note 2).",
+            "City of London and Isles of Scilly are only in the "
+            "demographic clustering model because of missing indicator "
+            "data, and appear in all the nearest neighbours models (note "
+            "7); both are in this table with 20 neighbours.",
+            "The table compares authorities within the UK, so England's "
+            "nearest neighbours by the publisher's measure include Welsh, "
+            "Scottish and Northern Irish authorities; the live table "
+            "leaves those out because the pipeline's data is English."],
         completeness_note=(
-            "Free download, no login required. The build script "
-            "s21_statistical_neighbours_build.py is not in the published "
-            "tree, so build_script_path is null here. refresh_tier is C "
-            "because acquisition is a hand download."),
+            "Free download, no login required. The loader is in the repo "
+            "and finds the edition itself. refresh_tier stays C: the "
+            "loader has seen one edition only, so the layout across "
+            "editions is untested, and a new edition is a decision, not a "
+            "refresh, because it changes every authority's comparators."),
         latest_period_loaded="Mar 2026 edition",
         refresh_tier="C", status="active",
         publish_github=True, publish_map=False,

@@ -393,6 +393,53 @@ def recorded(res, out, sql):
             "sql": [_split_hex(x) for x in sql]}
 
 
+RUN_DAY = "<run day>"
+
+
+def run_day(cur):
+    """The UTC date of the transaction's now(): the day a live row's
+    loaded_at default gives, which sync_new stores as an as-loaded
+    edition's published_date. Read on the raw cursor, so it is not part of
+    the recorded statements."""
+    cur.execute("SELECT (now() AT TIME ZONE 'UTC')::date")
+    return cur.fetchone()[0]
+
+
+def normalise_run_day(doc, day):
+    """The doc with the run day, and only it, replaced by RUN_DAY where the
+    scenario can show it: as an SQL date literal ('yyyy-mm-dd'::date) and
+    as a date repr (datetime.date(y, m, d)). Every other character, the
+    statement count and order are compared as recorded, so the fixture
+    still pins the SQL; a date other than the run day still differs."""
+    day = date.fromisoformat(str(day))
+    pairs = ((f"'{day.isoformat()}'::date", f"'{RUN_DAY}'::date"),
+             (f"datetime.date({day.year}, {day.month}, {day.day})",
+              f"datetime.date({RUN_DAY})"))
+
+    def norm(text):
+        for a, b in pairs:
+            text = text.replace(a, b)
+        return text
+    return {"results": [norm(x) for x in doc["results"]],
+            "stdout": norm(doc["stdout"]),
+            "sql": [norm(x) for x in doc["sql"]]}
+
+
+def golden_matches(test, golden, now, day):
+    """Assert the recorded scenario `now` (run on `day`) equals the golden
+    fixture (recorded on its recorded_on day), the run day normalised on
+    both sides (normalise_run_day)."""
+    test.assertIn("recorded_on", golden)
+    golden = normalise_run_day(golden, golden["recorded_on"])
+    now = normalise_run_day(now, day)
+    test.assertGreater(len(golden["sql"]), 50)
+    test.assertEqual(now["results"], golden["results"])
+    test.assertEqual(now["stdout"], golden["stdout"])
+    test.assertEqual(len(now["sql"]), len(golden["sql"]))
+    for i, (a, b) in enumerate(zip(golden["sql"], now["sql"])):
+        test.assertEqual(b, a, f"statement {i} differs")
+
+
 class _Recorder:
     """A cursor proxy that records every statement as text."""
 
@@ -449,10 +496,12 @@ def scenario(c, lc, m, cur):
     return res, out.getvalue()
 
 
-def run_scenario(conn):
+def run_scenario(conn, with_day=False):
     """(results, stdout, sql) of the flag-off scenario on the current
-    modules, in a rolled-back transaction."""
+    modules, in a rolled-back transaction; with_day: (results, stdout, sql,
+    the run day)."""
     with rolled_back(conn) as cur:
+        day = run_day(cur)
         # rolled_back made the editions table with SP; drop it so the
         # scenario's own create_schema makes it, recorded
         cur.execute("DROP TABLE public.zz_ec_sp_editions")
@@ -461,7 +510,7 @@ def run_scenario(conn):
                     "DROP CONSTRAINT zz_ec_sp_live_pkey")
         rec = _Recorder(cur)
         res, out = scenario(core, load_checks, pe, rec)
-        return res, out, rec.sql
+        return (res, out, rec.sql, day) if with_day else (res, out, rec.sql)
 
 
 class FlagOffUnchanged(unittest.TestCase):
@@ -476,13 +525,29 @@ class FlagOffUnchanged(unittest.TestCase):
 
     def test_same_sql_and_results_as_before_the_opt_in(self):
         golden = json.loads(GOLDEN.read_text(encoding="utf-8"))
-        now = recorded(*run_scenario(self.conn))
-        self.assertGreater(len(golden["sql"]), 50)
-        self.assertEqual(now["results"], golden["results"])
-        self.assertEqual(now["stdout"], golden["stdout"])
-        self.assertEqual(len(now["sql"]), len(golden["sql"]))
-        for i, (a, b) in enumerate(zip(golden["sql"], now["sql"])):
-            self.assertEqual(b, a, f"statement {i} differs")
+        res, out, sql, day = run_scenario(self.conn, with_day=True)
+        golden_matches(self, golden, recorded(res, out, sql), day)
+
+    def test_the_run_day_is_normalised_and_nothing_else(self):
+        doc = {"results": ["datetime.date(2026, 10, 11)",
+                           "datetime.date(2026, 10, 10)"],
+               "stdout": "x '2026-10-11'::date",
+               "sql": ["V ('2026-10-11'::date, '2026-10-10'::date, "
+                       "'2026-10-11')"]}
+        got = normalise_run_day(doc, "2026-10-11")
+        self.assertEqual(got["results"], [f"datetime.date({RUN_DAY})",
+                                          "datetime.date(2026, 10, 10)"])
+        self.assertEqual(got["stdout"], f"x '{RUN_DAY}'::date")
+        self.assertEqual(got["sql"], [f"V ('{RUN_DAY}'::date, "
+                                      "'2026-10-10'::date, '2026-10-11')"])
+        # a golden from another day matches only where that day stood
+        later = normalise_run_day({"results": [], "stdout": "",
+                                   "sql": ["V ('2026-10-12'::date)"]},
+                                  "2026-10-12")
+        self.assertEqual(later["sql"], [f"V ('{RUN_DAY}'::date)"])
+        self.assertNotEqual(normalise_run_day(
+            {"results": [], "stdout": "", "sql": ["V ('2026-10-11'::date)"]},
+            "2026-10-12")["sql"], later["sql"])
 
     def test_no_single_vintage_path_runs_with_the_flag_off(self):
         """The invariant itself, whatever the fixture says: with the flag
@@ -521,8 +586,9 @@ def write_golden():
     about = json.loads(GOLDEN.read_text(encoding="utf-8"))["about"]
     conn = get_conn()
     try:
-        doc = {"about": about}
-        doc.update(recorded(*run_scenario(conn)))
+        res, out, sql, day = run_scenario(conn, with_day=True)
+        doc = {"about": about, "recorded_on": day.isoformat()}
+        doc.update(recorded(res, out, sql))
     finally:
         conn.rollback()
         conn.close()

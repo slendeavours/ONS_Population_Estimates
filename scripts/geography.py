@@ -138,7 +138,13 @@ DATASET_FORM = {
     "21": ("new",
            "data/raw/ons_statistical_neighbours_2026.xlsx (Mar-2026 "
            "edition) carries E08000038/39 only (registry known_gotchas "
-           "agrees)."),
+           "agrees). Read 2026-10-11: the same bytes (data/raw/"
+           "s21_neighbours/2026clusteringsimilarlocalauthoritiesandnearest"
+           "neighbours.xlsx, sha256 26e9ca037015db12) carry E08000038/39 "
+           "in Table 7a's subject column and in its neighbour code columns "
+           "as well (93 neighbour cells), and never E08000016/19; "
+           "scripts/s21_neighbours_editions.py resolves both columns "
+           "through this module."),
     "22": ("mixed",
            "Read 2026-10-09 from the files in data/raw/s22_ctb: the Council "
            "Taxbase 2025 local authority level workbook "

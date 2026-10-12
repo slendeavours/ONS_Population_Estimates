@@ -59,7 +59,7 @@ This section is **generated from `docs/METHODOLOGY.md`**, which is the source re
 | 18 | ONS PIPR | Private market rent levels, index, annual change by LA (bedroom + property type) | no | no |
 | 19 | DWP Stat-Xplore PIP | PIP total claimants and enhanced daily living per LA (demand proxy for supported living) | yes | no |
 | 20 | Commercial rate card (private) | Withheld — commercial in confidence. Held in `exempt_pipeline` only and never exported to this repository, the signals JSON or the map | no | no |
-| 21 | ONS Clustering similar local authorities and statistical nearest neighbours in the UK | Five nearest statistical neighbours per LA (Table 7a, LTLA global) | no | no |
+| 21 | ONS Clustering similar local authorities and statistical nearest neighbours in the UK | Five nearest English statistical neighbours per LA (from the publisher's twenty, renumbered 1 to 5; Table 7a, LTLA global) | no | no |
 | 22 | MHCLG Council Taxbase (CTB form) + Live Table 615 | Dwellings empty six months or more, all empties, empty homes premium counts, second homes, unoccupied exemptions by class per LA; vacant and long-term vacant dwellings by district from 2004 | yes | yes |
 | 23 | RSH registered provider social housing stock (SDR + LADR) | Owned social stock per registered provider per LA: supported housing and housing for older people, general needs self-contained and bedspaces, low cost home ownership | no | no |
 | 24 | RSH register of registered providers and regulatory judgements | Provider registration number, name, registration date, designation, corporate form; consumer, governance, viability and rent gradings with dates; enforcement notices. Entity-level, no LA geography | no | no |
@@ -114,6 +114,7 @@ CHANGELOG.md                                Dated record of pipeline changes
   s17_marac_source.md                       Source 17 (SafeLives Marac data by police force area) register entry: discovery, hand-download fallback, markers, zero rules, editions
   s5_imd_source.md                          Source 5 (MHCLG English indices of deprivation 2025, File 10) register entry: columns, file identity without a cover sheet, ties and zeros, the v2 reissue, the vintage column
   s3_mye_source.md                          Source 3 (ONS mid-year population estimates) register entry: discovery, identity from the Cover, reconciliation, July revisions as editions, stop limits
+  s21_neighbours_source.md                  Source 21 (ONS statistical nearest neighbours, Table 7a) register entry: discovery, identity from the Cover, the live rule and what it changes, geography, editions, stop limits
   s14_lha_source.md                         Source 14 (DWP LHA rates and the BRMA crosswalk) register entry: discovery, header-year and layout traps, derived weekly rates, the crosswalk and its correction, editions
   s3b_tenure_source.md                      Source 3b (ONS Census 2021 TS054 tenure, NOMIS) register entry: categories and aggregate codes, the 2023 geography type, the publisher's total, editions
   s7_boundaries_source.md                   Source 7 (ONS LAD May 2024 BGC boundaries, the W1 spine) register entry: the shapes as published, the newer redrawn vintages, never rebuilt, editions
@@ -161,6 +162,8 @@ CHANGELOG.md                                Dated record of pipeline changes
   s14_lha_editions.py                       Source 14 (DWP LHA rates and the BRMA crosswalk) editions loader, rates by year and the crosswalk as one vintage in live - a W1 input (old s14_lha_rates_build.py and _v2.py are RETIRED guards)
   s14_brma_names.json                       Source 14 committed exact table of 18 VOA "X & Y" BRMA names
   s14_lha_editions_verify.py                Source 14 editions gates (25), writes nothing
+  s21_neighbours_editions.py                Source 21 (ONS statistical nearest neighbours) editions loader, one release in live as a derived subset (old s21_statistical_neighbours_build.py is a RETIRED guard)
+  s21_neighbours_editions_verify.py         Source 21 editions gates (21), writes nothing
   s15_hpi_editions.py                       Source 15 (Land Registry UK HPI) editions loader (old s15_hpi_build.py is in scripts/historical/)
   /verify/                                  Source reconciliation against publication (2026-08 assurance)
 /sql/                                       Table definitions

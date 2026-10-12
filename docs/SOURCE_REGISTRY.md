@@ -419,6 +419,9 @@ Records: `docs/decisions/2026-10-11-s3-editions-first-load.md`,
 `docs/decisions/2026-10-11-s14-editions-first-load.md`,
 `docs/decisions/2026-10-11-s3-s14-accidental-rebuild.md`.
 
+S21 (the ONS statistical nearest neighbours, Table 7a) is on the same engine since 2026-10-12 (`scripts/s21_neighbours_editions.py`, which reads the ONS dataset page's `/data` JSON). The row now has `acquisition_method` `landing_page`, the loader, the source note (`docs/s21_neighbours_source.md`), the gotchas, the caveats and the verification record. `revises_back_series` is false: the dataset page lists one edition and no earlier versions. `refresh_tier` stays C: one edition has been seen, and a new edition is a decision because it changes every authority's comparators. The old build is retired (it exits 2 at its first statement). The row says what the live table is: the five nearest English neighbours of the publisher's twenty, renumbered 1 to 5, which is not the publisher's top five. Record: `docs/decisions/2026-10-11-s21-editions-first-load.md`.
+
+
 S24 (the RSH register of registered providers, regulatory judgements and
 enforcement notices) is on the same engine since 2026-10-11. The register is a
 snapshot series (each monthly list is its own period, all live); the
